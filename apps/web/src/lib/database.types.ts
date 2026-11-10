@@ -9,6 +9,130 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      cards: {
+        Row: {
+          created_at: string
+          difficulty: number
+          due_at: string
+          id: string
+          lapses: number
+          last_review_at: string | null
+          learning_step: number
+          paused: boolean
+          reps: number
+          schedule_status: string
+          scheduled_days: number
+          stability: number
+          stability_fast: number
+          state: number
+          user_id: string
+          word_id: string
+        }
+        Insert: {
+          created_at?: string
+          difficulty?: number
+          due_at?: string
+          id?: string
+          lapses?: number
+          last_review_at?: string | null
+          learning_step?: number
+          paused?: boolean
+          reps?: number
+          schedule_status?: string
+          scheduled_days?: number
+          stability?: number
+          stability_fast?: number
+          state?: number
+          user_id: string
+          word_id: string
+        }
+        Update: {
+          created_at?: string
+          difficulty?: number
+          due_at?: string
+          id?: string
+          lapses?: number
+          last_review_at?: string | null
+          learning_step?: number
+          paused?: boolean
+          reps?: number
+          schedule_status?: string
+          scheduled_days?: number
+          stability?: number
+          stability_fast?: number
+          state?: number
+          user_id?: string
+          word_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cards_word_id_fkey"
+            columns: ["word_id"]
+            isOneToOne: true
+            referencedRelation: "words"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_logs: {
+        Row: {
+          card_id: string
+          id: string
+          previous: Json
+          rating: number
+          reviewed_at: string
+          revlog: Json
+          user_id: string
+          was_new: boolean
+        }
+        Insert: {
+          card_id: string
+          id?: string
+          previous: Json
+          rating: number
+          reviewed_at?: string
+          revlog: Json
+          user_id: string
+          was_new: boolean
+        }
+        Update: {
+          card_id?: string
+          id?: string
+          previous?: Json
+          rating?: number
+          reviewed_at?: string
+          revlog?: Json
+          user_id?: string
+          was_new?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_logs_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_settings: {
+        Row: {
+          new_cards_per_day: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          new_cards_per_day?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          new_cards_per_day?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       words: {
         Row: {
           context: string
@@ -47,7 +171,29 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      new_cards_limit: { Args: never; Returns: number }
+      review_card: {
+        Args: {
+          p_card_id: string
+          p_day_start: string
+          p_expected_reps: number
+          p_next: Json
+          p_rating: number
+          p_revlog: Json
+        }
+        Returns: string
+      }
+      review_counts: {
+        Args: { p_day_start: string }
+        Returns: {
+          due_now: number
+          new_available: number
+          new_done_today: number
+          new_limit: number
+          next_due_at: string
+        }[]
+      }
+      undo_review: { Args: { p_log_id: string }; Returns: string }
     }
     Enums: {
       word_lang: "en" | "it"

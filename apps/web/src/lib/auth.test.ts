@@ -25,6 +25,10 @@ describe('isProtectedPath', () => {
 		expect(isProtectedPath('/palavras/123')).toBe(true);
 	});
 
+	test('/revisar exige login', () => {
+		expect(isProtectedPath('/revisar')).toBe(true);
+	});
+
 	test('rotas públicas não exigem', () => {
 		expect(isProtectedPath('/')).toBe(false);
 		expect(isProtectedPath('/entrar')).toBe(false);

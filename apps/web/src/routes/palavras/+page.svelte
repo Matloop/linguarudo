@@ -15,8 +15,11 @@
 	const values = $derived(addForm && 'values' in addForm ? addForm.values : null);
 	const added = $derived(addForm && 'added' in addForm ? addForm.added : null);
 	const deleteError = $derived(
-		form?.action === 'delete' && 'message' in form ? form.message : null
+		(form?.action === 'delete' || form?.action === 'pause') && 'message' in form
+			? form.message
+			: null
 	);
+	const toReview = $derived(data.review?.count ?? 0);
 
 	// Sem JS, o action troca a query da URL; repetir o filtro mantém a lista igual depois do POST.
 	const filterQuery = $derived(data.lang ? `&lang=${data.lang}` : '');
@@ -33,6 +36,15 @@
 			await update();
 			saving = false;
 			if (result.type === 'success') termInput?.focus();
+		};
+	};
+
+	let pausing = $state<string | null>(null);
+	const submitPause: SubmitFunction = ({ formData }) => {
+		pausing = formData.get('id')?.toString() ?? null;
+		return async ({ update }) => {
+			await update({ reset: false });
+			pausing = null;
 		};
 	};
 
@@ -57,6 +69,16 @@
 		{data.lang ? `em ${LANG_LABELS[data.lang].toLowerCase()}` : ''}
 	</p>
 </div>
+
+{#if toReview > 0}
+	<a class="revisar" href={resolve('/revisar')}>
+		<span class="revisar-texto">
+			<strong>{toReview} para revisar</strong>
+			<span>Leva poucos minutos.</span>
+		</span>
+		<span class="revisar-botao" aria-hidden="true">Revisar</span>
+	</a>
+{/if}
 
 <form
 	class="nova"
@@ -160,20 +182,47 @@
 {:else}
 	<ul class="lista">
 		{#each data.words as word (word.id)}
-			<li class:saindo={deleting === word.id}>
+			<li class:saindo={deleting === word.id || pausing === word.id} class:pausada={word.paused}>
 				<div class="texto">
 					<p class="termo">
 						<span lang={word.lang}>{word.term}</span>
 						<span class="selo {word.lang}" title={LANG_LABELS[word.lang]}
 							>{word.lang.toUpperCase()}</span
 						>
+						{#if word.paused}<span class="selo pausa">Pausada</span>{/if}
 					</p>
 					{#if word.translation}<p class="traducao">{word.translation}</p>{/if}
 					{#if word.context}<p class="contexto" lang={word.lang}>{word.context}</p>{/if}
 				</div>
+				<form method="POST" action={`?/pause${filterQuery}`} use:enhance={submitPause}>
+					<input type="hidden" name="id" value={word.id} />
+					<input type="hidden" name="paused" value={word.paused ? 'false' : 'true'} />
+					<button
+						class="icone"
+						type="submit"
+						aria-label={word.paused
+							? `Retomar “${word.term}” na revisão`
+							: `Pausar “${word.term}” na revisão`}
+						title={word.paused ? 'Retomar na revisão' : 'Pausar na revisão'}
+					>
+						<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+							{#if word.paused}
+								<path d="M8 5v14l11-7z" fill="currentColor" />
+							{:else}
+								<path
+									d="M9 5v14M15 5v14"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.4"
+									stroke-linecap="round"
+								/>
+							{/if}
+						</svg>
+					</button>
+				</form>
 				<form method="POST" action={`?/delete${filterQuery}`} use:enhance={submitDelete}>
 					<input type="hidden" name="id" value={word.id} />
-					<button class="apagar" type="submit" aria-label={`Apagar “${word.term}”`}>
+					<button class="icone apagar" type="submit" aria-label={`Apagar “${word.term}”`}>
 						<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
 							<path
 								d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"
@@ -472,6 +521,53 @@
 		background: var(--ouro);
 	}
 
+	.selo.pausa {
+		background: var(--linha);
+		color: var(--cinza);
+	}
+
+	.lista li.pausada .termo > span:first-child,
+	.lista li.pausada .traducao {
+		opacity: 0.6;
+	}
+
+	.revisar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin-bottom: 16px;
+		padding: 14px 16px;
+		border-radius: 22px;
+		background: var(--verde);
+		color: var(--creme);
+		text-decoration: none;
+	}
+
+	.revisar-texto {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.revisar-texto strong {
+		font-size: 18px;
+	}
+
+	.revisar-texto span {
+		color: var(--salvia-claro);
+		font-size: 14px;
+	}
+
+	.revisar-botao {
+		flex: none;
+		background: var(--coral);
+		color: #fff;
+		border-radius: 14px;
+		padding: 10px 20px;
+		font-weight: 800;
+		box-shadow: var(--sombra-botao) var(--coral-escuro);
+	}
+
 	.traducao {
 		color: var(--tinta);
 		margin-top: 2px !important;
@@ -487,7 +583,7 @@
 		white-space: pre-line;
 	}
 
-	.apagar {
+	.icone {
 		flex: none;
 		border: 0;
 		background: none;
@@ -497,6 +593,11 @@
 		border-radius: var(--raio-p);
 		display: grid;
 		place-items: center;
+	}
+
+	.icone:hover {
+		background: var(--salvia-claro);
+		color: var(--verde);
 	}
 
 	.apagar:hover {

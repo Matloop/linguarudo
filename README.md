@@ -6,12 +6,14 @@ App para aprender inglês e italiano a partir do que você já consome: séries 
 
 Esta primeira fatia tem login (Google ou link mágico) e **Minhas palavras**: listar, adicionar, filtrar EN/IT e apagar.
 
+**Revisar** (`/revisar`): cada palavra vira um cartão (trigger no banco) revisado com FSRS ([ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs), FSRS-7, retenção 0,9). São 10 cartões novos por dia por usuário (`user_settings.new_cards_per_day`) e revisões vencidas sem limite. Dá para desfazer a última nota e pausar palavras em Minhas palavras. O "dia" segue `REVIEW_TIME_ZONE` em `apps/web/src/lib/review.ts`.
+
 ## Estrutura
 
 | Pasta | O que é |
 |---|---|
 | `apps/web` | App SvelteKit 3 (TS), hospedado na Vercel. Dados passam pelo servidor (load + form actions) |
-| `supabase` | Config local, migrations (tabela `words` com RLS) e template do e-mail de login |
+| `supabase` | Config local, migrations (`words`, `cards`, `review_logs`, `user_settings`, com RLS) e template do e-mail de login |
 | `packages/stremio-server` | Servidor LingoBlend (legendas misturadas no Stremio), trazido do projeto original |
 | `prototypes` | Protótipos HTML e arte da marca (referência visual) |
 

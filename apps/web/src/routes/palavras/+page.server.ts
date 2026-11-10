@@ -18,7 +18,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	let query = locals.supabase
 		.from('words')
-		.select('id, term, translation, lang, context, created_at')
+		.select('id, term, translation, lang, context, created_at, cards(paused)')
 		.eq('user_id', user.id)
 		.order('created_at', { ascending: false })
 		.limit(PAGE_SIZE);
@@ -27,7 +27,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const { data, error: dbError } = await query;
 	if (dbError) error(500, 'Não deu para carregar suas palavras agora.');
 
-	return { words: data, lang };
+	const words = data.map(({ cards, ...word }) => ({ ...word, paused: cards?.paused ?? false }));
+	return { words, lang };
 };
 
 export const actions: Actions = {
@@ -73,5 +74,29 @@ export const actions: Actions = {
 			return fail(500, { action: 'delete' as const, message: 'Não deu para apagar agora.' });
 		}
 		return { action: 'delete' as const, deleted: id };
+	},
+
+	pause: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		const form = await request.formData();
+		const id = form.get('id');
+		const paused = form.get('paused') === 'true';
+		if (typeof id !== 'string' || id === '') {
+			return fail(400, { action: 'pause' as const, message: 'Palavra não encontrada.' });
+		}
+
+		const { data, error: dbError } = await locals.supabase
+			.from('cards')
+			.update({ paused })
+			.eq('word_id', id)
+			.eq('user_id', user.id)
+			.select('id');
+		if (dbError || data.length === 0) {
+			return fail(dbError ? 500 : 404, {
+				action: 'pause' as const,
+				message: paused ? 'Não deu para pausar agora.' : 'Não deu para retomar agora.'
+			});
+		}
+		return { action: 'pause' as const, id, paused };
 	}
 };

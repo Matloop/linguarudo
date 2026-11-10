@@ -2,9 +2,14 @@
 	import { resolve } from '$app/paths';
 	import '#lib/styles/tokens.css';
 	import icone from '#lib/assets/icone.png';
+	import { page } from '$app/state';
 	import type { LayoutProps } from './$types';
 
 	let { children, data }: LayoutProps = $props();
+
+	function isCurrent(path: string) {
+		return page.url.pathname === path ? 'page' : undefined;
+	}
 </script>
 
 <svelte:head>
@@ -21,7 +26,17 @@
 
 	{#if data.user}
 		<nav aria-label="Principal">
-			<a href={resolve('/palavras')}>Minhas palavras</a>
+			<a href={resolve('/palavras')} aria-current={isCurrent('/palavras')}>
+				<span class="longo">Minhas palavras</span><span class="curto">Palavras</span>
+			</a>
+			<a href={resolve('/revisar')} aria-current={isCurrent('/revisar')}>
+				Revisar
+				{#if data.review && data.review.count > 0}
+					<span class="qtd"
+						>{data.review.count}<span class="visually-hidden"> para revisar</span></span
+					>
+				{/if}
+			</a>
 		</nav>
 		<form method="POST" action="/sair">
 			<button class="sair" type="submit" title={data.user.email ?? undefined}>Sair</button>
@@ -60,9 +75,14 @@
 
 	nav {
 		margin-left: auto;
+		display: flex;
+		gap: 2px;
 	}
 
 	nav a {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		white-space: nowrap;
 		color: var(--salvia-claro);
 		text-decoration: none;
@@ -71,8 +91,42 @@
 		border-radius: var(--raio-p);
 	}
 
-	nav a:hover {
+	nav a:hover,
+	nav a[aria-current='page'] {
 		background: #ffffff14;
+	}
+
+	nav a[aria-current='page'] {
+		color: var(--creme);
+	}
+
+	.qtd {
+		min-width: 22px;
+		padding: 1px 7px;
+		border-radius: 99px;
+		background: var(--coral);
+		color: #fff;
+		font-size: 13px;
+		font-weight: 800;
+		text-align: center;
+	}
+
+	.curto {
+		display: none;
+	}
+
+	@media (max-width: 479px) {
+		.longo {
+			display: none;
+		}
+
+		.curto {
+			display: inline;
+		}
+
+		nav a {
+			padding: 8px 8px;
+		}
 	}
 
 	.sair {
@@ -89,7 +143,7 @@
 		background: #ffffff14;
 	}
 
-	@media (max-width: 359px) {
+	@media (max-width: 479px) {
 		.marca span {
 			display: none;
 		}
