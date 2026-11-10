@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-sans, system-ui, sans-serif); color: var(--foreground, #eee); }
+  .wrap { display: flex; flex-direction: column; gap: 12px; }
+  .player {
+    position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: var(--radius, 10px); overflow: hidden;
+    background: radial-gradient(ellipse at 30% 35%, #3b4a5c 0%, #1b2430 45%, #0b0f14 100%);
+    user-select: none;
+  }
+  .scene { position: absolute; inset: 0; background:
+      radial-gradient(circle at 72% 40%, rgba(255,190,120,.25), transparent 30%),
+      linear-gradient(180deg, transparent 55%, rgba(0,0,0,.55) 100%); }
+  .topbar { position: absolute; top: 0; left: 0; right: 0; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;
+    color: #fff; font-size: 13px; background: linear-gradient(180deg, rgba(0,0,0,.6), transparent); }
+  .badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: rgba(8,145,178,.85); color: #fff; font-weight: 600; letter-spacing: .02em; }
+  .subs { position: absolute; left: 0; right: 0; bottom: 64px; text-align: center; padding: 0 6%; }
+  .cue { display: inline-block; font-size: clamp(15px, 3.1vw, 24px); line-height: 1.35; color: #fff; font-weight: 500;
+    text-shadow: 0 0 4px #000, 0 0 2px #000, 1px 1px 2px #000; }
+  .w { cursor: pointer; text-decoration: underline; text-decoration-color: #22d3ee; text-decoration-thickness: 2px; text-underline-offset: 4px;
+    color: #a5f3fc; border-radius: 4px; padding: 0 2px; transition: background .12s; }
+  .w:hover, .w.on { background: rgba(34,211,238,.22); }
+  .pop { position: absolute; z-index: 5; width: 250px; padding: 12px 14px; border-radius: 10px; background: rgba(17,24,32,.96);
+    border: 1px solid rgba(34,211,238,.45); box-shadow: 0 10px 30px rgba(0,0,0,.5); color: #e6edf3; text-align: left; display: none; }
+  .pop.show { display: block; }
+  .pop .it { font-size: 20px; font-weight: 700; color: #a5f3fc; display: flex; align-items: center; gap: 8px; }
+  .pop .ipa { font-size: 12px; color: #8b9bab; font-family: var(--font-mono, monospace); }
+  .pop .pt { font-size: 13px; margin-top: 4px; color: #cbd5e1; }
+  .pop .pt b { color: #fff; }
+  .pop .ex { font-size: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.1); color: #94a3b8; font-style: italic; }
+  .pop .acts { display: flex; gap: 6px; margin-top: 10px; }
+  .pop button { flex: 1; font: inherit; font-size: 12px; padding: 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06); color: #e6edf3; cursor: pointer; }
+  .pop button.pri { background: #0891b2; border-color: #0891b2; color: #fff; }
+  .pop .arrow { position: absolute; bottom: -7px; left: 50%; width: 12px; height: 12px; background: rgba(17,24,32,.96);
+    border-right: 1px solid rgba(34,211,238,.45); border-bottom: 1px solid rgba(34,211,238,.45); transform: translateX(-50%) rotate(45deg); }
+  .speak { width: 22px; height: 22px; border-radius: 50%; border: none; background: rgba(34,211,238,.18); color: #a5f3fc; cursor: pointer; font-size: 11px; padding: 0; flex: none !important; }
+  .controls { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 16px 12px; background: linear-gradient(0deg, rgba(0,0,0,.75), transparent); color: #fff; }
+  .bar { height: 4px; background: rgba(255,255,255,.25); border-radius: 2px; position: relative; }
+  .bar i { position: absolute; inset: 0 62% 0 0; background: #0891b2; border-radius: 2px; }
+  .row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 12px; }
+  .row .l, .row .r { display: flex; gap: 14px; align-items: center; }
+  .ico { opacity: .9; cursor: pointer; }
+  .ico.lb { color: #22d3ee; font-weight: 700; }
+  .paused { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 56px; height: 56px; border-radius: 50%;
+    background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; color: #fff; font-size: 20px; }
+  .paused.show { display: flex; }
+  .menu { position: absolute; right: 12px; bottom: 56px; width: 230px; padding: 12px; border-radius: 10px; background: rgba(17,24,32,.96); border: 1px solid rgba(255,255,255,.12); color: #e6edf3; font-size: 12px; display: none; z-index: 6; }
+  .menu.show { display: block; }
+  .menu h4 { margin: 0 0 10px; font-size: 13px; }
+  .menu .f { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; }
+  .menu select, .menu input { font: inherit; font-size: 12px; background: rgba(255,255,255,.06); color: #e6edf3; border: 1px solid rgba(255,255,255,.15); border-radius: 6px; padding: 3px 6px; }
+  .tog { width: 32px; height: 18px; border-radius: 9px; background: #0891b2; position: relative; }
+  .tog::after { content: ""; position: absolute; right: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
+  .notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .note { padding: 10px 12px; border-radius: var(--radius, 8px); background: var(--card); border: 1px solid var(--border); font-size: 12px; color: var(--muted-foreground); }
+  .note b { display: block; color: var(--foreground); font-size: 12.5px; margin-bottom: 3px; }
+  @media (max-width: 520px) { .notes { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="player" id="player">
+    <div class="scene"></div>
+    <div class="topbar"><span>La Grande Bellezza · 00:41:12</span><span class="badge">LingoBlend · PT → IT · 10%</span></div>
+    <div class="paused" id="paused">❚❚</div>
+
+    <div class="subs" id="subs"><span class="cue" id="cue"></span></div>
+
+    <div class="pop" id="pop">
+      <div class="it"><span id="pIt"></span><button class="speak" title="Ouvir pronúncia">▶</button></div>
+      <div class="ipa" id="pIpa"></div>
+      <div class="pt" id="pPt"></div>
+      <div class="ex" id="pEx"></div>
+      <div class="acts"><button class="pri" id="save">＋ Salvar palavra</button><button id="close">Continuar ▶</button></div>
+      <div class="arrow" id="arrow"></div>
+    </div>
+
+    <div class="menu" id="menu">
+      <h4>LingoBlend</h4>
+      <div class="f"><span>Ativado</span><span class="tog"></span></div>
+      <div class="f"><span>Aprendendo</span><select><option>Italiano</option><option>Espanhol</option><option>Inglês</option></select></div>
+      <div class="f"><span>Palavras trocadas</span><span><input type="range" min="5" max="30" value="10" id="dens" style="width:80px;vertical-align:middle"> <b id="densV">10%</b></span></div>
+      <div class="f"><span>Pausar ao clicar</span><span class="tog"></span></div>
+    </div>
+
+    <div class="controls">
+      <div class="bar"><i></i></div>
+      <div class="row">
+        <div class="l"><span class="ico" id="play">❚❚</span><span class="ico">⟲10</span><span>41:12 / 2:21:40</span></div>
+        <div class="r"><span class="ico">CC</span><span class="ico lb" id="lbBtn" title="Configurações LingoBlend">IT</span><span class="ico">⛶</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note"><b>Legenda misturada</b>A legenda segue em português e cerca de 10% das palavras aparecem em italiano, sublinhadas em ciano.</div>
+    <div class="note"><b>Clique na palavra</b>O vídeo pausa e um cartão mostra a palavra em italiano, a pronúncia, o original em PT e um exemplo.</div>
+    <div class="note"><b>Botão "IT" na barra</b>Liga e desliga o recurso, troca a língua e ajusta a porcentagem de palavras.</div>
+  </div>
+</div>
+
+<script>
+  // Cada cue: texto em PT com algumas palavras trocadas (it, pt, ipa, ex)
+  const cues = [
+    [ "Eu não quero só ir às ", {it:"feste", pt:"festas", ipa:"/ˈfɛs.te/", g:"subst. fem. plural", ex:"Andiamo alle feste di Roma."}, ". Eu quero ter o ", {it:"potere", pt:"poder", ipa:"/poˈte.re/", g:"subst. masc.", ex:"Il potere di farle fallire."}, " de fazê-las fracassar." ],
+    [ "Esta é a ", {it:"bellezza", pt:"beleza", ipa:"/belˈlet.tsa/", g:"subst. fem.", ex:"La grande bellezza."}, " que eu procurei a vida inteira, ", {it:"amico", pt:"amigo", ipa:"/aˈmi.ko/", g:"subst. masc.", ex:"Ciao, amico mio!"}, " meu." ]
+  ];
+  let ci = 0, paused = false;
+  const cue = document.getElementById('cue'), pop = document.getElementById('pop'), player = document.getElementById('player');
+
+  function render() {
+    cue.innerHTML = '';
+    cues[ci].forEach(p => {
+      if (typeof p === 'string') { cue.append(p); return; }
+      const s = document.createElement('span');
+      s.className = 'w'; s.textContent = p.it;
+      s.onclick = e => { e.stopPropagation(); open(s, p); };
+      cue.append(s);
+    });
+  }
+  function setPaused(v) {
+    paused = v;
+    document.getElementById('paused').classList.toggle('show', v);
+    document.getElementById('play').textContent = v ? '▶' : '❚❚';
+  }
+  function open(el, p) {
+    document.querySelectorAll('.w.on').forEach(x => x.classList.remove('on'));
+    el.classList.add('on');
+    document.getElementById('pIt').textContent = p.it;
+    document.getElementById('pIpa').textContent = p.ipa + ' · ' + p.g;
+    document.getElementById('pPt').innerHTML = 'Em português: <b>' + p.pt + '</b>';
+    document.getElementById('pEx').textContent = '“' + p.ex + '”';
+    document.getElementById('save').textContent = '＋ Salvar palavra';
+    pop.classList.add('show');
+    const pr = player.getBoundingClientRect(), r = el.getBoundingClientRect();
+    let left = r.left - pr.left + r.width / 2 - 125;
+    left = Math.max(8, Math.min(left, pr.width - 258));
+    pop.style.left = left + 'px';
+    pop.style.top = (r.top - pr.top - pop.offsetHeight - 12) + 'px';
+    document.getElementById('arrow').style.left = (r.left - pr.left + r.width / 2 - left) + 'px';
+    setPaused(true);
+  }
+  function close() {
+    pop.classList.remove('show');
+    document.querySelectorAll('.w.on').forEach(x => x.classList.remove('on'));
+    setPaused(false);
+  }
+  document.getElementById('close').onclick = e => { e.stopPropagation(); close(); };
+  document.getElementById('save').onclick = e => { e.stopPropagation(); e.target.textContent = '✓ Salva'; };
+  document.getElementById('lbBtn').onclick = e => { e.stopPropagation(); document.getElementById('menu').classList.toggle('show'); };
+  document.getElementById('menu').onclick = e => e.stopPropagation();
+  document.getElementById('dens').oninput = e => document.getElementById('densV').textContent = e.target.value + '%';
+  document.getElementById('play').onclick = e => { e.stopPropagation(); paused ? close() : setPaused(true); };
+  pop.onclick = e => e.stopPropagation();
+  player.onclick = () => { document.getElementById('menu').classList.remove('show'); if (pop.classList.contains('show')) close(); };
+  setInterval(() => { if (!paused) { ci = (ci + 1) % cues.length; render(); } }, 4500);
+  render();
+  // estado inicial: cartão aberto em "bellezza" para mostrar a UI
+  ci = 0; render();
+  setTimeout(() => { const w = cue.querySelectorAll('.w')[1]; w && w.click(); }, 50);
+</script>
+</body>
+</html>

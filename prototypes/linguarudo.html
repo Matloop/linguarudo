@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Linguarudo · Aula</title>
+<style>
+:root{
+  --verde:#0C4033;--verde2:#073026;--salvia:#7FA886;--salvia2:#DCE8D6;--creme:#FDF4E3;--papel:#FFFBF3;
+  --coral:#F07C7C;--coral2:#FBE1DD;--tinta:#16302A;--cinza:#6E7F78;--linha:#E7DCC6;
+  --s:#3B82F6;--v:#0C8A6E;--o:#E0567A;--t:#D9930B;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--creme);color:var(--tinta);font:16px/1.45 ui-rounded,"SF Pro Rounded","Nunito",system-ui,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+.app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+
+/* sidebar */
+.side{background:var(--verde);color:var(--creme);padding:22px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+.side .marca{padding:4px 10px 22px}
+.side .marca img{width:170px;filter:brightness(0) invert(.96) sepia(.25)}
+.nav{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:14px;color:#CFE0CB;text-decoration:none;font-weight:650}
+.nav svg{width:22px;height:22px;flex:none}
+.nav:hover{background:#ffffff12}
+.nav.on{background:var(--creme);color:var(--verde)}
+.nav .qtd{margin-left:auto;font-size:12px;background:var(--coral);color:#fff;border-radius:99px;padding:1px 8px}
+.side .rodape{margin-top:auto;font-size:12px;color:#9DB8A6;padding:10px 12px;border-top:1px solid #ffffff1a}
+.side .rodape b{color:var(--creme)}
+
+/* header */
+.main{display:flex;flex-direction:column;min-width:0}
+header{display:flex;align-items:center;gap:18px;padding:16px 28px}
+header .ico{display:none;width:38px;height:38px;border-radius:11px}
+.sair{border:0;background:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--cinza)}
+.sair:hover{background:var(--salvia2)}
+.onda{flex:1;height:30px;min-width:120px}
+.onda path{fill:none;stroke-linecap:round;stroke-width:9}
+.onda .fundo{stroke:#E9DFCB}
+.onda .cheia{stroke:var(--salvia);stroke-dasharray:100 200;stroke-dashoffset:100;transition:stroke-dashoffset .6s cubic-bezier(.3,1.4,.5,1)}
+.lang{display:flex;background:#fff;border:1.5px solid var(--linha);border-radius:99px;padding:3px}
+.lang button{border:0;background:none;padding:4px 11px;border-radius:99px;font-weight:700;font-size:13px;color:var(--cinza)}
+.lang button.on{background:var(--verde);color:var(--creme)}
+.pill{display:flex;align-items:center;gap:6px;font-weight:800;font-size:15px;white-space:nowrap}
+.pill.fogo{color:#D9690B}.pill.pal{color:var(--verde)}
+
+/* lesson */
+.palco{flex:1;display:flex;justify-content:center;padding:8px 28px 0}
+.aula{width:100%;max-width:760px;display:flex;flex-direction:column}
+.topo{display:flex;align-items:flex-end;gap:14px;margin:6px 0 22px;position:relative}
+.masc{width:132px;flex:none;position:relative;z-index:2}
+.masc img{width:100%;display:block;transform-origin:50% 90%}
+.masc.pulo img{animation:pulo .55s}
+.masc.nao img{animation:nao .5s}
+@keyframes pulo{30%{transform:translateY(-14px) scale(1.04)}60%{transform:translateY(0) scale(.98)}}
+@keyframes nao{20%,60%{transform:rotate(-5deg)}40%,80%{transform:rotate(5deg)}}
+.balao{background:#fff;border:1.5px solid var(--linha);border-radius:18px 18px 18px 4px;padding:12px 16px;margin-bottom:40px;max-width:420px;font-weight:600}
+.balao small{display:block;color:var(--cinza);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+h1{font-size:26px;line-height:1.2;margin:0 0 6px;color:var(--verde);letter-spacing:-.01em}
+.sub{color:var(--cinza);margin:0 0 22px}
+.passo{display:none}.passo.on{display:block;animation:entra .35s}
+@keyframes entra{from{opacity:0;transform:translateY(8px)}}
+
+/* 1: pegue a palavra */
+.lingua{position:absolute;height:12px;border-radius:99px;background:linear-gradient(90deg,#E86A6A,var(--coral));transform-origin:0 50%;width:0;opacity:0;z-index:1;pointer-events:none;transition:width .22s ease-out,opacity .1s .2s}
+.lingua.sai{opacity:1;transition:width .22s ease-out}
+.lingua::after{content:"";position:absolute;right:-6px;top:-5px;width:22px;height:22px;border-radius:50%;background:var(--coral)}
+.campo{position:relative;height:250px;border-radius:24px;background:var(--salvia2);overflow:hidden}
+.campo::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 20% 110%,#C9DCC2 0 30%,transparent 31%),radial-gradient(circle at 90% -10%,#C9DCC2 0 25%,transparent 26%)}
+.bolha{position:absolute;border:0;background:#fff;border-radius:99px;padding:12px 20px;font-weight:800;font-size:18px;color:var(--verde);box-shadow:0 3px 0 #BFD1B8;animation:flutua 3.2s ease-in-out infinite}
+.bolha:nth-child(2){animation-delay:-.8s}.bolha:nth-child(3){animation-delay:-1.6s}.bolha:nth-child(4){animation-delay:-2.4s}
+@keyframes flutua{50%{translate:0 -9px}}
+.bolha:hover{background:var(--papel)}
+.bolha.pega{animation:none;transition:all .25s ease-in;opacity:0;scale:.4}
+.bolha.erro{animation:none;background:var(--coral2);color:#A53B3B;box-shadow:0 3px 0 #EBB9B2}
+
+/* 2: lacuna */
+.frase{font-size:28px;font-weight:750;color:var(--verde);line-height:1.6;margin:18px 0 8px}
+.frase input{font:inherit;color:var(--verde);width:4.2em;border:0;border-bottom:3px dashed var(--salvia);background:transparent;text-align:center;outline:0;padding:0 4px}
+.frase input:focus{border-bottom-style:solid}
+.trad{color:var(--cinza);margin:0 0 20px}
+.dica{display:inline-flex;gap:8px;align-items:center;font-size:14px;background:#fff;border:1.5px solid var(--linha);border-radius:12px;padding:7px 12px;color:var(--cinza)}
+
+/* 3: escuta */
+.ouvir{display:flex;gap:12px;margin:6px 0 22px}
+.play{border:0;width:74px;height:74px;border-radius:22px;background:var(--verde);color:var(--creme);display:grid;place-items:center;box-shadow:0 4px 0 var(--verde2)}
+.play.lento{width:56px;height:56px;border-radius:18px;background:var(--salvia);box-shadow:0 4px 0 #5E8A66;align-self:flex-end}
+.play:active{transform:translateY(3px);box-shadow:none}
+.grade{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.op{border:2px solid var(--linha);background:#fff;border-radius:16px;padding:16px;font-weight:750;font-size:19px;text-align:left;display:flex;align-items:center;gap:12px;box-shadow:0 3px 0 var(--linha)}
+.op .k{width:28px;height:28px;border-radius:8px;border:1.5px solid var(--linha);display:grid;place-items:center;font-size:13px;color:var(--cinza)}
+.op .ipa{margin-left:auto;font-size:13px;color:var(--cinza);font-weight:600}
+.op.sel{border-color:var(--salvia);background:#F1F7EE;box-shadow:0 3px 0 var(--salvia)}
+.op.ok{border-color:var(--v);background:#E6F4EE}
+.op.errada{border-color:var(--coral);background:var(--coral2)}
+
+/* 4: montar */
+.legenda{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--cinza);margin:0 0 14px}
+.legenda i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
+.linha{min-height:64px;border-bottom:2px solid var(--linha);display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;margin-bottom:22px}
+.linha:empty::before{content:"Toque nas peças na ordem certa";color:#B5AE9E}
+.pecas{display:flex;flex-wrap:wrap;gap:10px}
+.peca{border:2px solid var(--c);color:var(--c);background:#fff;border-radius:14px;padding:9px 15px;font-weight:800;font-size:18px;white-space:nowrap;box-shadow:0 3px 0 var(--c)}
+.peca.usada{visibility:hidden}
+.linha .peca{background:var(--c);color:#fff}
+
+/* 5: pares */
+.pares{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pares .col{display:flex;flex-direction:column;gap:10px}
+.par{border:2px solid var(--linha);background:#fff;border-radius:14px;padding:13px 14px;font-weight:750;box-shadow:0 3px 0 var(--linha);text-align:center}
+.par.sel{border-color:var(--salvia);background:#F1F7EE}
+.par.feito{opacity:.35;pointer-events:none;border-color:var(--v)}
+.par.erro{animation:nao .4s;border-color:var(--coral)}
+
+/* 6: fim */
+.fim{text-align:center;padding-top:10px}
+.fim .masc{width:190px;margin:0 auto 6px}
+.fim .masc img{animation:pulo .55s,cor 5s 1s ease-in-out infinite}
+@keyframes cor{50%{filter:hue-rotate(-75deg) saturate(1.4)}}
+.fim h1{font-size:32px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0}
+.stat{background:#fff;border:1.5px solid var(--linha);border-radius:18px;padding:14px}
+.stat b{display:block;font-size:26px;color:var(--verde)}
+.stat span{font-size:13px;color:var(--cinza)}
+.banco{background:#fff;border:1.5px solid var(--linha);border-radius:18px;padding:16px;text-align:left}
+.banco h3{margin:0 0 10px;font-size:15px;color:var(--verde)}
+.banco ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.banco li{background:var(--salvia2);border-radius:99px;padding:5px 12px;font-weight:700;font-size:14px}
+.banco li em{font-style:normal;font-weight:500;color:var(--cinza)}
+.amostra{font-size:12px;color:var(--cinza);margin-top:14px}
+
+/* footer */
+footer{margin-top:auto;border-top:2px solid var(--linha);padding:18px 28px;display:flex;align-items:center;gap:16px;background:var(--creme)}
+footer .msg{flex:1;display:flex;align-items:center;gap:12px;font-weight:700}
+footer .msg .sinal{width:44px;height:44px;border-radius:50%;display:none;place-items:center;color:#fff;font-size:22px;flex:none}
+footer .msg small{display:block;font-weight:550;font-size:14px}
+footer.ok{background:#E3F1E4;border-color:#C5DFC7}footer.ok .msg{color:var(--v)}footer.ok .sinal{display:grid;background:var(--v)}
+footer.mal{background:var(--coral2);border-color:#F3C3BB}footer.mal .msg{color:#A53B3B}footer.mal .sinal{display:grid;background:var(--coral)}
+.pular{border:2px solid var(--linha);background:none;border-radius:14px;padding:12px 20px;font-weight:800;color:var(--cinza)}
+.btn{border:0;background:var(--verde);color:var(--creme);border-radius:14px;padding:13px 30px;font-weight:800;font-size:16px;box-shadow:0 4px 0 var(--verde2);min-width:160px}
+.btn:disabled{background:#DCD3C0;box-shadow:0 4px 0 #CBC1AC;color:#fff;cursor:default}
+.btn:not(:disabled):active{transform:translateY(3px);box-shadow:none}
+footer.mal .btn{background:var(--coral);box-shadow:0 4px 0 #C95A5A}
+footer.ok .btn{background:var(--v);box-shadow:0 4px 0 #066650}
+
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .side{position:fixed;bottom:0;top:auto;left:0;right:0;height:auto;flex-direction:row;justify-content:space-around;padding:6px;z-index:9;gap:0}
+  .side .marca,.side .rodape,.nav .lbl,.nav .qtd{display:none}
+  .nav{padding:10px 14px}
+  header{padding:12px 16px;gap:10px}
+  header .ico{display:block}
+  .sair{display:none}
+  .lang{display:none}
+  .palco{padding:0 16px}
+  .masc{width:92px}
+  .balao{margin-bottom:22px;font-size:15px}
+  h1{font-size:22px}
+  .frase{font-size:22px}
+  .grade{grid-template-columns:1fr}
+  footer{padding:14px 16px;margin-bottom:62px;flex-wrap:wrap}
+  footer .msg{flex-basis:100%}
+  .btn{flex:1}
+  .pular{display:none}
+  .stats b{font-size:22px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="side">
+    <div class="marca"><img src="lg-nome.png" alt="Linguarudo"></div>
+    <a class="nav on" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V8l8-4 8 4v11"/><path d="M9 19v-6h6v6"/></svg><span class="lbl">Aprender</span></a>
+    <a class="nav" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="14" height="14" rx="3"/><path d="M7 3h11a3 3 0 0 1 3 3v11"/></svg><span class="lbl">Revisar</span><span class="qtd">18</span></a>
+    <a class="nav" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg><span class="lbl">Minhas palavras</span></a>
+    <a class="nav" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 7V3M15 7V3M6 7h12v4a6 6 0 0 1-12 0zM12 17v4"/></svg><span class="lbl">Integrações</span></a>
+    <a class="nav" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/></svg><span class="lbl">Dicas</span></a>
+    <div class="rodape">Código aberto · <b>AGPL</b><br>Dados de exemplo</div>
+  </nav>
+
+  <div class="main">
+    <header>
+      <img class="ico" src="lg-icone.png" alt="">
+      <button class="sair" aria-label="Sair da aula"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <svg class="onda" viewBox="0 0 300 30" preserveAspectRatio="none" aria-label="Progresso da aula">
+        <path class="fundo" d="M6 18 Q 43 6 80 16 T 155 16 T 230 14 T 294 12" pathLength="100"/>
+        <path class="cheia" id="onda" d="M6 18 Q 43 6 80 16 T 155 16 T 230 14 T 294 12" pathLength="100"/>
+      </svg>
+      <div class="lang" id="lang"><button class="on">EN</button><button>IT</button></div>
+      <span class="pill fogo" title="Dias seguidos">🔥 12</span>
+      <span class="pill pal" title="Palavras no banco">📚 <span id="nPal">342</span></span>
+    </header>
+
+    <div class="palco"><div class="aula">
+      <div class="topo" id="topo">
+        <div class="masc" id="masc"><img src="lg-mascote.png" alt="Camaleão Linguarudo"></div>
+        <div class="balao" id="balao"><small>Rudo diz</small>Bora! Eu pego a palavra com a língua. Você só aponta.</div>
+        <div class="lingua" id="lingua"></div>
+      </div>
+
+      <!-- 1 -->
+      <section class="passo on" data-p="1">
+        <h1>Pegue a palavra: <span style="color:var(--coral)">cozinha</span></h1>
+        <p class="sub">Toque na bolha certa. O Rudo busca.</p>
+        <div class="campo" id="campo">
+          <button class="bolha" style="left:8%;top:22%">chicken</button>
+          <button class="bolha" style="left:40%;top:56%">kitchen</button>
+          <button class="bolha" style="left:64%;top:16%">kitten</button>
+          <button class="bolha" style="left:74%;top:62%">ketchup</button>
+        </div>
+      </section>
+
+      <!-- 2 -->
+      <section class="passo" data-p="2">
+        <h1>Complete a frase</h1>
+        <p class="frase">Every morning, I <input id="in2" autocomplete="off" spellcheck="false" aria-label="Palavra que falta"> to the gym.</p>
+        <p class="trad">Toda manhã, eu vou para a academia.</p>
+        <span class="dica">💡 Sujeito “I” → verbo sem “s”.</span>
+      </section>
+
+      <!-- 3 -->
+      <section class="passo" data-p="3">
+        <h1>O que você ouviu?</h1>
+        <p class="sub">Som parecido, sentido diferente. Ouça quantas vezes quiser.</p>
+        <div class="ouvir">
+          <button class="play" id="play" aria-label="Ouvir"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+          <button class="play lento" id="lento" aria-label="Ouvir devagar">🐢</button>
+        </div>
+        <div class="grade" id="ops3">
+          <button class="op" data-v="ship"><span class="k">1</span>ship<span class="ipa">/ʃɪp/</span></button>
+          <button class="op" data-v="sheep"><span class="k">2</span>sheep<span class="ipa">/ʃiːp/</span></button>
+          <button class="op" data-v="chip"><span class="k">3</span>chip<span class="ipa">/tʃɪp/</span></button>
+          <button class="op" data-v="cheap"><span class="k">4</span>cheap<span class="ipa">/tʃiːp/</span></button>
+        </div>
+      </section>
+
+      <!-- 4 -->
+      <section class="passo" data-p="4">
+        <h1>Monte: “Nós temos uma reunião amanhã.”</h1>
+        <div class="legenda"><span><i style="background:var(--s)"></i>quem</span><span><i style="background:var(--v)"></i>ação</span><span><i style="background:var(--o)"></i>o quê</span><span><i style="background:var(--t)"></i>quando</span></div>
+        <div class="linha" id="linha4"></div>
+        <div class="pecas" id="pecas4">
+          <button class="peca" style="--c:var(--t)">tomorrow</button>
+          <button class="peca" style="--c:var(--v)">has</button>
+          <button class="peca" style="--c:var(--s)">We</button>
+          <button class="peca" style="--c:var(--o)">a meeting</button>
+          <button class="peca" style="--c:var(--v)">have</button>
+        </div>
+      </section>
+
+      <!-- 5 -->
+      <section class="passo" data-p="5">
+        <h1>Ligue os pares</h1>
+        <p class="sub">Palavras que você salvou esta semana.</p>
+        <div class="pares" id="pares5">
+          <div class="col">
+            <button class="par" data-k="a">borrow</button><button class="par" data-k="b">already</button><button class="par" data-k="c">busy</button><button class="par" data-k="d">schedule</button>
+          </div>
+          <div class="col">
+            <button class="par" data-k="c">ocupado</button><button class="par" data-k="d">agenda</button><button class="par" data-k="a">pegar emprestado</button><button class="par" data-k="b">já</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6 -->
+      <section class="passo fim" data-p="6">
+        <div class="masc pulo"><img src="lg-mascote.png" alt=""></div>
+        <h1>Aula fechada!</h1>
+        <p class="sub" style="margin:0">O Rudo trocou de cor de tanto orgulho.</p>
+        <div class="stats">
+          <div class="stat"><b id="acertos">5/5</b><span>acertos</span></div>
+          <div class="stat"><b>+6</b><span>palavras no banco</span></div>
+          <div class="stat"><b>🔥 13</b><span>dias seguidos</span></div>
+        </div>
+        <div class="banco">
+          <h3>Entraram no seu banco · revisão amanhã</h3>
+          <ul><li>kitchen <em>cozinha</em></li><li>go <em>ir</em></li><li>sheep <em>ovelha</em></li><li>meeting <em>reunião</em></li><li>borrow <em>pegar emprestado</em></li><li>schedule <em>agenda</em></li></ul>
+        </div>
+        <p class="amostra">Dados de exemplo.</p>
+      </section>
+    </div></div>
+
+    <footer id="foot">
+      <div class="msg"><span class="sinal" id="sinal"></span><div id="msg"></div></div>
+      <button class="pular" id="pular">Pular</button>
+      <button class="btn" id="btn" disabled>Verificar</button>
+    </footer>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const TOTAL=5,falas={
+  1:'Bora! Eu pego a palavra com a língua. Você só aponta.',
+  2:'Essa eu não alcanço. Digita aí pra mim.',
+  3:'Escuta com calma. Os ouvidos também treinam.',
+  4:'Cada cor é um papel na frase. Repara no verbo.',
+  5:'Última! Essas palavras vieram do seu banco.',
+};
+let passo=1,acertos=0,resposta=null,checar=null,travado=false;
+const foot=$('#foot'),btn=$('#btn'),masc=$('#masc');
+
+function reage(tipo){masc.classList.remove('pulo','nao');void masc.offsetWidth;masc.classList.add(tipo)}
+function pode(v){btn.disabled=!v}
+function feedback(ok,titulo,texto){
+  travado=true;foot.className=ok?'ok':'mal';
+  $('#sinal').textContent=ok?'✓':'✕';
+  $('#msg').innerHTML=titulo+(texto?'<small>'+texto+'</small>':'');
+  btn.textContent='Continuar';btn.disabled=false;$('#pular').style.visibility='hidden';
+  if(ok)acertos++;reage(ok?'pulo':'nao');
+}
+function vai(n){
+  passo=n;travado=false;foot.className='';$('#msg').innerHTML='';btn.textContent='Verificar';pode(false);
+  $('#pular').style.visibility='';
+  $$('.passo').forEach(s=>s.classList.toggle('on',+s.dataset.p===n));
+  $('#onda').style.strokeDashoffset=100-Math.round((n-1)/TOTAL*100);
+  if(n<=TOTAL){$('#balao').innerHTML='<small>Rudo diz</small>'+falas[n];$('#topo').style.display=''}
+  else{$('#topo').style.display='none';foot.style.display='none';$('#acertos').textContent=acertos+'/'+TOTAL;$('#nPal').textContent=348}
+  checar=null;
+  if(n===2)setTimeout(()=>$('#in2').focus(),50);
+}
+btn.onclick=()=>{if(travado)return vai(passo+1);if(checar)checar()};
+$('#pular').onclick=()=>feedback(false,'Pulou essa.','Ela volta na revisão de amanhã.');
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName!=='BUTTON'&&!btn.disabled)btn.click()});
+
+/* 1: língua */
+const lingua=$('#lingua');
+function lambe(alvo,depois){
+  const t=$('#topo').getBoundingClientRect(),m=masc.getBoundingClientRect(),b=alvo.getBoundingClientRect();
+  const x0=m.left-t.left+m.width*.79,y0=m.top-t.top+m.height*.56;
+  const x1=b.left-t.left+b.width/2,y1=b.top-t.top+b.height/2;
+  lingua.style.left=x0+'px';lingua.style.top=(y0-6)+'px';
+  lingua.style.transform='rotate('+Math.atan2(y1-y0,x1-x0)+'rad)';
+  lingua.classList.add('sai');lingua.style.width=Math.hypot(x1-x0,y1-y0)+'px';
+  setTimeout(()=>{depois();lingua.classList.remove('sai');lingua.style.width='0'},240);
+}
+$$('#campo .bolha').forEach(b=>b.onclick=()=>{
+  if(travado)return;
+  const certo=b.textContent==='kitchen';
+  $$('#campo .bolha').forEach(x=>x.disabled=true);
+  lambe(b,()=>{
+    if(certo){b.classList.add('pega');feedback(true,'Nhac! kitchen = cozinha.','Salva no seu banco de palavras.')}
+    else{b.classList.add('erro');feedback(false,b.textContent+' não é cozinha.','Certo: kitchen. '+({chicken:'chicken = frango.',kitten:'kitten = filhote de gato.',ketchup:'ketchup é ketchup mesmo 😄'})[b.textContent])}
+  });
+});
+
+/* 2: lacuna */
+$('#in2').oninput=e=>{pode(e.target.value.trim());checar=()=>{
+  const v=e.target.value.trim().toLowerCase();e.target.disabled=true;
+  if(v==='go')feedback(true,'Isso! I go.','Rotina usa o presente simples.');
+  else if(v==='goes')feedback(false,'Quase. “goes” é com he/she/it.','Com I fica: I go.');
+  else if(v==='going')feedback(false,'“going” pede am antes: I am going.','Aqui é rotina: I go.');
+  else feedback(false,'Resposta: go.','Every morning, I go to the gym.');
+}};
+
+/* 3: escuta */
+function fala(txt,rate){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(txt);u.lang=$('#lang .on').textContent==='IT'?'it-IT':'en-US';u.rate=rate;speechSynthesis.speak(u)}
+$('#play').onclick=()=>fala('sheep',.9);$('#lento').onclick=()=>fala('sheep',.5);
+$$('#ops3 .op').forEach(o=>o.onclick=()=>{
+  if(travado)return;$$('#ops3 .op').forEach(x=>x.classList.toggle('sel',x===o));pode(true);
+  checar=()=>{const ok=o.dataset.v==='sheep';o.classList.add(ok?'ok':'errada');$('#ops3 [data-v=sheep]').classList.add('ok');
+    feedback(ok,ok?'Ouvido afiado! sheep = ovelha.':'Era sheep /ʃiːp/.',ok?'O “ee” é longo. Em ship ele é curto.':'“ee” longo. ship tem “i” curto, como em “sim”.')};
+});
+document.addEventListener('keydown',e=>{if(passo===3&&!travado&&'1234'.includes(e.key)&&e.key)$$('#ops3 .op')[e.key-1]?.click()});
+
+/* 4: montar */
+$$('#pecas4 .peca').forEach(p=>p.onclick=()=>{
+  if(travado)return;const c=p.cloneNode(true);p.classList.add('usada');
+  c.onclick=()=>{if(travado)return;c.remove();p.classList.remove('usada');pode($('#linha4').children.length)};
+  $('#linha4').append(c);pode(true);
+  checar=()=>{const f=[...$('#linha4').children].map(x=>x.textContent).join(' ');
+    if(f==='We have a meeting tomorrow')feedback(true,'Frase montada!','We + have: com “we” o verbo fica have.');
+    else if(f.includes('has'))feedback(false,'“has” é só com he/she/it.','Certo: We have a meeting tomorrow.');
+    else feedback(false,'Ordem: quem → ação → o quê → quando.','We have a meeting tomorrow.')};
+});
+
+/* 5: pares */
+let sel=null,feitos=0,erros5=0;
+$$('#pares5 .par').forEach(p=>p.onclick=()=>{
+  if(travado)return;
+  if(!sel||sel.parentNode===p.parentNode){$$('#pares5 .par').forEach(x=>x.classList.remove('sel'));p.classList.add('sel');sel=p;return}
+  if(sel.dataset.k===p.dataset.k){sel.classList.replace('sel','feito');p.classList.add('feito');feitos++}
+  else{erros5++;[sel,p].forEach(x=>{x.classList.remove('sel','erro');void x.offsetWidth;x.classList.add('erro')});reage('nao')}
+  sel=null;
+  if(feitos===4)feedback(erros5===0,erros5?'Fechou com '+erros5+' erro'+(erros5>1?'s':'')+'.':'Todos os pares de primeira!',erros5?'Os pares errados voltam antes na revisão.':'Elas vão mais longe na revisão.');
+});
+
+/* EN/IT */
+$$('#lang button').forEach(b=>b.onclick=()=>$$('#lang button').forEach(x=>x.classList.toggle('on',x===b)));
+
+vai(1);
+</script>
+</body>
+</html>

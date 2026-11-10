@@ -1,0 +1,18 @@
+{
+  "name": "linguarudo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/stremio-server/server",
+    "packages/stremio-server/devaddon"
+  ],
+  "scripts": {
+    "dev": "bun --filter web dev",
+    "build": "bun --filter web build",
+    "check": "bun --filter web check",
+    "lint": "bun --filter web lint",
+    "test": "bun --filter '*' test",
+    "test:e2e": "bun --filter web test:e2e"
+  }
+}

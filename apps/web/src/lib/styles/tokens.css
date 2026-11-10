@@ -1,0 +1,79 @@
+/* Marca do Linguarudo. Componentes usam estas variáveis no CSS com escopo. */
+:root {
+	--verde: #0c4033;
+	--verde-escuro: #073026;
+	--salvia: #7fa886;
+	--salvia-claro: #dce8d6;
+	--creme: #fdf4e3;
+	--papel: #fffbf3;
+	--coral: #f07c7c;
+	--coral-escuro: #d65f5f;
+	--coral-claro: #fbe1dd;
+	--ouro: #e0a458;
+	--azul: #6c8ebf;
+	--tinta: #16302a;
+	--cinza: #6e7f78;
+	--linha: #e7dcc6;
+
+	--fonte: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, sans-serif;
+	--raio: 16px;
+	--raio-p: 10px;
+	--sombra-botao: 0 3px 0;
+
+	color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	min-height: 100dvh;
+	background: var(--creme);
+	color: var(--tinta);
+	font: 16px/1.45 var(--fonte);
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+button {
+	cursor: pointer;
+}
+
+a {
+	color: var(--verde);
+}
+
+:focus-visible {
+	outline: 3px solid var(--azul);
+	outline-offset: 2px;
+}
+
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation: none !important;
+		transition: none !important;
+	}
+}

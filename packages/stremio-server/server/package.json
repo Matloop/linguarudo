@@ -1,0 +1,18 @@
+{
+  "name": "@linguarudo/lingoblend-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LingoBlend: servidor local de anotações (POST /annotate)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0"
+  }
+}

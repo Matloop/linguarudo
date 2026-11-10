@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Linguarudo · Música</title>
+<style>
+:root{
+  --verde:#0C4033;--verde2:#073026;--salvia:#7FA886;--salvia2:#DCE8D6;--creme:#FDF4E3;
+  --coral:#F07C7C;--coral2:#FBE1DD;--tinta:#16302A;--cinza:#6E7F78;--linha:#E7DCC6;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--creme);color:var(--tinta);font:16px/1.45 ui-rounded,"SF Pro Rounded","Nunito",system-ui,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+.app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+
+/* sidebar (igual à aula) */
+.side{background:var(--verde);color:var(--creme);padding:22px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+.side .marca{padding:4px 10px 22px}
+.side .marca img{width:170px;filter:brightness(0) invert(.96) sepia(.25)}
+.nav{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:14px;color:#CFE0CB;text-decoration:none;font-weight:650}
+.nav svg{width:22px;height:22px;flex:none}
+.nav:hover{background:#ffffff12}
+.nav.on{background:var(--creme);color:var(--verde)}
+.nav .qtd{margin-left:auto;font-size:12px;background:var(--coral);color:#fff;border-radius:99px;padding:1px 8px}
+.side .rodape{margin-top:auto;font-size:12px;color:#9DB8A6;padding:10px 12px;border-top:1px solid #ffffff1a}
+.side .rodape b{color:var(--creme)}
+
+/* header */
+.main{min-width:0}
+header{display:flex;align-items:center;gap:18px;padding:16px 28px}
+header .ico{display:none;width:38px;height:38px;border-radius:11px}
+.busca{flex:1;max-width:460px;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--linha);border-radius:14px;padding:9px 14px;color:var(--cinza)}
+.busca input{border:0;outline:0;font:inherit;flex:1;background:none;min-width:0}
+.busca{min-width:0}
+.esp{flex:1}
+.lang{display:flex;background:#fff;border:1.5px solid var(--linha);border-radius:99px;padding:3px}
+.lang button{border:0;background:none;padding:4px 11px;border-radius:99px;font-weight:700;font-size:13px;color:var(--cinza)}
+.lang button.on{background:var(--verde);color:var(--creme)}
+.pill{display:flex;align-items:center;gap:6px;font-weight:800;font-size:15px;white-space:nowrap}
+.pill.fogo{color:#D9690B}.pill.pal{color:var(--verde)}
+.conteudo{padding:4px 28px 40px;max-width:1180px}
+
+/* hero */
+.hero{background:var(--verde);color:var(--creme);border-radius:28px;padding:26px 30px;display:grid;grid-template-columns:auto 1fr auto;gap:28px;align-items:center;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;right:-40px;bottom:-70px;width:380px;height:180px;border-radius:50%;border:26px solid #ffffff0d}
+.nivel{position:relative;width:112px;height:112px;display:grid;place-items:center}
+.nivel svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.nivel circle{fill:none;stroke-width:9;stroke-linecap:round}
+.nivel small{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#9DB8A6;text-align:center}
+.nivel b{display:block;font-size:40px;line-height:1;text-align:center}
+.hero h1{margin:0 0 4px;font-size:28px;letter-spacing:-.01em}
+.hero p{margin:0;color:#C4D7C6;max-width:440px}
+.nums{display:flex;gap:10px;position:relative;z-index:1}
+.num{background:#ffffff12;border-radius:16px;padding:10px 16px;text-align:center;min-width:92px}
+.num b{display:block;font-size:22px}
+.num span{font-size:12px;color:#B9CEBB}
+
+/* continuar */
+.cont{margin:22px 0 6px;display:flex;align-items:center;gap:16px;background:#fff;border:1.5px solid var(--linha);border-radius:20px;padding:12px 14px}
+.cont .capa{width:64px;height:64px;border-radius:14px;flex:none}
+.cont .txt{flex:1;min-width:0}
+.cont .txt small{color:var(--cinza);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.cont .txt b{display:block}
+.barra{height:8px;background:var(--salvia2);border-radius:99px;margin-top:6px;max-width:360px}
+.barra i{display:block;height:100%;width:62%;background:var(--salvia);border-radius:inherit}
+.btn{border:0;background:var(--verde);color:var(--creme);border-radius:14px;padding:11px 22px;font-weight:800;box-shadow:0 4px 0 var(--verde2);white-space:nowrap}
+.btn:active{transform:translateY(3px);box-shadow:none}
+
+/* trilhos */
+.sec{margin-top:26px}
+.sec-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.sec-top h2{margin:0;font-size:19px;color:var(--verde)}
+.sec-top .ver{margin-left:auto;color:var(--cinza);font-weight:700;font-size:14px;text-decoration:none}
+.seta{border:1.5px solid var(--linha);background:#fff;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--verde)}
+.trilho{display:grid;grid-auto-flow:column;grid-auto-columns:196px;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 2px 10px;scrollbar-width:none}
+.trilho::-webkit-scrollbar{display:none}
+.card{scroll-snap-align:start;background:none;border:0;padding:0;text-align:left}
+.card[hidden]{display:none}
+.capa{position:relative;aspect-ratio:1;border-radius:18px;overflow:hidden;background:var(--g)}
+.capa::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,#ffffff14 0 2px,transparent 2px 14px)}
+.disco{position:absolute;width:78%;aspect-ratio:1;border-radius:50%;right:-30%;top:11%;background:radial-gradient(circle,var(--creme) 0 9%,var(--salvia) 9.5% 22%,#111 22.5% 23.5%,#1c1c1c 24% 100%);box-shadow:-6px 0 14px #0004;transition:right .35s cubic-bezier(.3,1.4,.5,1)}
+.disco::after{content:"";position:absolute;inset:8%;border-radius:50%;background:repeating-radial-gradient(circle,#ffffff08 0 1px,transparent 1px 4px)}
+.card:hover .disco{right:-14%}
+.capa .ini{position:absolute;left:14px;bottom:10px;font-size:54px;font-weight:900;color:#ffffffd9;line-height:1;letter-spacing:-.04em}
+.tag{position:absolute;left:10px;top:10px;background:var(--creme);color:var(--verde);font-size:11px;font-weight:800;border-radius:7px;padding:2px 7px}
+.card h3{margin:10px 0 0;font-size:15px;line-height:1.25;color:var(--verde);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .art{font-size:13px;color:var(--cinza);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:12px;color:var(--cinza)}
+.dots{display:flex;gap:3px}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--linha)}
+.dots i.f{background:var(--salvia)}
+.dots.n4 i.f{background:var(--coral)}
+.novas{margin-left:auto;font-weight:800;color:#B4504F;background:var(--coral2);border-radius:99px;padding:1px 7px}
+.generos{display:flex;flex-wrap:wrap;gap:10px}
+.gen{border:0;border-radius:16px;padding:16px 22px;font-weight:800;font-size:16px;color:#fff;background:var(--g);box-shadow:0 4px 0 #0002;min-width:130px;text-align:left}
+.gen small{display:block;font-weight:600;font-size:12px;opacity:.8}
+.amostra{font-size:12px;color:var(--cinza);margin-top:28px}
+
+/* carregando: o Linguarudo pega a mosca */
+.carrega{display:none;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:60vh;color:var(--cinza);font-weight:700}
+body.load .carrega{display:flex}
+body.load .pronto{display:none}
+.pronto{animation:surge .4s}
+@keyframes surge{from{opacity:0;transform:translateY(10px)}}
+.cena{position:relative;width:270px;height:152px}
+.cena img{position:absolute;left:0;top:0;width:160px;transform-origin:40% 95%;animation:engole 2s infinite}
+.cena .lng{position:absolute;left:124px;top:80px;height:10px;width:0;border-radius:99px;background:linear-gradient(90deg,#E86A6A,var(--coral));animation:lingua 2s infinite}
+.cena .lng::after{content:"";position:absolute;right:-7px;top:-5px;width:20px;height:20px;border-radius:50%;background:var(--coral)}
+.cena .mosca{position:absolute;left:0;top:0;width:22px;height:22px;margin:-11px 0 0 -11px;animation:voa 2s infinite}
+.mosca .asa{transform-origin:11px 11px;animation:bate .07s linear infinite alternate}
+@keyframes bate{to{transform:scaleY(.35)}}
+@keyframes voa{
+  0%{transform:translate(255px,14px);opacity:0}
+  8%{opacity:1}
+  20%{transform:translate(208px,42px)}
+  34%{transform:translate(250px,104px)}
+  47%{transform:translate(214px,62px)}
+  55%,60%{transform:translate(236px,85px)}
+  74%{transform:translate(134px,85px) scale(.5);opacity:1}
+  76%,100%{transform:translate(134px,85px) scale(.5);opacity:0}
+}
+@keyframes lingua{0%,54%{width:0}60%{width:112px}74%,100%{width:0}}
+@keyframes engole{0%,74%{transform:none}80%{transform:scale(1.05,.94)}88%{transform:scale(.98,1.03)}94%,100%{transform:none}}
+.carrega p{margin:0}
+.carrega p::after{content:"";animation:pontos 2s steps(1) infinite}
+@keyframes pontos{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .side{position:fixed;bottom:0;top:auto;left:0;right:0;height:auto;flex-direction:row;justify-content:space-around;padding:6px;z-index:9;gap:0}
+  .side .marca,.side .rodape,.nav .lbl,.nav .qtd{display:none}
+  .nav{padding:10px 12px}
+  header{padding:12px 16px;gap:10px}
+  header .ico{display:block}
+  .esp,.lang{display:none}
+  .busca{padding:8px 12px}
+  .pill.pal{display:none}
+  .conteudo{padding:4px 16px 90px}
+  .hero{grid-template-columns:auto 1fr;padding:20px;gap:16px}
+  .hero h1{font-size:21px}
+  .hero p{font-size:14px}
+  .nivel{width:84px;height:84px}.nivel b{font-size:30px}
+  .nums{grid-column:1/-1}
+  .num{flex:1;min-width:0;padding:8px}
+  .trilho{grid-auto-columns:150px;gap:12px}
+  .seta{display:none}
+  .cont .btn{padding:10px 14px}
+  .cont .capa{display:none}
+  .cont .txt small{font-size:11px}
+  .capa .ini{font-size:40px}
+}
+</style>
+</head>
+<body class="load">
+<div class="app">
+  <nav class="side">
+    <div class="marca"><img src="lg-nome.png" alt="Linguarudo"></div>
+    <a class="nav" href="linguarudo.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V8l8-4 8 4v11"/><path d="M9 19v-6h6v6"/></svg><span class="lbl">Aprender</span></a>
+    <a class="nav on" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span class="lbl">Música</span></a>
+    <a class="nav" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="14" height="14" rx="3"/><path d="M7 3h11a3 3 0 0 1 3 3v11"/></svg><span class="lbl">Revisar</span><span class="qtd">18</span></a>
+    <a class="nav" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg><span class="lbl">Minhas palavras</span></a>
+    <a class="nav" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 7V3M15 7V3M6 7h12v4a6 6 0 0 1-12 0zM12 17v4"/></svg><span class="lbl">Integrações</span></a>
+    <a class="nav" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/></svg><span class="lbl">Dicas</span></a>
+    <div class="rodape">Código aberto · <b>AGPL</b><br>Dados de exemplo</div>
+  </nav>
+
+  <div class="main">
+    <header>
+      <img class="ico" src="lg-icone.png" alt="">
+      <label class="busca"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input placeholder="Música, artista ou palavra"></label>
+      <span class="esp"></span>
+      <div class="lang" id="lang"><button class="on" data-l="">Todas</button><button data-l="en">EN</button><button data-l="it">IT</button></div>
+      <span class="pill fogo" title="Dias seguidos">🔥 12</span>
+      <span class="pill pal" title="Palavras no banco">📚 342</span>
+    </header>
+
+    <div class="conteudo">
+      <div class="carrega" role="status" aria-live="polite">
+        <div class="cena" aria-hidden="true">
+          <img src="lg-mascote.png" alt="">
+          <i class="lng"></i>
+          <svg class="mosca" viewBox="0 0 22 22">
+            <g class="asa" fill="#BFD8E8" fill-opacity=".85" stroke="#7FA0B5" stroke-width=".8"><ellipse cx="7" cy="6" rx="5" ry="3.4" transform="rotate(-25 7 6)"/><ellipse cx="15" cy="6" rx="5" ry="3.4" transform="rotate(25 15 6)"/></g>
+            <ellipse cx="11" cy="13" rx="4.6" ry="5.4" fill="#1F2A26"/><circle cx="11" cy="8.6" r="3" fill="#1F2A26"/>
+            <circle cx="9.7" cy="8.2" r="1" fill="#E86A6A"/><circle cx="12.3" cy="8.2" r="1" fill="#E86A6A"/>
+          </svg>
+        </div>
+        <p id="txtLoad">Pegando as músicas</p>
+      </div>
+
+      <div class="pronto" id="pronto">
+        <section class="hero">
+          <div class="nivel">
+            <svg viewBox="0 0 112 112"><circle cx="56" cy="56" r="48" stroke="#ffffff1c"/><circle cx="56" cy="56" r="48" stroke="#7FA886" pathLength="100" stroke-dasharray="64 100"/></svg>
+            <div><small>Nível</small><b>3</b></div>
+          </div>
+          <div>
+            <h1>Aprender com música</h1>
+            <p>Ouça, complete a letra e pegue as palavras novas. Cada uma vai direto pro seu banco e volta na revisão.</p>
+          </div>
+          <div class="nums">
+            <div class="num"><b>87</b><span>palavras pegas</span></div>
+            <div class="num"><b>14</b><span>músicas</span></div>
+            <div class="num"><b>3h</b><span>de escuta</span></div>
+          </div>
+        </section>
+
+        <div class="cont">
+          <div class="capa" style="--g:linear-gradient(135deg,#E0A458,#C0623F)"></div>
+          <div class="txt"><small>Continue de onde parou</small><b>Imagine · John Lennon</b><div class="barra"><i></i></div></div>
+          <button class="btn">Continuar</button>
+        </div>
+
+        <div id="secoes"></div>
+        <p class="amostra">Dados de exemplo. Títulos reais só para ilustrar.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const NIVEL=['Iniciante','Básico','Intermediário','Avançado'];
+const CORES=[['#7FA886','#3E6E57'],['#F07C7C','#B74E62'],['#E0A458','#C0623F'],['#6C8EBF','#3D4F8A'],['#B48BC7','#6E4D8F'],['#4FA3A0','#1F6662'],['#D9B44A','#9A7322'],['#8D9C6B','#56633B']];
+const musicas={
+  'Em destaque':[
+    ['Someone Like You','Adele','en',2,14],['Azzurro','Adriano Celentano','it',1,9],['Yellow','Coldplay','en',1,6],
+    ['Perfect','Ed Sheeran','en',2,11],['Felicità','Al Bano & Romina Power','it',1,8],['Bohemian Rhapsody','Queen','en',4,23],
+    ['Vivo per lei','Andrea Bocelli','it',3,17],['Let It Be','The Beatles','en',1,5]],
+  'Mais pedidas':[
+    ['Shape of You','Ed Sheeran','en',2,10],['Nel blu dipinto di blu','Domenico Modugno','it',2,12],['Rolling in the Deep','Adele','en',3,15],
+    ["L'italiano",'Toto Cutugno','it',2,13],['Viva la Vida','Coldplay','en',3,19],['Zitti e buoni','Måneskin','it',4,26],
+    ['Hello','Adele','en',2,9],['Imagine','John Lennon','en',1,4]],
+};
+const playlists=[
+  ['Inglês de viagem','en',2,12],['Italiano pro karaokê','it',1,10],['Primeiras 100 palavras','en',1,15],
+  ['Phrasal verbs em hits','en',3,18],['Musica leggera','it',2,14],['Anos 80 pra cantar alto','en',2,20]];
+const generos=[['Pop',214],['Rock',168],['Indie',97],['Soul',61],['Cantautori',48],['Anos 80',120],['Acústico',83]];
+
+const dots=n=>`<span class="dots${n===4?' n4':''}" title="${NIVEL[n-1]}">${[1,2,3,4].map(i=>`<i class="${i<=n?'f':''}"></i>`).join('')}</span>`;
+const capa=(i,ini,tag)=>`<div class="capa" style="--g:linear-gradient(135deg,${CORES[i%8][0]},${CORES[i%8][1]})"><span class="tag">${tag}</span><span class="disco"></span><span class="ini">${ini}</span></div>`;
+const seta=d=>`<button class="seta" data-d="${d}" aria-label="${d>0?'Próximas':'Anteriores'}">${d>0?'›':'‹'}</button>`;
+const sec=(titulo,cards)=>`<section class="sec"><div class="sec-top"><h2>${titulo}</h2><a class="ver" href="#">Ver tudo</a>${seta(-1)}${seta(1)}</div><div class="trilho">${cards}</div></section>`;
+
+let k=0;
+const cardMusica=([t,a,l,n,novas])=>`<button class="card" data-l="${l}">${capa(k++,t[0],l.toUpperCase())}<h3>${t}</h3><div class="art">${a}</div><div class="meta">${dots(n)}<span class="novas" title="Palavras que não estão no seu banco">+${novas}</span></div></button>`;
+const cardPlay=([t,l,n,qtd])=>`<button class="card" data-l="${l}">${capa(k++ +3,'♪',l.toUpperCase()+' · PLAYLIST')}<h3>${t}</h3><div class="art">${qtd} músicas</div><div class="meta">${dots(n)} ${NIVEL[n-1]}</div></button>`;
+
+$('#secoes').innerHTML=
+  sec('Em destaque',musicas['Em destaque'].map(cardMusica).join(''))+
+  sec('Playlists pra você',playlists.map(cardPlay).join(''))+
+  `<section class="sec"><div class="sec-top"><h2>Gêneros</h2></div><div class="generos">${generos.map(([g,q],i)=>`<button class="gen" style="--g:linear-gradient(135deg,${CORES[(i+2)%8][0]},${CORES[(i+2)%8][1]})">${g}<small>${q} músicas</small></button>`).join('')}</div></section>`+
+  sec('Mais pedidas',musicas['Mais pedidas'].map(cardMusica).join(''));
+
+$$('.seta').forEach(b=>b.onclick=()=>{const t=b.closest('.sec').querySelector('.trilho');t.scrollBy({left:b.dataset.d*t.clientWidth*.8,behavior:'smooth'})});
+
+// ponytail: tempo de carga falso; troca pela promise do fetch quando houver API
+function carrega(txt,depois){
+  $('#txtLoad').textContent=txt;document.body.classList.add('load');
+  setTimeout(()=>{depois?.();document.body.classList.remove('load');const p=$('#pronto');p.style.animation='none';void p.offsetWidth;p.style.animation=''},2000);
+}
+$$('#lang button').forEach(b=>b.onclick=()=>{
+  $$('#lang button').forEach(x=>x.classList.toggle('on',x===b));
+  carrega(b.dataset.l?'Pegando músicas em '+b.textContent:'Pegando as músicas',()=>$$('.card').forEach(c=>c.hidden=!!b.dataset.l&&c.dataset.l!==b.dataset.l));
+});
+$$('.gen').forEach(g=>g.onclick=()=>carrega('Pegando '+g.firstChild.textContent));
+carrega('Pegando as músicas');
+$$('.card,.cont .btn').forEach(c=>c.addEventListener('click',()=>location.href='player.html'));
+</script>
+</body>
+</html>
