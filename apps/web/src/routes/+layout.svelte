@@ -18,35 +18,40 @@
 	<meta name="theme-color" content="#0C4033" />
 </svelte:head>
 
-<header>
-	<a class="marca" href={data.user ? resolve('/palavras') : resolve('/')}>
-		<img src={icone} alt="" width="36" height="36" />
-		<span>Linguarudo</span>
-	</a>
-
-	{#if data.user}
-		<nav aria-label="Principal">
-			<a href={resolve('/palavras')} aria-current={isCurrent('/palavras')}>
-				<span class="longo">Minhas palavras</span><span class="curto">Palavras</span>
-			</a>
-			<a href={resolve('/revisar')} aria-current={isCurrent('/revisar')}>
-				Revisar
-				{#if data.review && data.review.count > 0}
-					<span class="qtd"
-						>{data.review.count}<span class="visually-hidden"> para revisar</span></span
-					>
-				{/if}
-			</a>
-		</nav>
-		<form method="POST" action="/sair">
-			<button class="sair" type="submit" title={data.user.email ?? undefined}>Sair</button>
-		</form>
-	{/if}
-</header>
-
-<main>
+<!-- A landing (/) tem header e footer próprios. -->
+{#if page.route.id === '/'}
 	{@render children()}
-</main>
+{:else}
+	<header>
+		<a class="marca" href={data.user ? resolve('/palavras') : resolve('/')}>
+			<img src={icone} alt="" width="36" height="36" />
+			<span>Linguarudo</span>
+		</a>
+
+		{#if data.user}
+			<nav aria-label="Principal">
+				<a href={resolve('/palavras')} aria-current={isCurrent('/palavras')}>
+					<span class="longo">Minhas palavras</span><span class="curto">Palavras</span>
+				</a>
+				<a href={resolve('/revisar')} aria-current={isCurrent('/revisar')}>
+					Revisar
+					{#if data.review && data.review.count > 0}
+						<span class="qtd"
+							>{data.review.count}<span class="visually-hidden"> para revisar</span></span
+						>
+					{/if}
+				</a>
+			</nav>
+			<form method="POST" action="/sair">
+				<button class="sair" type="submit" title={data.user.email ?? undefined}>Sair</button>
+			</form>
+		{/if}
+	</header>
+
+	<main>
+		{@render children()}
+	</main>
+{/if}
 
 <style>
 	header {

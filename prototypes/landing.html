@@ -1,0 +1,1098 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Linguarudo · Inglês e italiano com o que você já assiste, ouve e lê</title>
+<meta name="description" content="Toque numa palavra. O Linguarudo guarda e te lembra na hora certa. App open source para brasileiros estudarem inglês e italiano.">
+<link rel="icon" href="lg-icone.png">
+<script>document.documentElement.classList.add('js')</script>
+<style>
+:root{
+  --verde:#0C4033;--verde2:#073026;--verde3:#11503F;--salvia:#7FA886;--salvia2:#DCE8D6;
+  --creme:#FDF4E3;--papel:#FFFBF3;--creme2:#F6E8CC;--linha:#E7DCC6;
+  --coral:#F07C7C;--coral-esc:#C95A5A;--coral2:#FBE1DD;--ouro:#E0A458;--azul:#6C8EBF;
+  --tinta:#073026;--suave:#47625A;--claro:#B9CEBB;
+  --fonte:ui-rounded,"SF Pro Rounded","Nunito",system-ui,sans-serif;
+  --livro:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --onda:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 10'%3E%3Cpath d='M0 5 Q10 0 20 5 T40 5' fill='none' stroke='%237FA886' stroke-width='3.2'/%3E%3C/svg%3E");
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{margin:0;background:var(--creme);color:var(--tinta);font:17px/1.5 var(--fonte);-webkit-font-smoothing:antialiased}
+img{max-width:100%;display:block}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:inherit}
+h1,h2,h3{line-height:1.12;letter-spacing:-.02em;margin:0}
+p{margin:0}
+.wrap{width:min(1200px,100% - 40px);margin-inline:auto}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+:focus-visible{outline:3px solid var(--azul);outline-offset:3px;border-radius:6px}
+.escuro :focus-visible{outline-color:var(--ouro)}
+.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.pular-link{position:absolute;left:12px;top:-60px;z-index:100;background:var(--verde);color:var(--creme);padding:10px 16px;border-radius:12px;font-weight:800;text-decoration:none}
+.pular-link:focus{top:12px}
+
+/* botões */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:14px;font-weight:800;text-decoration:none;white-space:nowrap;transition:transform .12s,box-shadow .12s,background .15s}
+.btn-coral{background:var(--coral);color:var(--verde2);box-shadow:0 3px 0 var(--coral-esc)}
+.btn-coral:hover{background:#F38B8B}
+.btn-coral:active{transform:translateY(2px);box-shadow:0 1px 0 var(--coral-esc)}
+.btn-linha{background:transparent;color:var(--verde);box-shadow:inset 0 0 0 2px var(--linha)}
+.btn-linha:hover{box-shadow:inset 0 0 0 2px var(--salvia)}
+.btn-p{padding:9px 16px;font-size:15px}
+.btn-g{padding:15px 26px;font-size:17px}
+
+/* header */
+.topo{position:sticky;top:0;z-index:40;background:#FDF4E3e6;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid transparent;transition:border-color .2s}
+.topo.rolou{border-color:var(--linha)}
+.topo-in{display:flex;align-items:center;gap:28px;height:64px}
+.marca img{height:34px;width:auto}
+.topo nav{display:flex;gap:4px;margin-left:auto}
+.topo nav a{text-decoration:none;font-weight:700;font-size:15px;color:var(--suave);padding:8px 12px;border-radius:10px}
+.topo nav a:hover{color:var(--verde);background:#0C40330a}
+
+/* hero */
+.hero{text-align:center;padding:72px 0 44px}
+.selo{display:inline-flex;align-items:center;gap:10px;background:var(--papel);border:1.5px solid var(--linha);border-radius:99px;padding:6px 14px;font-size:14px;font-weight:750;color:var(--suave);margin-bottom:26px}
+.selo i{width:4px;height:4px;border-radius:50%;background:var(--salvia)}
+.selo .ponto{width:8px;height:8px;border-radius:50%;background:var(--coral);box-shadow:0 0 0 3px var(--coral2)}
+.hero h1{font-size:clamp(38px,6.2vw,80px);font-weight:850;max-width:15ch;margin:0 auto;color:var(--verde);letter-spacing:-.035em;line-height:1.04}
+.sub-onda{background:var(--onda) repeat-x 0 100%/ .5em .14em;padding-bottom:.12em;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.lead{font-size:clamp(18px,1.9vw,22px);color:var(--suave);max-width:34ch;margin:32px auto 0;font-weight:600}
+.acoes{display:flex;gap:12px;justify-content:center;margin-top:30px;flex-wrap:wrap}
+
+/* ===== prévia ===== */
+.previa-sec{padding-bottom:24px}
+.previa{background:var(--verde);color:var(--creme);border-radius:32px;padding:22px;position:relative}
+.pv-topo{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.pv-tit{font-size:16px;font-weight:750;color:var(--claro);letter-spacing:0;margin-right:auto;display:flex;align-items:center;gap:10px}
+.pv-tit .dedo{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--coral);box-shadow:0 0 0 4px #F07C7C33;animation:pulsa 1.8s infinite}
+@keyframes pulsa{50%{box-shadow:0 0 0 8px #F07C7C00}}
+.abas{display:flex;background:var(--verde2);border-radius:14px;padding:4px;gap:2px}
+.abas button{border:0;background:none;color:var(--claro);font-weight:800;font-size:15px;padding:8px 16px;border-radius:10px;display:flex;align-items:center;gap:8px}
+.abas button .ic{width:18px;height:18px}
+.abas button:hover{color:var(--creme)}
+.abas button[aria-selected=true]{background:var(--creme);color:var(--verde)}
+.lingua-sel{display:flex;background:var(--verde2);border-radius:14px;padding:4px}
+.lingua-sel button{border:0;background:none;color:var(--claro);font-weight:850;font-size:14px;padding:8px 13px;border-radius:10px;letter-spacing:.04em}
+.lingua-sel button[aria-pressed=true]{background:var(--ouro);color:var(--verde2)}
+
+.pv-corpo{display:grid;grid-template-columns:1fr;gap:18px}
+.palco{position:relative;min-width:0}
+.pn[hidden]{display:none}
+.pn{animation:entra .3s}
+@keyframes entra{from{opacity:0;transform:translateY(6px)}}
+
+/* palavra clicável */
+.pal{border:0;background:none;padding:0 .08em;margin:0 -.04em;font:inherit;color:inherit;font-weight:inherit;border-radius:5px;text-decoration:underline 2.5px var(--coral);text-underline-offset:.22em;transition:background .15s}
+.pal:hover,.pal.aberta{background:#F07C7C40}
+.pal.salva{text-decoration-color:var(--ouro);background:#E0A45833}
+.pal.pegou{animation:pegou .3s}
+@keyframes pegou{50%{transform:scale(.85)}}
+
+/* filme */
+.quadro{position:relative;aspect-ratio:16/9;border-radius:20px;overflow:hidden;background:#16354A}
+.quadro svg.cena-f{position:absolute;inset:0;width:100%;height:100%}
+.chuva{animation:chove 1.1s linear infinite}
+@keyframes chove{to{transform:translate(-30px,60px)}}
+.f-tag{position:absolute;right:12px;top:12px;font-size:12px;font-weight:700;background:#0007;border-radius:8px;padding:3px 8px;color:#fff}
+.f-titulo{position:absolute;left:14px;top:12px;font-size:13px;font-weight:700;color:#fff;text-shadow:0 1px 4px #0008}
+.legenda{position:absolute;left:0;right:0;bottom:7%;display:flex;justify-content:center;padding:0 16px}
+.legenda p{background:#000000b3;color:#fff;font-weight:700;font-size:clamp(15px,2.1vw,24px);line-height:1.45;padding:4px 14px;border-radius:8px;text-align:center;max-width:92%}
+.legenda .pal{text-decoration-color:var(--coral)}
+.f-ctrl{display:flex;align-items:center;gap:10px;margin-top:12px}
+.cb{border:0;background:var(--verde2);color:var(--creme);border-radius:12px;height:40px;min-width:40px;display:grid;place-items:center;padding:0 10px}
+.cb:hover{background:var(--verde3)}
+.cb:disabled{opacity:.35;cursor:default}
+.f-ctrl .conta{font-size:14px;font-weight:700;color:var(--claro);white-space:nowrap}
+.onda{flex:1;height:22px;min-width:60px}
+.onda path{fill:none;stroke-linecap:round;stroke-width:7}
+.onda .fundo{stroke:#ffffff1c}
+.onda .cheia{stroke:var(--salvia);stroke-dasharray:100 200;stroke-dashoffset:100;transition:stroke-dashoffset .5s cubic-bezier(.3,1.3,.5,1)}
+
+/* música */
+.musica{background:var(--verde2);border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:16px;min-height:100%}
+.m-cab{display:flex;align-items:center;gap:12px}
+.m-capa{width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,var(--azul),#3D4F8A);position:relative;overflow:hidden;flex:none}
+.m-capa::after{content:"";position:absolute;width:70%;aspect-ratio:1;border-radius:50%;right:-25%;top:15%;background:radial-gradient(circle,var(--creme) 0 10%,#111 11% 100%)}
+.m-txt{flex:1;min-width:0}
+.m-cab b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-cab small{display:block;color:var(--claro);font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-cab .esp{flex:1}
+.eq{display:flex;gap:3px;align-items:flex-end;height:16px;margin-right:6px}
+.eq i{width:3px;background:var(--salvia);border-radius:2px;animation:eq .9s ease-in-out infinite alternate}
+.eq i:nth-child(2){animation-delay:-.3s}.eq i:nth-child(3){animation-delay:-.6s}
+@keyframes eq{from{height:4px}to{height:16px}}
+.pontos{font:800 18px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--creme);letter-spacing:.03em}
+.combo{position:relative;width:50px;height:50px;display:grid;place-items:center;font-weight:900;font-size:16px;flex:none}
+.combo svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.combo circle{fill:none;stroke-width:4;stroke-linecap:round}
+.combo #comboArc{transition:stroke-dasharray .4s}
+.combo.sobe{animation:sobe .4s}
+@keyframes sobe{40%{transform:scale(1.22)}}
+.letra{display:flex;flex-direction:column;justify-content:center;gap:6px;padding:6px 4px;text-align:center;flex:1}
+.lin{font-size:clamp(17px,1.9vw,22px);font-weight:750;color:#ffffff55;transition:color .3s,font-size .3s}
+.lin.atual{color:var(--creme);font-size:clamp(21px,2.6vw,30px)}
+.lin .tr{display:block;font-size:14px;font-weight:600;color:var(--claro);margin-top:2px}
+.lin:not(.atual) .tr{display:none}
+.gap{display:inline-block;min-width:3.6em;border-bottom:3px dashed currentColor;line-height:1.05;opacity:.7}
+.lin.atual .gap{opacity:1;color:var(--coral);border-bottom-style:solid;animation:pisca 1s infinite}
+@keyframes pisca{50%{border-color:transparent}}
+.lin .pal.ok{color:#B5DDAA;animation:pega .4s}
+.lin .pal.quase{color:#F5C98A;animation:pega .4s}
+@keyframes pega{0%{transform:scale(.5)}60%{transform:scale(1.12)}}
+.ops{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.op{position:relative;border:0;background:var(--creme);color:var(--verde2);border-radius:14px;padding:13px 12px 13px 48px;font-weight:850;font-size:18px;text-align:left;box-shadow:0 4px 0 var(--c);transition:transform .08s}
+.op .k{position:absolute;left:12px;top:50%;translate:0 -50%;width:26px;height:26px;border-radius:8px;background:var(--c);color:var(--verde2);display:grid;place-items:center;font-size:13px}
+.op:active{transform:translateY(3px);box-shadow:0 1px 0 var(--c)}
+.op:disabled{opacity:.35;cursor:default}
+.op.errou{animation:nao .35s;background:var(--coral2)}
+@keyframes nao{25%,75%{transform:translateX(-5px)}50%{transform:translateX(5px)}}
+.m-rod{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px;color:var(--claro);font-weight:600;min-height:22px}
+.m-fim{display:grid;place-items:center;text-align:center;gap:8px;padding:10px;min-height:118px}
+.m-fim b{font-size:22px}
+.btn-fino{border:0;background:var(--creme);color:var(--verde);border-radius:12px;padding:9px 16px;font-weight:800}
+.mais{position:fixed;z-index:62;font-weight:900;color:#B5DDAA;pointer-events:none;animation:mais .9s forwards}
+@keyframes mais{to{transform:translateY(-34px);opacity:0}}
+
+/* leitura */
+.leitor{background:#2A3A35;border-radius:22px;padding:14px;display:flex;justify-content:center;align-items:center;min-height:100%}
+.pagina{background:#F7F3EA;color:#2B2B28;border-radius:8px;width:100%;max-width:720px;padding:26px clamp(20px,5vw,64px) 18px;font-family:var(--livro);box-shadow:inset 0 0 0 1px #0000000d}
+.pg-cab{display:flex;justify-content:space-between;font:600 12px/1 var(--fonte);letter-spacing:.08em;text-transform:uppercase;color:#8A867C;margin-bottom:20px}
+.pagina h4{font:italic 400 15px/1.3 var(--livro);text-align:center;color:#6B675E;margin:0 0 14px}
+.pagina p{font-size:clamp(16px,1.6vw,19px);line-height:1.68;text-align:justify;hyphens:auto;text-indent:1.4em}
+.pagina p:first-of-type{text-indent:0}
+.pagina p:first-of-type::first-letter{font-size:3.1em;float:left;line-height:.9;padding:.06em .08em 0 0;color:var(--verde)}
+.pagina .pal{font-weight:600;color:#1E3A32}
+.pg-rod{display:flex;align-items:center;gap:12px;margin-top:16px;font:600 12px/1 var(--fonte);color:#8A867C}
+.pg-rod .onda .fundo{stroke:#0000001a}
+.pg-rod .onda{height:16px}
+.pg-rod .onda path{stroke-width:5}
+.pg-rod .onda .cheia{stroke-dashoffset:82}
+
+/* cartão de palavra */
+.cartao{position:absolute;z-index:20;width:min(310px,100% - 16px);background:var(--creme);color:var(--verde2);border-radius:18px;padding:16px;box-shadow:0 18px 40px #0007;animation:surge .22s}
+.cartao[hidden]{display:none}
+@keyframes surge{from{opacity:0;transform:translateY(6px) scale(.97)}}
+.ct-x{position:absolute;right:8px;top:8px;border:0;background:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--suave)}
+.ct-x:hover{background:#0C40330d}
+.ct-meta{display:flex;gap:6px;align-items:center;font-size:12px;font-weight:800;color:var(--suave)}
+.tg{font-size:11px;font-weight:850;letter-spacing:.05em;border-radius:6px;padding:2px 6px;background:var(--salvia2);color:var(--verde)}
+.tg.it{background:#F6E2C2;color:#7A4B12}
+.ct-w{margin:6px 0 0;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.ct-w b{font-size:28px;letter-spacing:-.02em;color:var(--verde)}
+.ct-w span{font-size:15px;color:var(--suave);font-family:"Charis SIL","Doulos SIL","Gentium",var(--livro)}
+.ct-tr{font-size:18px;font-weight:750;margin-top:2px}
+.ct-ex{margin:10px 0 14px;padding:10px 12px;background:var(--papel);border-radius:12px;font-size:15px;font-weight:650;border:1px solid var(--linha)}
+.ct-ex small{display:block;font-weight:550;color:var(--suave);font-size:13px;margin-top:2px}
+.ct-acoes{display:flex;gap:8px}
+.ct-acoes button{flex:1;border:0;border-radius:12px;padding:11px;font-weight:850;display:flex;align-items:center;justify-content:center;gap:6px}
+.b-ouvir{background:var(--salvia2);color:var(--verde)}
+.b-ouvir:hover{background:#CFE0C8}
+.b-salvar{background:var(--coral);color:var(--verde2);box-shadow:0 3px 0 var(--coral-esc)}
+.b-salvar:disabled{background:var(--salvia2);box-shadow:none;cursor:default;color:var(--verde)}
+
+/* trocando de língua */
+.troca{position:absolute;inset:0;z-index:25;background:#0C4033ee;border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-weight:750;color:var(--claro)}
+.troca[hidden]{display:none}
+.troca .cena{transform:scale(.7);margin:-20px 0}
+
+/* banco */
+.banco{background:var(--verde2);border-radius:20px;padding:16px;display:flex;flex-direction:column;position:relative;min-height:0}
+.rudo{width:86px;height:auto;position:absolute;transform-origin:50% 90%;pointer-events:none;z-index:3}
+.rudo.engole{animation:engole .45s}
+@keyframes engole{30%{scale:1.08 .92}65%{scale:.97 1.04}}
+.banco-cab{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:6px 2px 12px}
+.banco-cab h3{font-size:20px}
+.qtd{font-size:14px;font-weight:750;color:var(--claro)}
+.qtd.sobe{animation:sobe .4s;color:var(--ouro)}
+.gaveta-btn{display:none}
+.lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;overflow:auto;flex:1;min-height:0}
+.lista li{display:grid;grid-template-columns:1fr auto;gap:2px 10px;background:#ffffff0d;border-radius:12px;padding:9px 12px;align-items:center}
+.lista li.novo{animation:chega .55s}
+@keyframes chega{0%{background:#F07C7C66;transform:scale(.92)}100%{background:#ffffff0d}}
+.lista b{font-size:16px}
+.lista em{font-style:normal;color:var(--claro);font-size:14px;grid-column:1}
+.lista .lado{grid-row:1/3;grid-column:2;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.lista .orig{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--claro)}
+.lista .orig .ic{width:14px;height:14px}
+.vazio{border:1.5px dashed #ffffff2e;border-radius:14px;padding:16px;font-size:15px;color:var(--claro);font-weight:600;text-align:center}
+.vazio[hidden]{display:none}
+.banco-rod{font-size:12px;color:#9DB8A6;margin-top:12px;padding:0 2px}
+
+/* voo da língua */
+.voo-lng{position:fixed;left:0;top:0;z-index:60;height:9px;border-radius:99px;background:linear-gradient(90deg,#E86A6A,var(--coral));transform-origin:0 50%;width:0;pointer-events:none}
+.voo-lng::after{content:"";position:absolute;right:-8px;top:-4.5px;width:18px;height:18px;border-radius:50%;background:var(--coral)}
+.voo-chip{position:fixed;left:0;top:0;z-index:61;background:var(--coral);color:var(--verde2);font-weight:850;font-size:15px;padding:3px 10px;border-radius:99px;pointer-events:none;white-space:nowrap}
+
+/* ===== seções ===== */
+.sec{padding:96px 0 0}
+.sec-cab{max-width:680px;margin-bottom:36px}
+.olho{font-size:14px;font-weight:850;letter-spacing:.08em;text-transform:uppercase;color:var(--coral-esc);margin-bottom:10px}
+.sec-cab h2{font-size:clamp(30px,3.8vw,46px);font-weight:850;color:var(--verde)}
+.sec-cab p{color:var(--suave);font-size:18px;margin-top:12px;font-weight:600}
+
+/* cards com mini telas */
+.grade{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.card{background:var(--papel);border:1.5px solid var(--linha);border-radius:26px;padding:12px 12px 22px;display:flex;flex-direction:column;transition:border-color .2s,transform .2s}
+.card:hover{border-color:#D5C7AA;transform:translateY(-2px)}
+.card h3{font-size:21px;color:var(--verde);margin:18px 10px 6px}
+.card>p{color:var(--suave);font-size:16px;margin:0 10px;font-weight:550}
+.tela{height:220px;border-radius:18px;position:relative;overflow:hidden;padding:16px;display:flex;flex-direction:column;justify-content:center}
+.js .card:not(.visto) .an{animation-play-state:paused}
+.t-cab{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;margin-bottom:10px}
+.t-cab img{width:22px;height:22px;border-radius:6px}
+.t-cab span{margin-left:auto;font-weight:700;opacity:.7}
+
+/* 1 banco */
+.t1{background:var(--salvia2)}
+.t1 ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.t1 li{display:flex;align-items:center;gap:8px;background:#fff;border-radius:10px;padding:7px 10px;font-size:14px;box-shadow:0 1px 0 #0C40331a;animation:desliza .4s both}
+.t1 li:nth-child(2){animation-delay:.15s}.t1 li:nth-child(3){animation-delay:.3s}.t1 li:nth-child(4){animation-delay:.45s}
+@keyframes desliza{from{opacity:0;transform:translateX(-16px)}}
+.t1 li b{color:var(--verde)}
+.t1 li em{font-style:normal;color:var(--suave)}
+.t1 li .orig{margin-left:auto;display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--suave)}
+.t1 li .orig .ic{width:14px;height:14px}
+
+/* 2 revisão */
+.t2{background:var(--creme2);align-items:center;gap:14px;perspective:700px}
+.fc{width:190px;height:104px;position:relative}
+.fc-in{position:absolute;inset:0;transform-style:preserve-3d;animation:vira .7s 1s both cubic-bezier(.4,1.3,.5,1)}
+@keyframes vira{to{transform:rotateY(180deg)}}
+.fc-f,.fc-v{position:absolute;inset:0;backface-visibility:hidden;border-radius:14px;background:#fff;box-shadow:0 3px 0 #E3D3B2;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.fc-f b{font-size:26px;color:var(--verde)}
+.fc-f small,.fc-v small{font-size:12px;color:var(--suave);font-weight:700}
+.fc-v{transform:rotateY(180deg)}
+.fc-v b{font-size:22px;color:var(--verde)}
+.notas{display:flex;gap:6px}
+.notas span{background:#fff;border-radius:10px;padding:5px 10px;font-size:13px;font-weight:800;text-align:center;color:var(--verde);box-shadow:0 2px 0 #E3D3B2}
+.notas small{display:block;font-size:11px;color:var(--suave);font-weight:700}
+.notas .n1{color:#A53B3B}
+.notas .bom{animation:escolhe .35s 2s both}
+@keyframes escolhe{to{background:var(--verde);color:var(--creme);box-shadow:0 2px 0 var(--verde2)}}
+.notas .bom small{animation:escolhe2 .35s 2s both}
+@keyframes escolhe2{to{color:var(--claro)}}
+
+/* 3 stremio */
+.t3{background:#101B17;padding:0}
+.t3 .ceu{position:absolute;inset:0;background:radial-gradient(circle at 75% 25%,#E0A45855 0 12%,transparent 13%),linear-gradient(#2B3E57,#1A2A33 70%)}
+.t3 .predio{position:absolute;bottom:0;background:#0F2A2A;border-radius:4px 4px 0 0}
+.t3 .tagS{position:absolute;left:12px;top:12px;font-size:11px;font-weight:850;letter-spacing:.06em;background:#ffffff1f;color:#fff;border-radius:6px;padding:3px 7px;display:flex;gap:5px;align-items:center}
+.t3 .tagS .ic{width:13px;height:13px}
+.t3 .leg{position:absolute;left:0;right:0;bottom:22px;text-align:center}
+.t3 .leg span{background:#000b;color:#fff;font-weight:700;font-size:15px;padding:3px 10px;border-radius:6px}
+.t3 .leg u{text-decoration:underline 2px var(--coral);text-underline-offset:3px;border-radius:4px;animation:marca .2s 1.2s both}
+@keyframes marca{to{background:#F07C7C55}}
+.t3 .cursor{position:absolute;left:0;top:0;width:18px;animation:aponta 1s .2s both cubic-bezier(.3,.9,.4,1)}
+@keyframes aponta{from{transform:translate(250px,200px)}to{transform:translate(var(--cx),var(--cy))}}
+.t3 .mini-ct{position:absolute;left:50%;bottom:62px;translate:-50% 0;background:var(--creme);color:var(--verde2);border-radius:12px;padding:8px 12px;width:180px;box-shadow:0 10px 24px #0008;animation:surgeM .3s 1.35s both}
+@keyframes surgeM{from{opacity:0;transform:translateY(8px) scale(.9)}}
+.mini-ct b{font-size:17px;color:var(--verde)}
+.mini-ct p{margin:0!important;font-size:13px!important;color:var(--suave)}
+.mini-ct span{display:inline-block;margin-top:6px;background:var(--coral);border-radius:8px;padding:3px 9px;font-size:12px;font-weight:850}
+
+/* 4 aulas */
+.t4{background:#E4ECF5;gap:14px}
+.t4 .leg4{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;font-weight:700;color:var(--suave)}
+.t4 .leg4 i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;background:var(--c)}
+.t4 .frase-m{display:flex;flex-wrap:wrap;gap:6px;min-height:46px;border-bottom:2px solid #C8D5E4;padding-bottom:8px}
+.pc{border-radius:10px;padding:5px 9px;font-weight:850;font-size:15px;background:var(--c);color:var(--verde2);animation:cai .35s both cubic-bezier(.3,1.5,.5,1)}
+.pc:nth-child(1){animation-delay:.3s}.pc:nth-child(2){animation-delay:.55s}.pc:nth-child(3){animation-delay:.8s}.pc:nth-child(4){animation-delay:1.05s}
+@keyframes cai{from{opacity:0;transform:translateY(-22px) rotate(-4deg)}}
+.t4 .pt{font-size:14px;color:var(--suave);font-weight:650}
+.t4 .ok4{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;color:var(--verde);animation:surgeM .3s 1.5s both}
+
+/* 5 música */
+.t5{background:var(--verde);color:var(--creme);align-items:center;text-align:center;gap:10px}
+.t5 .l-ant{color:#ffffff55;font-weight:700;font-size:14px}
+.t5 .l-at{font-size:20px;font-weight:800}
+.t5 .l-at mark{background:none;color:#B5DDAA;display:inline-block;animation:pega .4s .9s both}
+.t5 .l-pt{color:var(--claro);font-size:13px;font-weight:600}
+.t5 .cmb{position:absolute;right:14px;top:14px}
+.t5 .cmb #arcM{animation:enche 1.2s .5s both}
+@keyframes enche{from{stroke-dasharray:0 100}}
+.t5 .mais5{position:absolute;right:20px;top:66px;font-weight:900;color:#B5DDAA;font-size:14px;animation:surgeM .3s 1.2s both}
+
+/* 6 aberto */
+.t6{background:#fff;border:1.5px solid var(--linha);gap:10px}
+.csv{font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--papel);border-radius:10px;padding:10px 12px;margin:0;list-style:none;color:var(--verde2);border:1px solid var(--linha)}
+.csv li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:desliza .3s both}
+.csv li:first-child{color:var(--suave)}
+.csv li:nth-child(2){animation-delay:.2s}.csv li:nth-child(3){animation-delay:.4s}.csv li:nth-child(4){animation-delay:.6s}
+.chips6{display:flex;gap:6px;flex-wrap:wrap}
+.chips6 span{border-radius:99px;padding:4px 10px;font-size:12px;font-weight:850;background:var(--salvia2);color:var(--verde);display:flex;align-items:center;gap:4px}
+.chips6 span:first-child{background:var(--verde);color:var(--creme)}
+.chips6 .ic{width:13px;height:13px}
+
+/* integrações */
+.integ{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.int{background:var(--papel);border:1.5px solid var(--linha);border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.int .ico{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:var(--salvia2);color:var(--verde)}
+.int .ico .ic{width:24px;height:24px}
+.int.breve .ico{background:var(--creme2);color:#8A6A3A}
+.int h3{font-size:19px;color:var(--verde);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.int p{font-size:15px;color:var(--suave);font-weight:550}
+.st{font-size:12px;font-weight:850;border-radius:99px;padding:3px 9px;letter-spacing:.02em;align-self:flex-start}
+.st.on{background:var(--verde);color:var(--creme)}
+.st.off{background:transparent;color:#7A5A2A;box-shadow:inset 0 0 0 1.5px #E3C99B}
+.int .nota{font-size:13px;font-weight:700;color:var(--verde);margin-top:auto;display:flex;gap:6px;align-items:center}
+.int .nota .ic{width:15px;height:15px}
+
+/* faq */
+.faq-g{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:48px;align-items:start}
+.faq-g .sec-cab{position:sticky;top:96px}
+.faq{border-top:1.5px solid var(--linha)}
+.faq-i{border-bottom:1.5px solid var(--linha)}
+.faq-i h3{font-size:inherit;letter-spacing:0}
+.faq-b{width:100%;border:0;background:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 4px;font-size:19px;font-weight:800;color:var(--verde);text-align:left}
+.faq-b .mm{width:30px;height:30px;border-radius:50%;background:var(--salvia2);display:grid;place-items:center;flex:none;transition:transform .25s,background .2s}
+.faq-b[aria-expanded=true] .mm{transform:rotate(45deg);background:var(--coral)}
+.faq-r{padding:0 4px 22px;color:var(--suave);font-size:17px;font-weight:550;max-width:60ch}
+.faq-r[hidden]{display:none}
+.faq-r:not([hidden]){animation:entra .25s}
+
+/* cta final */
+.cta{margin-top:96px;background:var(--verde);color:var(--creme);border-radius:32px;padding:44px;display:grid;grid-template-columns:auto 1fr;gap:40px;align-items:center;overflow:hidden;position:relative}
+.cta::after{content:"";position:absolute;right:-80px;bottom:-120px;width:460px;height:240px;border-radius:50%;border:30px solid #ffffff0a;pointer-events:none}
+.cta h2{font-size:clamp(30px,3.6vw,46px);font-weight:850}
+.cta p{color:var(--claro);font-size:18px;margin:12px 0 26px;font-weight:600;max-width:42ch}
+.cta .acoes{justify-content:flex-start;margin:0}
+.cta .btn-linha{color:var(--creme);box-shadow:inset 0 0 0 2px #ffffff2e}
+.cta .btn-linha:hover{box-shadow:inset 0 0 0 2px var(--salvia)}
+/* mesma cena do loader de música */
+.cena{position:relative;width:270px;height:152px;flex:none}
+.cena img{position:absolute;left:0;top:0;width:160px;transform-origin:40% 95%;animation:engoleL 2.2s infinite}
+.cena .lng{position:absolute;left:124px;top:80px;height:10px;width:0;border-radius:99px;background:linear-gradient(90deg,#E86A6A,var(--coral));animation:linguaL 2.2s infinite}
+.cena .lng::after{content:"";position:absolute;right:-7px;top:-5px;width:20px;height:20px;border-radius:50%;background:var(--coral)}
+.cena .mosca{position:absolute;left:0;top:0;width:22px;height:22px;margin:-11px 0 0 -11px;animation:voa 2.2s infinite}
+.mosca .asa{transform-origin:11px 11px;animation:bate .07s linear infinite alternate}
+@keyframes bate{to{transform:scaleY(.35)}}
+@keyframes voa{0%{transform:translate(255px,14px);opacity:0}8%{opacity:1}20%{transform:translate(208px,42px)}34%{transform:translate(250px,104px)}47%{transform:translate(214px,62px)}55%,60%{transform:translate(236px,85px)}74%{transform:translate(134px,85px) scale(.5);opacity:1}76%,100%{transform:translate(134px,85px) scale(.5);opacity:0}}
+@keyframes linguaL{0%,54%{width:0}60%{width:112px}74%,100%{width:0}}
+@keyframes engoleL{0%,74%{transform:none}80%{transform:scale(1.05,.94)}88%{transform:scale(.98,1.03)}94%,100%{transform:none}}
+.cta .cena{transform:scale(1.25);transform-origin:0 50%;margin-right:60px}
+.cta .palavra-voa{position:absolute;left:0;top:0;font-size:12px;font-weight:850;background:var(--ouro);color:var(--verde2);border-radius:99px;padding:1px 7px;animation:voaP 2.2s infinite;white-space:nowrap}
+@keyframes voaP{0%{transform:translate(236px,-14px);opacity:0}8%{opacity:1}20%{transform:translate(189px,14px)}34%{transform:translate(231px,76px)}47%{transform:translate(195px,34px)}55%,60%{transform:translate(217px,57px)}74%{transform:translate(118px,62px) scale(.4);opacity:1}76%,100%{transform:translate(118px,62px) scale(.4);opacity:0}}
+
+/* footer */
+.rodape{padding:56px 0 40px}
+.rodape-in{display:flex;align-items:center;gap:24px;flex-wrap:wrap;border-top:1.5px solid var(--linha);padding-top:28px}
+.rodape img{height:28px;width:auto}
+.rodape .agpl{font-size:14px;font-weight:700;color:var(--suave)}
+.rodape nav{display:flex;gap:18px;margin-left:auto;flex-wrap:wrap}
+.rodape nav a{font-size:14px;font-weight:700;color:var(--suave);text-decoration:none}
+.rodape nav a:hover{color:var(--verde);text-decoration:underline}
+
+/* ===== desktop: painel lateral ===== */
+@media (min-width:960px){
+  .previa{padding:26px}
+  .pv-corpo{grid-template-columns:minmax(0,1fr) 300px;gap:22px}
+  .palco{min-height:500px}
+  .pn{height:100%}
+  .rudo{left:8px;top:6px;width:74px;transform:scaleX(-1)}
+  .banco-cab{padding:0 2px 12px 82px;min-height:76px;align-items:center}
+  .lista{max-height:380px}
+}
+
+/* ===== tablet e celular ===== */
+@media (max-width:1080px){
+  .grade{grid-template-columns:repeat(2,1fr)}
+  .integ{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:959px){
+  .banco{position:sticky;bottom:10px;z-index:30;padding:0;box-shadow:0 -6px 24px #0005,0 0 0 1.5px #ffffff14;margin-top:6px}
+  .banco-cab,.banco-rod{display:none}
+  .rudo{width:62px;left:6px;top:-30px}
+  .gaveta-btn{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--creme);padding:14px 16px 14px 78px;text-align:left;font-size:15px;font-weight:650;min-height:54px}
+  .gaveta-btn b{font-weight:850}
+  .gaveta-btn .ic{margin-left:auto;transition:transform .25s}
+  .gaveta-btn[aria-expanded=true] .ic{transform:rotate(180deg)}
+  .gaveta-btn .qtd-m.sobe{display:inline-block;animation:sobe .4s;color:var(--ouro)}
+  .gaveta{display:none;padding:0 12px 12px}
+  .banco.aberto .gaveta{display:block}
+  .gaveta .lista{max-height:34vh}
+}
+@media (max-width:760px){
+  .wrap{width:min(1200px,100% - 28px)}
+  .topo nav{display:none}
+  .topo-in{justify-content:space-between;gap:12px;height:58px}
+  .marca img{height:28px}
+  .hero{padding:44px 0 30px}
+  .selo{font-size:13px;gap:8px;margin-bottom:20px}
+  .lead{margin-top:16px}
+  .acoes .btn-g{flex:1 1 220px}
+  .previa{border-radius:24px;padding:14px}
+  .pv-topo{gap:10px;margin-bottom:14px}
+  .pv-tit{flex:1;font-size:14px;min-width:0}
+  .lingua-sel{order:2}
+  .abas{order:3;flex:1 1 100%}
+  .lead{margin-top:24px}
+  .eq{display:none}
+  .m-capa{width:44px;height:44px}
+  .abas button{flex:1;justify-content:center;padding:8px 6px;font-size:14px;gap:6px}
+  .abas button .ic{width:16px;height:16px}
+  .lingua-sel button{padding:8px 10px}
+  .quadro{aspect-ratio:4/3;border-radius:16px}
+  .legenda{bottom:5%;padding:0 8px}
+  .legenda p{padding:3px 10px;max-width:100%}
+  .musica{padding:14px;gap:12px;border-radius:16px}
+  .op{font-size:16px;padding:12px 8px 12px 42px}
+  .op .k{left:10px;width:24px;height:24px}
+  .pontos{font-size:15px}
+  .leitor{padding:8px;border-radius:16px}
+  .pagina{padding:18px 18px 14px}
+  .pg-cab{margin-bottom:14px}
+  .sec{padding-top:72px}
+  .sec-cab{margin-bottom:26px}
+  .sec-cab p{font-size:17px}
+  .grade,.integ{grid-template-columns:1fr}
+  .tela{height:210px}
+  .faq-g{grid-template-columns:1fr;gap:8px}
+  .faq-g .sec-cab{position:static}
+  .faq-b{font-size:17px;padding:18px 2px}
+  .faq-r{font-size:16px}
+  .cta{grid-template-columns:1fr;padding:30px 22px 32px;gap:12px;margin-top:72px;border-radius:24px}
+  .cta .cena{transform:none;margin:0 0 0 -8px}
+  .cta .acoes .btn-g{flex:1 1 200px}
+  .rodape nav{margin-left:0;width:100%}
+}
+
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .cena .mosca,.cta .palavra-voa{animation:none!important;transform:translate(214px,62px)}
+  .cta .palavra-voa{transform:translate(195px,34px)}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-filme" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="2.5"/><path d="M3 9.5h18M7.5 5l2 4.5M12.5 5l2 4.5M17.5 5l2 4.5"/></symbol>
+  <symbol id="i-musica" viewBox="0 0 24 24"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></symbol>
+  <symbol id="i-livro" viewBox="0 0 24 24"><path d="M3 5.5c3-1.2 6-1.2 9 .8 3-2 6-2 9-.8v13.5c-3-1.2-6-1.2-9 .8-3-2-6-2-9-.8z"/><path d="M12 6.3V20"/></symbol>
+  <symbol id="i-som" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+  <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-baixo" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+  <symbol id="i-ant" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="i-prox" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-web" viewBox="0 0 24 24"><rect x="2.5" y="4" width="14" height="11" rx="2"/><rect x="14.5" y="8.5" width="7" height="12" rx="1.8"/><path d="M6 19h6"/></symbol>
+  <symbol id="i-plugin" viewBox="0 0 24 24"><path d="M9 3.5h3.5V6a2 2 0 1 0 4 0V3.5H20v6.5h-2.5a2 2 0 1 0 0 4H20v6.5h-6.5V18a2 2 0 1 0-4 0v2.5H4V14h2.5a2 2 0 1 0 0-4H4V3.5z"/></symbol>
+  <symbol id="i-kindle" viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8.5 7h7M8.5 10.5h7M8.5 14h4.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-cod" viewBox="0 0 24 24"><path d="M8.5 7L3.5 12l5 5M15.5 7l5 5-5 5"/></symbol>
+  <symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+</svg>
+
+<a class="pular-link" href="#conteudo">Pular para o conteúdo</a>
+
+<header class="topo" id="topo">
+  <div class="wrap topo-in">
+    <a class="marca" href="#" aria-label="Linguarudo, voltar ao início"><img src="lg-nome.png" alt="" width="600" height="189"></a>
+    <nav aria-label="Seções da página">
+      <a href="#como">Como funciona</a>
+      <a href="#integracoes">Integrações</a>
+      <a href="#perguntas">Perguntas</a>
+    </nav>
+    <a class="btn btn-coral btn-p" href="/entrar">Começar grátis</a>
+  </div>
+</header>
+
+<main id="conteudo">
+  <section class="hero wrap">
+    <p class="selo"><span class="ponto" aria-hidden="true"></span><span>Open source</span><i aria-hidden="true"></i><span>Grátis</span><i aria-hidden="true"></i><span>Inglês e italiano</span></p>
+    <h1>Aprenda com o que você já <span class="sub-onda">assiste, ouve e lê.</span></h1>
+    <p class="lead">Toque numa palavra. O Linguarudo guarda e te lembra na hora certa.</p>
+    <div class="acoes">
+      <a class="btn btn-coral btn-g" href="/entrar">Começar grátis</a>
+      <a class="btn btn-linha btn-g" href="#previa">Testar aqui embaixo</a>
+    </div>
+  </section>
+
+  <!-- ===== PRÉVIA ===== -->
+  <section class="previa-sec wrap" id="previa" aria-labelledby="pvTit">
+    <div class="previa escuro">
+      <div class="pv-topo">
+        <h2 class="pv-tit" id="pvTit"><span class="dedo" aria-hidden="true"></span>Toque numa palavra sublinhada</h2>
+        <div class="abas" role="tablist" aria-label="Tipo de conteúdo">
+          <button role="tab" id="tab-filme" aria-controls="pn-filme" aria-selected="true"><svg class="ic"><use href="#i-filme"/></svg>Filme</button>
+          <button role="tab" id="tab-musica" aria-controls="pn-musica" aria-selected="false" tabindex="-1"><svg class="ic"><use href="#i-musica"/></svg>Música</button>
+          <button role="tab" id="tab-leitura" aria-controls="pn-leitura" aria-selected="false" tabindex="-1"><svg class="ic"><use href="#i-livro"/></svg>Leitura</button>
+        </div>
+        <div class="lingua-sel" role="group" aria-label="Língua que você estuda">
+          <button aria-pressed="true" data-l="en" title="Inglês">EN<span class="sr"> (inglês)</span></button>
+          <button aria-pressed="false" data-l="it" title="Italiano">IT<span class="sr"> (italiano)</span></button>
+        </div>
+      </div>
+
+      <div class="pv-corpo">
+        <div class="palco" id="palco">
+          <!-- Filme -->
+          <div class="pn" role="tabpanel" id="pn-filme" aria-labelledby="tab-filme">
+            <div class="quadro">
+              <svg class="cena-f" viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                <defs>
+                  <linearGradient id="ceu" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#132F44"/><stop offset="1" stop-color="#2A5563"/></linearGradient>
+                  <radialGradient id="luz"><stop offset="0" stop-color="#FFE7A8" stop-opacity=".55"/><stop offset="1" stop-color="#FFE7A8" stop-opacity="0"/></radialGradient>
+                  <pattern id="pchuva" width="60" height="60" patternUnits="userSpaceOnUse"><path d="M50 0 l-8 16 M20 28 l-8 16 M38 44 l-6 12" stroke="#BFD8E8" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/></pattern>
+                </defs>
+                <rect width="800" height="450" fill="url(#ceu)"/>
+                <circle cx="690" cy="70" r="30" fill="#FDF4E3" opacity=".85"/>
+                <rect x="0" y="150" width="140" height="300" fill="#16404A"/>
+                <rect x="30" y="180" width="18" height="24" fill="#E0A458" opacity=".45"/><rect x="80" y="230" width="18" height="24" fill="#E0A458" opacity=".3"/>
+                <rect x="600" y="140" width="130" height="310" fill="#16404A"/>
+                <rect x="730" y="200" width="70" height="250" fill="#123840"/>
+                <rect x="630" y="175" width="18" height="24" fill="#E0A458" opacity=".4"/><rect x="680" y="250" width="18" height="24" fill="#E0A458" opacity=".25"/>
+                <rect x="160" y="80" width="430" height="370" fill="#0C4033"/>
+                <rect x="160" y="80" width="430" height="18" fill="#073026"/>
+                <rect x="420" y="140" width="120" height="96" rx="6" fill="#E0A458"/>
+                <path d="M480 140v96M420 188h120" stroke="#073026" stroke-width="6"/>
+                <path d="M424 144h52v20c-18 4-34 2-52-6z" fill="#F07C7C" opacity=".8"/>
+                <rect x="210" y="140" width="80" height="60" rx="5" fill="#0A3329"/>
+                <path d="M235 410V290a45 45 0 0 1 90 0v120z" fill="#6C8EBF"/>
+                <circle cx="310" cy="352" r="5" fill="#E0A458"/>
+                <circle cx="280" cy="222" r="70" fill="url(#luz)"/>
+                <circle cx="280" cy="222" r="9" fill="#FFE7A8"/>
+                <rect y="405" width="800" height="45" fill="#082A22"/>
+                <!-- personagens -->
+                <g>
+                  <rect x="372" y="300" width="56" height="108" rx="28" fill="#F07C7C"/>
+                  <rect x="392" y="296" width="16" height="12" fill="#D8A27C"/>
+                  <circle cx="400" cy="276" r="24" fill="#E3B48E"/>
+                  <path d="M376 272a24 24 0 0 1 48-4c-10-8-30-10-48 4z" fill="#3A2A22"/>
+                  <circle cx="410" cy="278" r="2.6" fill="#1F2A26"/>
+                  <path d="M366 330c10-6 24-4 32 4" stroke="#C95A5A" stroke-width="8" stroke-linecap="round" fill="none"/>
+                </g>
+                <g>
+                  <rect x="454" y="322" width="50" height="86" rx="25" fill="#7FA886"/>
+                  <circle cx="479" cy="300" r="21" fill="#A8764F"/>
+                  <path d="M457 296c2-16 16-24 30-20 8 2 14 10 13 20-8-8-26-10-43 0z" fill="#1F2A26"/>
+                  <circle cx="470" cy="302" r="2.4" fill="#1F2A26"/>
+                  <rect x="498" y="350" width="22" height="30" rx="5" fill="#E0A458"/>
+                </g>
+                <rect class="chuva" x="-60" y="-60" width="920" height="570" fill="url(#pchuva)"/>
+              </svg>
+              <span class="f-titulo">A chave · ep. 1</span>
+              <span class="f-tag">cena de exemplo</span>
+              <div class="legenda"><p id="fala" aria-live="polite"></p></div>
+            </div>
+            <div class="f-ctrl">
+              <button class="cb" id="fAnt" aria-label="Fala anterior"><svg class="ic"><use href="#i-ant"/></svg></button>
+              <button class="cb" id="fProx" aria-label="Próxima fala"><svg class="ic"><use href="#i-prox"/></svg></button>
+              <span class="conta" id="fConta">Fala 1 de 3</span>
+              <svg class="onda" viewBox="0 0 300 22" preserveAspectRatio="none" aria-hidden="true">
+                <path class="fundo" d="M6 13 Q 43 4 80 12 T 155 12 T 230 10 T 294 9" pathLength="100"/>
+                <path class="cheia" id="fOnda" d="M6 13 Q 43 4 80 12 T 155 12 T 230 10 T 294 9" pathLength="100"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Música -->
+          <div class="pn" role="tabpanel" id="pn-musica" aria-labelledby="tab-musica" hidden>
+            <div class="musica">
+              <div class="m-cab">
+                <div class="m-capa" aria-hidden="true"></div>
+                <div class="m-txt"><b id="mTit">Rain on the Roof</b><small>Rudo &amp; as Moscas · música de exemplo</small></div>
+                <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="pontos" id="mPts" aria-label="Pontos">0000</span>
+                <div class="combo" id="combo" aria-label="Combo">
+                  <svg viewBox="0 0 50 50" aria-hidden="true"><circle cx="25" cy="25" r="21" stroke="#ffffff1c"/><circle id="comboArc" cx="25" cy="25" r="21" stroke="#B5DDAA" pathLength="100" stroke-dasharray="0 100"/></svg>
+                  <span id="comboN">×1</span>
+                </div>
+              </div>
+              <div class="letra" id="letra"></div>
+              <div id="mBaixo"></div>
+              <div class="m-rod"><span id="mInfo" aria-live="polite">Lacuna 1 de 3</span><span>Escolha a palavra que falta</span></div>
+            </div>
+          </div>
+
+          <!-- Leitura -->
+          <div class="pn" role="tabpanel" id="pn-leitura" aria-labelledby="tab-leitura" hidden>
+            <div class="leitor">
+              <article class="pagina" aria-label="Página de exemplo de um livro">
+                <div class="pg-cab"><span>A feira</span><span>Cap. 3</span></div>
+                <h4>III. Mais cedo que o sol</h4>
+                <div id="livro"></div>
+                <div class="pg-rod">
+                  <span>18%</span>
+                  <svg class="onda" viewBox="0 0 300 16" preserveAspectRatio="none" aria-hidden="true">
+                    <path class="fundo" d="M6 10 Q 43 3 80 9 T 155 9 T 230 7 T 294 7" pathLength="100"/>
+                    <path class="cheia" d="M6 10 Q 43 3 80 9 T 155 9 T 230 7 T 294 7" pathLength="100"/>
+                  </svg>
+                  <span>Página 47 de 212</span>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div class="cartao" id="cartao" role="dialog" aria-labelledby="ctW" aria-describedby="ctTr" hidden tabindex="-1">
+            <button class="ct-x" id="ctX" aria-label="Fechar cartão"><svg class="ic"><use href="#i-x"/></svg></button>
+            <div class="ct-meta"><span class="tg" id="ctL">EN</span><span id="ctC">substantivo</span></div>
+            <p class="ct-w"><b id="ctW">key</b><span id="ctIpa">/kiː/</span></p>
+            <p class="ct-tr" id="ctTr">chave</p>
+            <p class="ct-ex"><span id="ctEx"></span><small id="ctExPt"></small></p>
+            <div class="ct-acoes">
+              <button class="b-ouvir" id="ctOuvir"><svg class="ic"><use href="#i-som"/></svg>Ouvir</button>
+              <button class="b-salvar" id="ctSalvar"><svg class="ic"><use href="#i-mais"/></svg><span>Salvar</span></button>
+            </div>
+          </div>
+
+          <div class="troca" id="troca" role="status" hidden>
+            <div class="cena" aria-hidden="true">
+              <img src="lg-mascote.png" alt=""><i class="lng"></i>
+              <svg class="mosca" viewBox="0 0 22 22"><g class="asa" fill="#BFD8E8" fill-opacity=".85" stroke="#7FA0B5" stroke-width=".8"><ellipse cx="7" cy="6" rx="5" ry="3.4" transform="rotate(-25 7 6)"/><ellipse cx="15" cy="6" rx="5" ry="3.4" transform="rotate(25 15 6)"/></g><ellipse cx="11" cy="13" rx="4.6" ry="5.4" fill="#1F2A26"/><circle cx="11" cy="8.6" r="3" fill="#1F2A26"/><circle cx="9.7" cy="8.2" r="1" fill="#E86A6A"/><circle cx="12.3" cy="8.2" r="1" fill="#E86A6A"/></svg>
+            </div>
+            <p id="trocaTxt">Pegando palavras em italiano…</p>
+          </div>
+        </div>
+
+        <aside class="banco" id="banco" aria-label="Seu banco de palavras">
+          <img class="rudo" id="rudo" src="lg-mascote.png" alt="" width="372" height="352">
+          <div class="banco-cab"><h3>Seu banco</h3><span class="qtd" id="qtd">0 palavras</span></div>
+          <button class="gaveta-btn" id="gavetaBtn" aria-expanded="false" aria-controls="gaveta"><span><b class="qtd-m" id="qtdM">0 palavras</b> no seu banco</span><svg class="ic"><use href="#i-baixo"/></svg></button>
+          <div class="gaveta" id="gaveta">
+            <p class="vazio" id="vazio">Salve uma palavra e o Rudo traz pra cá.</p>
+            <ul class="lista" id="lista" aria-live="polite"></ul>
+          </div>
+          <p class="banco-rod">Prévia: nada sai do seu navegador.</p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== COMO FUNCIONA ===== -->
+  <section class="sec wrap" id="como" aria-labelledby="comoT">
+    <div class="sec-cab">
+      <p class="olho">Como funciona</p>
+      <h2 id="comoT">Tudo vai pro mesmo banco. Depois volta como revisão.</h2>
+      <p>Filme, música, aula ou livro. A palavra que você tocou entra na fila e aparece de novo quando você estiver quase esquecendo.</p>
+    </div>
+    <div class="grade">
+      <article class="card">
+        <div class="tela t1" aria-hidden="true">
+          <div class="t-cab"><img src="lg-icone.png" alt="">Minhas palavras<span>342</span></div>
+          <ul>
+            <li class="an"><b>window</b><em>janela</em><span class="tg">EN</span><span class="orig"><svg class="ic"><use href="#i-filme"/></svg>filme</span></li>
+            <li class="an"><b>pioggia</b><em>chuva</em><span class="tg it">IT</span><span class="orig"><svg class="ic"><use href="#i-musica"/></svg>música</span></li>
+            <li class="an"><b>basket</b><em>cesta</em><span class="tg">EN</span><span class="orig"><svg class="ic"><use href="#i-livro"/></svg>livro</span></li>
+            <li class="an"><b>tardi</b><em>tarde</em><span class="tg it">IT</span><span class="orig"><svg class="ic"><use href="#i-plugin"/></svg>Stremio</span></li>
+          </ul>
+        </div>
+        <h3>Seu banco de palavras</h3>
+        <p>Cada palavra fica guardada com a frase e o lugar onde apareceu. Inglês e italiano no mesmo lugar, separados por etiqueta.</p>
+      </article>
+
+      <article class="card">
+        <div class="tela t2" aria-hidden="true">
+          <div class="fc"><div class="fc-in an">
+            <div class="fc-f"><small>EN · do filme</small><b>kitchen</b></div>
+            <div class="fc-v"><b>cozinha</b><small>/ˈkɪtʃ.ɪn/ · substantivo</small></div>
+          </div></div>
+          <div class="notas">
+            <span class="n1">De novo<small>10 min</small></span>
+            <span class="bom an">Bom<small class="an">3 dias</small></span>
+            <span>Fácil<small>8 dias</small></span>
+          </div>
+        </div>
+        <h3>Revisão na hora certa</h3>
+        <p>O algoritmo FSRS calcula quando você está perto de esquecer cada palavra. Ela volta nesse dia.</p>
+      </article>
+
+      <article class="card">
+        <div class="tela t3" aria-hidden="true">
+          <div class="ceu"></div>
+          <div class="predio" style="left:8%;width:22%;height:46%"></div>
+          <div class="predio" style="left:34%;width:16%;height:62%"></div>
+          <div class="predio" style="right:6%;width:26%;height:52%"></div>
+          <span class="tagS"><svg class="ic"><use href="#i-plugin"/></svg>STREMIO</span>
+          <div class="mini-ct an"><b>tardi</b> <span class="tg it">IT</span><p>tarde, atrasado</p><span>+ Salvar</span></div>
+          <div class="leg"><span>Ele sempre chega <u class="an">tardi</u> no jantar.</span></div>
+          <svg class="cursor an" style="--cx:168px;--cy:166px" viewBox="0 0 18 24"><path d="M2 2l13 12-6 .8 3.6 7-2.6 1.2-3.4-7L2 20z" fill="#fff" stroke="#073026" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </div>
+        <h3>Legenda que ensina</h3>
+        <p>Com o plugin do Stremio, a legenda fica clicável. Toque numa palavra, veja a tradução e salve.</p>
+      </article>
+
+      <article class="card">
+        <div class="tela t4" aria-hidden="true">
+          <div class="leg4"><span style="--c:var(--azul)"><i></i>quem</span><span style="--c:var(--salvia)"><i></i>ação</span><span style="--c:var(--coral)"><i></i>o quê</span><span style="--c:var(--ouro)"><i></i>quando</span></div>
+          <div class="frase-m">
+            <span class="pc an" style="--c:var(--azul)">We</span><span class="pc an" style="--c:var(--salvia)">have</span><span class="pc an" style="--c:var(--coral)">a meeting</span><span class="pc an" style="--c:var(--ouro)">tomorrow</span>
+          </div>
+          <p class="pt">Nós temos uma reunião amanhã.</p>
+          <span class="ok4 an"><svg class="ic"><use href="#i-ok"/></svg>Frase montada</span>
+        </div>
+        <h3>Aulas curtas</h3>
+        <p>Uns cinco minutos, uma ideia por vez. As cores mostram quem faz, o que faz e quando.</p>
+      </article>
+
+      <article class="card">
+        <div class="tela t5" aria-hidden="true">
+          <div class="combo cmb"><svg viewBox="0 0 50 50"><circle cx="25" cy="25" r="21" stroke="#ffffff1c"/><circle id="arcM" class="an" cx="25" cy="25" r="21" stroke="#B5DDAA" pathLength="100" stroke-dasharray="100 100"/></svg><span>×3</span></div>
+          <span class="mais5 an">+300</span>
+          <p class="l-ant">La pioggia balla sul tetto</p>
+          <p class="l-at">E <mark class="an">sento</mark> la tua voce</p>
+          <p class="l-pt">E ouço sua voz</p>
+        </div>
+        <h3>Música</h3>
+        <p>Complete a letra enquanto a música toca. Acertou de primeira, o combo sobe.</p>
+      </article>
+
+      <article class="card">
+        <div class="tela t6" aria-hidden="true">
+          <div class="t-cab"><svg class="ic"><use href="#i-down"/></svg>banco.csv<span>342 linhas</span></div>
+          <ul class="csv">
+            <li class="an">palavra,tradução,língua,origem</li>
+            <li class="an">window,janela,en,filme</li>
+            <li class="an">pioggia,chuva,it,música</li>
+            <li class="an">basket,cesta,en,livro</li>
+          </ul>
+          <div class="chips6"><span><svg class="ic"><use href="#i-cod"/></svg>AGPL</span><span><svg class="ic"><use href="#i-down"/></svg>exporte em CSV</span><span><svg class="ic"><use href="#i-cadeado"/></svg>seus dados são seus</span></div>
+        </div>
+        <h3>Aberto e seu</h3>
+        <p>O código é aberto, sob AGPL. Você exporta o banco em CSV quando quiser e leva pra onde quiser.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ===== INTEGRAÇÕES ===== -->
+  <section class="sec wrap" id="integracoes" aria-labelledby="intT">
+    <div class="sec-cab">
+      <p class="olho">Integrações</p>
+      <h2 id="intT">Onde o Linguarudo funciona</h2>
+      <p>Hoje no navegador e no Stremio. Leitores de livro digital estão na fila.</p>
+    </div>
+    <div class="integ">
+      <article class="int">
+        <span class="ico"><svg class="ic"><use href="#i-web"/></svg></span>
+        <h3>Web e celular <span class="st on">Disponível</span></h3>
+        <p>Abra no navegador ou instale na tela inicial como app (PWA). Android, iPhone e computador.</p>
+      </article>
+      <article class="int">
+        <span class="ico"><svg class="ic"><use href="#i-plugin"/></svg></span>
+        <h3>Stremio <span class="st on">Disponível</span></h3>
+        <p>Plugin que deixa clicar nas palavras da legenda. As palavras caem no mesmo banco.</p>
+        <p class="nota"><svg class="ic"><use href="#i-web"/></svg>Só no computador, com o nosso fork</p>
+      </article>
+      <article class="int breve">
+        <span class="ico"><svg class="ic"><use href="#i-kindle"/></svg></span>
+        <h3>Kindle <span class="st off">Em breve</span></h3>
+        <p>Importar as palavras que você consulta no Kindle direto para o banco.</p>
+      </article>
+      <article class="int breve">
+        <span class="ico"><svg class="ic"><use href="#i-livro"/></svg></span>
+        <h3>KOReader <span class="st off">Em breve</span></h3>
+        <p>Plugin para salvar palavras sem sair do livro, em leitores com KOReader.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ===== FAQ ===== -->
+  <section class="sec wrap" id="perguntas" aria-labelledby="faqT">
+    <div class="faq-g">
+      <div class="sec-cab">
+        <p class="olho">Perguntas</p>
+        <h2 id="faqT">O que todo mundo pergunta</h2>
+        <p>Não achou a sua? Abra uma issue no repositório.</p>
+      </div>
+      <div class="faq" id="faq">
+        <div class="faq-i"><h3><button class="faq-b" aria-expanded="true" aria-controls="r1" id="q1">É grátis?<span class="mm" aria-hidden="true"><svg class="ic"><use href="#i-mais"/></svg></span></button></h3>
+          <div class="faq-r" id="r1" role="region" aria-labelledby="q1">Sim. Você cria a conta e usa sem pagar. Como o código é aberto, também dá pra hospedar a sua própria cópia.</div></div>
+        <div class="faq-i"><h3><button class="faq-b" aria-expanded="false" aria-controls="r2" id="q2">Por que open source?<span class="mm" aria-hidden="true"><svg class="ic"><use href="#i-mais"/></svg></span></button></h3>
+          <div class="faq-r" id="r2" role="region" aria-labelledby="q2" hidden>Porque o que você estuda deveria ser seu. Com a licença AGPL, qualquer pessoa pode ler o código, sugerir mudanças ou rodar uma versão própria. Se o projeto parar um dia, o app não some junto.</div></div>
+        <div class="faq-i"><h3><button class="faq-b" aria-expanded="false" aria-controls="r3" id="q3">Funciona no celular?<span class="mm" aria-hidden="true"><svg class="ic"><use href="#i-mais"/></svg></span></button></h3>
+          <div class="faq-r" id="r3" role="region" aria-labelledby="q3" hidden>Funciona. O Linguarudo roda no navegador e pode ser instalado na tela inicial, no Android e no iPhone. Revisão, aulas e música funcionam no celular. O plugin do Stremio, por enquanto, é só no computador.</div></div>
+        <div class="faq-i"><h3><button class="faq-b" aria-expanded="false" aria-controls="r4" id="q4">Como funciona com o Stremio?<span class="mm" aria-hidden="true"><svg class="ic"><use href="#i-mais"/></svg></span></button></h3>
+          <div class="faq-r" id="r4" role="region" aria-labelledby="q4" hidden>Você instala o nosso fork do Stremio no computador e entra com a sua conta do Linguarudo. Durante o filme ou a série, clica numa palavra da legenda, vê a tradução e salva. A palavra vai pro mesmo banco do app e entra na revisão.</div></div>
+        <div class="faq-i"><h3><button class="faq-b" aria-expanded="false" aria-controls="r5" id="q5">Quais línguas?<span class="mm" aria-hidden="true"><svg class="ic"><use href="#i-mais"/></svg></span></button></h3>
+          <div class="faq-r" id="r5" role="region" aria-labelledby="q5" hidden>Inglês e italiano, para quem fala português. Dá pra estudar as duas ao mesmo tempo. Outras línguas podem vir depois, mas ainda não têm data.</div></div>
+        <div class="faq-i"><h3><button class="faq-b" aria-expanded="false" aria-controls="r6" id="q6">E meus dados?<span class="mm" aria-hidden="true"><svg class="ic"><use href="#i-mais"/></svg></span></button></h3>
+          <div class="faq-r" id="r6" role="region" aria-labelledby="q6" hidden>Ficam na sua conta. Você exporta o banco inteiro em CSV quando quiser e pode apagar a conta a qualquer momento. Não vendemos seus dados e não mostramos anúncio.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CTA ===== -->
+  <section class="wrap" aria-labelledby="ctaT">
+    <div class="cta escuro">
+      <div class="cena" aria-hidden="true">
+        <img src="lg-mascote.png" alt=""><i class="lng"></i>
+        <span class="palavra-voa">word</span>
+      </div>
+      <div>
+        <h2 id="ctaT">Sua primeira palavra está a um toque.</h2>
+        <p>Crie a conta, escolha inglês ou italiano e comece pelo que você já ia ver hoje.</p>
+        <div class="acoes">
+          <a class="btn btn-coral btn-g" href="/entrar">Começar grátis</a>
+          <a class="btn btn-linha btn-g" href="#">Ver o código</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="rodape wrap">
+  <div class="rodape-in">
+    <img src="lg-nome.png" alt="Linguarudo" width="600" height="189">
+    <span class="agpl">Código aberto (AGPL)</span>
+    <nav aria-label="Links do rodapé">
+      <a href="#">Código no GitHub</a>
+      <a href="#integracoes">Plugin do Stremio</a>
+      <a href="#">Privacidade</a>
+      <a href="#">Contato</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+const $=(s,c=document)=>c.querySelector(s),$$=(s,c=document)=>[...c.querySelectorAll(s)];
+const calmo=matchMedia('(prefers-reduced-motion: reduce)');
+const desk=matchMedia('(min-width: 960px)');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+
+/* ---------- dicionário (textos originais do protótipo) ---------- */
+const W={
+  en:{
+    key:['/kiː/','substantivo','chave',"I can't find my key.",'Não acho minha chave.'],
+    kitchen:['/ˈkɪtʃ.ɪn/','substantivo','cozinha','The kitchen smells like coffee.','A cozinha está com cheiro de café.'],
+    window:['/ˈwɪn.doʊ/','substantivo','janela','Can you close the window?','Pode fechar a janela?'],
+    wait:['/weɪt/','verbo','esperar','Wait for me here.','Me espera aqui.'],
+    rain:['/reɪn/','substantivo','chuva','The rain stopped at noon.','A chuva parou ao meio-dia.'],
+    hear:['/hɪr/','verbo','ouvir','Can you hear me?','Você está me ouvindo?'],
+    walking:['/ˈwɔː.kɪŋ/','verbo (walk)','andando','I like walking at night.','Gosto de andar à noite.'],
+    morning:['/ˈmɔːr.nɪŋ/','substantivo','manhã','See you in the morning.','Até amanhã de manhã.'],
+    bread:['/brɛd/','substantivo','pão','This bread is still warm.','Este pão ainda está quente.'],
+    basket:['/ˈbæs.kɪt/','substantivo','cesta','Put the apples in the basket.','Põe as maçãs na cesta.'],
+    slowly:['/ˈsloʊ.li/','advérbio','devagar','Speak slowly, please.','Fale devagar, por favor.'],
+  },
+  it:{
+    chiave:['/ˈkja.ve/','substantivo feminino','chave','Non trovo la chiave.','Não acho a chave.'],
+    cucina:['/kuˈtʃi.na/','substantivo feminino','cozinha','La cucina profuma di caffè.','A cozinha está com cheiro de café.'],
+    finestra:['/fiˈnɛ.stra/','substantivo feminino','janela','Puoi chiudere la finestra?','Pode fechar a janela?'],
+    aspettare:['/a.spetˈta.re/','verbo','esperar','Aspettami qui.','Me espera aqui.'],
+    pioggia:['/ˈpjɔd.dʒa/','substantivo feminino','chuva','La pioggia è finita.','A chuva acabou.'],
+    sento:['/ˈsɛn.to/','verbo (sentire)','ouço, sinto','Non ti sento bene.','Não estou te ouvindo direito.'],
+    tempo:['/ˈtɛm.po/','substantivo masculino','tempo, ritmo','Non ho tempo oggi.','Hoje não tenho tempo.'],
+    mattina:['/matˈti.na/','substantivo feminino','manhã','Ci vediamo domani mattina.','A gente se vê amanhã de manhã.'],
+    pane:['/ˈpa.ne/','substantivo masculino','pão','Il pane è ancora caldo.','O pão ainda está quente.'],
+    cesto:['/ˈtʃe.sto/','substantivo masculino','cesta','Metti le mele nel cesto.','Põe as maçãs na cesta.'],
+    piano:['/ˈpja.no/','advérbio','devagar, baixinho','Parla piano, per favore.','Fale devagar, por favor.'],
+  }
+};
+const FILME={
+  falas:['— Você esqueceu a {0} de novo?','— Não. Deixei na {1}, perto da {2}.','— Então a gente vai {3} aqui fora.'],
+  en:['key','kitchen','window','wait'],it:['chiave','cucina','finestra','aspettare']
+};
+const MUS={
+  en:{tit:'Rain on the Roof',linhas:[
+    {t:'The {rain} is dancing on the roof',pt:'A chuva está dançando no telhado',r:'rain',ops:['rain','rail','ran','brain']},
+    {t:'I {hear} your voice across the street',pt:'Ouço sua voz do outro lado da rua',r:'hear',ops:['here','hear','hair','her']},
+    {t:'So I keep {walking} to the beat',pt:'Então sigo andando no ritmo',r:'walking',ops:['working','waking','walking','wanting']}]},
+  it:{tit:'Pioggia sul tetto',linhas:[
+    {t:'La {pioggia} balla sul tetto',pt:'A chuva dança no telhado',r:'pioggia',ops:['piazza','pioggia','poggio','peggio']},
+    {t:'E {sento} la tua voce in strada',pt:'E ouço sua voz na rua',r:'sento',ops:['cento','senso','sento','vento']},
+    {t:'Cammino a {tempo} col cuore',pt:'Caminho no ritmo do coração',r:'tempo',ops:['tanto','tetto','tempio','tempo']}]}
+};
+const LIVRO={
+  p:['Dona Lúcia chegou cedo à feira, como fazia toda {0}. O cheiro de {1} quente vinha da barraca do canto, e ela parou antes mesmo de ver o preço.',
+     '— Sobrou algum? — perguntou.',
+     'O rapaz apontou para o {2} vazio e deu de ombros. — Volta amanhã, mais cedo que o sol.',
+     'Ela riu, guardou as moedas no bolso e voltou para casa {3}, sem pressa nenhuma.'],
+  en:['morning','bread','basket','slowly'],it:['mattina','pane','cesto','piano']
+};
+const ORIG={filme:['filme','i-filme'],musica:['música','i-musica'],livro:['livro','i-livro']};
+const CORES=['#7FA886','#F07C7C','#E0A458','#6C8EBF'];
+
+let L='en';
+const banco=[];               // {w,l,tr,o}
+const tem=(w,l=L)=>banco.some(b=>b.w===w&&b.l===l);
+const pal=(w,o)=>`<button class="pal${tem(w)?' salva':''}" data-w="${esc(w)}" data-o="${o}" aria-haspopup="dialog">${esc(w)}</button>`;
+const preenche=(tpl,ws,o)=>tpl.replace(/\{(\d)\}/g,(_,i)=>pal(ws[i],o));
+
+/* ---------- filme ---------- */
+let fI=0;
+function renderFilme(){
+  $('#fala').innerHTML=preenche(FILME.falas[fI],FILME[L],'filme');
+  $('#fConta').textContent=`Fala ${fI+1} de ${FILME.falas.length}`;
+  $('#fAnt').disabled=fI===0;$('#fProx').disabled=fI===FILME.falas.length-1;
+  $('#fOnda').style.strokeDashoffset=100-Math.round((fI+1)/FILME.falas.length*100);
+}
+$('#fAnt').onclick=()=>{fecha();fI=Math.max(0,fI-1);renderFilme()};
+$('#fProx').onclick=()=>{fecha();fI=Math.min(FILME.falas.length-1,fI+1);renderFilme()};
+
+/* ---------- música ---------- */
+let m={i:0,tent:0,combo:1,pts:0,feitas:[]};
+function renderMusica(){
+  const S=MUS[L];$('#mTit').textContent=S.tit;
+  $('#letra').innerHTML=S.linhas.map((l,k)=>{
+    const feita=m.feitas[k];
+    const meio=feita?`<button class="pal ${feita}${tem(l.r)?' salva':''}" data-w="${esc(l.r)}" data-o="musica" aria-haspopup="dialog">${esc(l.r)}</button>`:`<span class="gap" aria-label="lacuna">&nbsp;</span>`;
+    return `<p class="lin${k===m.i?' atual':''}">${esc(l.t).replace(/\{.+?\}/,meio)}<span class="tr">${esc(l.pt)}</span></p>`;
+  }).join('');
+  const baixo=$('#mBaixo');
+  if(m.i>=S.linhas.length){
+    baixo.innerHTML=`<div class="m-fim"><b>Música fechada · ${m.pts} pontos</b><span style="color:var(--claro)">Toque nas palavras que você acertou para salvar.</span><button class="btn-fino" id="mDeNovo">Tocar de novo</button></div>`;
+    $('#mDeNovo').onclick=()=>{m={i:0,tent:0,combo:1,pts:0,feitas:[]};renderMusica()};
+    $('#mInfo').textContent='Todas as lacunas feitas';
+  }else{
+    const l=S.linhas[m.i];
+    baixo.innerHTML=`<div class="ops" role="group" aria-label="Opções para a lacuna">${l.ops.map((o,k)=>`<button class="op" style="--c:${CORES[k]}" data-o="${esc(o)}"><span class="k" aria-hidden="true">${k+1}</span>${esc(o)}</button>`).join('')}</div>`;
+    $$('#mBaixo .op').forEach(b=>b.onclick=()=>responde(b));
+    $('#mInfo').textContent=`Lacuna ${m.i+1} de ${S.linhas.length}`;
+  }
+  hud();
+}
+function hud(){
+  $('#mPts').textContent=String(m.pts).padStart(4,'0');
+  $('#comboN').textContent='×'+m.combo;
+  $('#comboArc').setAttribute('stroke-dasharray',`${(m.combo-1)/2*100} 100`);
+}
+function responde(b){
+  const S=MUS[L],l=S.linhas[m.i];if(!l)return;
+  if(b.dataset.o===l.r){
+    const pri=m.tent===0,ganho=100*m.combo;m.pts+=ganho;
+    const r=b.getBoundingClientRect(),x=document.createElement('span');
+    x.className='mais';x.textContent='+'+ganho;x.style.left=(r.left+r.width/2-16)+'px';x.style.top=(r.top-8)+'px';
+    document.body.append(x);setTimeout(()=>x.remove(),900);
+    m.feitas[m.i]=pri?'ok':'quase';
+    if(pri){m.combo=Math.min(3,m.combo+1);const c=$('#combo');c.classList.remove('sobe');void c.offsetWidth;c.classList.add('sobe')}
+    m.i++;m.tent=0;
+    $$('#mBaixo .op').forEach(o=>o.disabled=true);
+    renderMusica();
+  }else{
+    m.tent++;m.combo=1;b.disabled=true;b.classList.add('errou');hud();
+    $('#mInfo').textContent=`“${b.dataset.o}” não é. Tente outra.`;
+  }
+}
+document.addEventListener('keydown',e=>{
+  if($('#pn-musica').hidden||!'1234'.includes(e.key)||!e.key||e.target.matches('input,textarea'))return;
+  const o=$$('#mBaixo .op')[e.key-1];if(o&&!o.disabled)o.click();
+});
+
+/* ---------- leitura ---------- */
+function renderLivro(){$('#livro').innerHTML=LIVRO.p.map(p=>`<p>${preenche(esc(p),LIVRO[L],'livro')}</p>`).join('')}
+
+/* ---------- cartão ---------- */
+const cartao=$('#cartao');let atual=null;
+function fala(txt,lang){if(!('speechSynthesis' in window))return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(txt);u.lang=lang==='it'?'it-IT':'en-US';u.rate=.9;speechSynthesis.speak(u)}
+function abre(btn){
+  const w=btn.dataset.w,d=W[L][w];if(!d)return;
+  $$('.pal.aberta').forEach(p=>p.classList.remove('aberta'));btn.classList.add('aberta');
+  atual={btn,w,l:L,o:btn.dataset.o,tr:d[2]};
+  $('#ctL').textContent=L.toUpperCase();$('#ctL').className='tg'+(L==='it'?' it':'');
+  $('#ctC').textContent=d[1];$('#ctW').textContent=w;$('#ctIpa').textContent=d[0];$('#ctTr').textContent=d[2];
+  $('#ctEx').textContent=d[3];$('#ctExPt').textContent=d[4];
+  estadoSalvar();
+  cartao.hidden=false;
+  const P=$('#palco').getBoundingClientRect(),r=btn.getBoundingClientRect(),cw=cartao.offsetWidth,ch=cartao.offsetHeight;
+  let x=r.left-P.left+r.width/2-cw/2,y=r.bottom-P.top+10;
+  x=Math.max(8,Math.min(x,P.width-cw-8));
+  if(y+ch>P.height-8)y=r.top-P.top-ch-10;
+  y=Math.max(8,y);
+  cartao.style.left=x+'px';cartao.style.top=y+'px';
+  cartao.style.animation='none';void cartao.offsetWidth;cartao.style.animation='';
+  $('#ctSalvar').focus({preventScroll:true});
+}
+function estadoSalvar(){
+  const s=tem(atual.w,atual.l),b=$('#ctSalvar');b.disabled=s;
+  b.querySelector('span').textContent=s?'No banco':'Salvar';
+  b.querySelector('use').setAttribute('href',s?'#i-ok':'#i-mais');
+}
+function fecha(volta){
+  if(cartao.hidden)return;cartao.hidden=true;
+  const b=atual?.btn;$$('.pal.aberta').forEach(p=>p.classList.remove('aberta'));
+  if(volta&&b&&b.isConnected)b.focus({preventScroll:true});
+}
+$('#palco').addEventListener('click',e=>{const b=e.target.closest('.pal');if(b){e.stopPropagation();abre(b)}});
+document.addEventListener('click',e=>{if(!cartao.hidden&&!cartao.contains(e.target))fecha()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!cartao.hidden)fecha(true)});
+$('#ctX').onclick=()=>fecha(true);
+$('#ctOuvir').onclick=()=>atual&&fala(atual.w,atual.l);
+$('#ctSalvar').onclick=()=>{
+  if(!atual||tem(atual.w,atual.l))return;
+  const a={...atual};fecha();a.btn.focus({preventScroll:true});
+  lambe(a.btn,()=>adiciona(a));
+};
+
+/* ---------- banco + língua do Rudo ---------- */
+function boca(){const r=$('#rudo').getBoundingClientRect();return{x:r.left+r.width*(desk.matches?.21:.79),y:r.top+r.height*.56}}
+async function lambe(alvo,depois){
+  if(calmo.matches||!alvo.animate){depois();return}
+  const b=boca(),a=alvo.getBoundingClientRect(),tx=a.left+a.width/2,ty=a.top+a.height/2;
+  const d=Math.hypot(tx-b.x,ty-b.y),ang=Math.atan2(ty-b.y,tx-b.x);
+  const lng=document.createElement('i');lng.className='voo-lng';
+  lng.style.transform=`translate(${b.x}px,${b.y-4.5}px) rotate(${ang}rad)`;document.body.append(lng);
+  await lng.animate([{width:'0px'},{width:d+'px'}],{duration:Math.min(320,160+d*.25),easing:'cubic-bezier(.2,.8,.4,1)',fill:'forwards'}).finished;
+  const chip=document.createElement('span');chip.className='voo-chip';chip.textContent=alvo.dataset.w;document.body.append(chip);
+  const cw=chip.offsetWidth,ch=chip.offsetHeight;
+  alvo.classList.add('salva','pegou');
+  await Promise.all([
+    lng.animate([{width:d+'px'},{width:'0px'}],{duration:300,easing:'ease-in',fill:'forwards'}).finished,
+    chip.animate([{transform:`translate(${tx-cw/2}px,${ty-ch/2}px) scale(1)`},{transform:`translate(${b.x-cw/2}px,${b.y-ch/2}px) scale(.25)`,opacity:.5}],{duration:300,easing:'ease-in',fill:'forwards'}).finished
+  ]);
+  lng.remove();chip.remove();alvo.classList.remove('pegou');
+  const r=$('#rudo');r.classList.remove('engole');void r.offsetWidth;r.classList.add('engole');
+  depois();
+}
+const nPal=n=>n+(n===1?' palavra':' palavras');
+function adiciona(a){
+  if(tem(a.w,a.l))return;
+  banco.unshift({w:a.w,l:a.l,tr:a.tr,o:a.o});
+  renderBanco(true);
+  $$(`.pal[data-w="${CSS.escape(a.w)}"]`).forEach(p=>{if(a.l===L)p.classList.add('salva')});
+}
+function renderBanco(novo){
+  $('#lista').innerHTML=banco.map((b,k)=>{const[o,ic]=ORIG[b.o];return `<li${novo&&k===0?' class="novo"':''}><b lang="${b.l}">${esc(b.w)}</b><em>${esc(b.tr)}</em><span class="lado"><span class="tg${b.l==='it'?' it':''}">${b.l.toUpperCase()}</span><span class="orig"><svg class="ic" aria-hidden="true"><use href="#${ic}"/></svg>${o}</span></span></li>`}).join('');
+  $('#vazio').hidden=banco.length>0;
+  const t=nPal(banco.length);$('#qtd').textContent=t;$('#qtdM').textContent=t;
+  if(novo)for(const el of[$('#qtd'),$('#qtdM')]){el.classList.remove('sobe');void el.offsetWidth;el.classList.add('sobe')}
+}
+$('#gavetaBtn').onclick=()=>{const ab=$('#banco').classList.toggle('aberto');$('#gavetaBtn').setAttribute('aria-expanded',ab)};
+
+/* ---------- abas ---------- */
+const abas=$$('[role=tab]');
+function vaiAba(t,foco){
+  fecha();
+  abas.forEach(a=>{const on=a===t;a.setAttribute('aria-selected',on);a.tabIndex=on?0:-1;$('#'+a.getAttribute('aria-controls')).hidden=!on});
+  if(foco)t.focus();
+}
+abas.forEach((t,i)=>{
+  t.onclick=()=>vaiAba(t);
+  t.onkeydown=e=>{
+    const k={ArrowRight:i+1,ArrowLeft:i-1,Home:0,End:abas.length-1}[e.key];
+    if(k===undefined)return;e.preventDefault();vaiAba(abas[(k+abas.length)%abas.length],true);
+  };
+});
+
+/* ---------- EN / IT ---------- */
+function renderTudo(){renderFilme();renderMusica();renderLivro()}
+$$('.lingua-sel button').forEach(b=>b.onclick=()=>{
+  if(b.dataset.l===L)return;
+  $$('.lingua-sel button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  fecha();L=b.dataset.l;m={i:0,tent:0,combo:1,pts:0,feitas:[]};
+  const tr=$('#troca');$('#trocaTxt').textContent='Pegando palavras em '+(L==='it'?'italiano':'inglês')+'…';
+  if(calmo.matches){renderTudo();return}
+  tr.hidden=false;setTimeout(()=>{renderTudo();tr.hidden=true},700);
+});
+
+/* ---------- FAQ ---------- */
+$$('.faq-b').forEach(b=>b.onclick=()=>{const ab=b.getAttribute('aria-expanded')!=='true';b.setAttribute('aria-expanded',ab);$('#'+b.getAttribute('aria-controls')).hidden=!ab});
+
+/* ---------- mini telas: anima ao entrar na tela, repete no hover ---------- */
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visto');io.unobserve(e.target)}}),{threshold:.35});
+$$('.card').forEach(c=>{
+  io.observe(c);
+  c.addEventListener('mouseenter',()=>{if(calmo.matches||!c.classList.contains('visto')||!c.getAnimations)return;
+    c.getAnimations({subtree:true}).forEach(a=>{if(a.playState==='finished'){a.cancel();a.play()}})});
+});
+
+/* header com borda ao rolar */
+addEventListener('scroll',()=>$('#topo').classList.toggle('rolou',scrollY>8),{passive:true});
+
+renderTudo();renderBanco();
+</script>
+</body>
+</html>

@@ -2,9 +2,13 @@
 :root {
 	--verde: #0c4033;
 	--verde-escuro: #073026;
+	--verde-medio: #11503f;
+	/* texto claro em cima do verde */
+	--verde-texto: #b9cebb;
 	--salvia: #7fa886;
 	--salvia-claro: #dce8d6;
 	--creme: #fdf4e3;
+	--creme-escuro: #f6e8cc;
 	--papel: #fffbf3;
 	--coral: #f07c7c;
 	--coral-escuro: #d65f5f;
@@ -12,10 +16,12 @@
 	--ouro: #e0a458;
 	--azul: #6c8ebf;
 	--tinta: #16302a;
+	--tinta-suave: #47625a;
 	--cinza: #6e7f78;
 	--linha: #e7dcc6;
 
-	--fonte: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, sans-serif;
+	--fonte: ui-rounded, 'SF Pro Rounded', 'Nunito Variable', 'Nunito', system-ui, sans-serif;
+	--fonte-livro: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
 	--raio: 16px;
 	--raio-p: 10px;
 	--sombra-botao: 0 3px 0;
