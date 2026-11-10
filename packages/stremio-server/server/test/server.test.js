@@ -64,8 +64,8 @@ test('validateCueAnnotations descarta source fora do texto, sobreposições e ex
     { source: 'quero', target: 'voglio' }, // excede 2 por cue
   ]);
   assert.deepEqual(out, [
-    { source: 'festas', target: 'feste', ipa: '/x/', pos: 'subst.', meaning: 'm', example: 'e' },
-    { source: 'de novo', target: 'di nuovo' },
+    { source: 'festas', target: 'feste', lemma: 'feste', ipa: '/x/', pos: 'subst.', meaning: 'm', example: 'e' },
+    { source: 'de novo', target: 'di nuovo', lemma: 'di nuovo' },
   ]);
   assert.deepEqual(validateCueAnnotations(text, null), []);
 });

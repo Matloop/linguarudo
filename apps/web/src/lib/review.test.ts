@@ -42,7 +42,9 @@ function item(id: string, over: Partial<ReviewItem> = {}): ReviewItem {
 		translation: '',
 		lang: 'en',
 		context: '',
+		contextHighlight: '',
 		source: 'manual',
+		sourceDetail: '',
 		intervals: { 1: '1 min', 2: '14 h', 3: '5 d', 4: '54 d' },
 		...over
 	};

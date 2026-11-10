@@ -41,6 +41,7 @@
 						>
 					{/if}
 				</a>
+				<a href={resolve('/integracoes')} aria-current={isCurrent('/integracoes')}> Integrações </a>
 			</nav>
 			<form method="POST" action="/sair">
 				<button class="sair" type="submit" title={data.user.email ?? undefined}>Sair</button>

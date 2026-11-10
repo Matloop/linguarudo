@@ -246,13 +246,14 @@
 			</p>
 			{#if current.context}
 				<p class="contexto" lang={current.lang}>
-					{#each highlightParts(current.context, current.term) as part, i (i)}
+					{#each highlightParts(current.context, current.contextHighlight || current.term) as part, i (i)}
 						{#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}
 					{/each}
 				</p>
 			{/if}
 			<div class="rodape">
 				{@render sourceIcon(current.source)}
+				{#if current.sourceDetail}<span class="origem-detalhe">{current.sourceDetail}</span>{/if}
 				{#if canSpeak}
 					<button class="ouvir" type="button" onclick={speak}>
 						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -548,6 +549,14 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
+	}
+
+	.origem-detalhe {
+		color: var(--cinza);
+		font-size: 14px;
+		font-weight: 650;
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.origem {

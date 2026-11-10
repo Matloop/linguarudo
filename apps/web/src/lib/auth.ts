@@ -1,6 +1,6 @@
 export const HOME_AFTER_LOGIN = '/palavras';
 
-const PROTECTED_PREFIXES = ['/palavras', '/revisar'];
+const PROTECTED_PREFIXES = ['/palavras', '/revisar', '/integracoes'];
 
 /** Só aceita caminhos internos ("/algo"), para não virar open redirect. */
 export function safeNext(next: string | null | undefined): string {

@@ -2,8 +2,21 @@ import { redirect } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit/hooks';
 import { HOME_AFTER_LOGIN, isProtectedPath } from '#lib/auth.ts';
 import { createRequestClient } from '#lib/server/supabase.ts';
+import { corsHeaders } from '#lib/server/api.ts';
+
+/** /api: só token (sem cookie de sessão) e CORS para as origens do fork. */
+const handleApi: Handle = async ({ event, resolve }) => {
+	const cors = corsHeaders(event.request.headers.get('origin'));
+	if (event.request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+	const response = await resolve(event);
+	cors.forEach((value, key) => response.headers.set(key, value));
+	response.headers.set('Cache-Control', 'no-store');
+	return response;
+};
 
 export const handle: Handle = async ({ event, resolve }) => {
+	if (event.url.pathname.startsWith('/api/')) return handleApi({ event, resolve });
+
 	const pendingHeaders = new Headers();
 	const supabase = createRequestClient(event.cookies, pendingHeaders);
 	event.locals.supabase = supabase;

@@ -24,7 +24,9 @@ export function validateCueAnnotations(text, raw) {
     if (!target || !hit) continue;
     if (taken.some(([s, e]) => hit.start < e && s < hit.end)) continue;
     taken.push([hit.start, hit.end]);
-    const ann = { source: hit.match, target };
+    // lema = forma de dicionário do target ("feste" → "festa"); é o que o banco do Linguarudo guarda.
+    const lemma = (str(a.lemma, 80) || target).replace(/\s+/g, ' ').toLowerCase();
+    const ann = { source: hit.match, target, lemma };
     for (const k of OPTIONAL) {
       const v = str(a[k]);
       if (v) ann[k] = v;

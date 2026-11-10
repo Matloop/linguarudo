@@ -273,13 +273,32 @@ porque|perché|/perˈke/|conj.|porque|Resto a casa perché piove.
 onde|dove|/ˈdo.ve/|adv.|onde|Dove sei?
 `;
 
+// Forma de dicionário (lema) do italiano quando o target é flexionado. Chave = fonte em português.
+// Sem entrada aqui, o lema é o próprio target em minúsculas.
+const LEMMAS = {
+  dias: 'giorno', noites: 'notte', anos: 'anno', vezes: 'volta', coisas: 'cosa', homens: 'uomo',
+  mulheres: 'donna', filhos: 'figlio', amigos: 'amico', crianças: 'bambino', palavras: 'parola',
+  mãos: 'mano', olhos: 'occhio', festas: 'festa', problemas: 'problema', roupas: 'vestito',
+  quero: 'volere', quer: 'volere', queria: 'volere', preciso: 'avere bisogno', precisa: 'avere bisogno',
+  sei: 'sapere', sabe: 'sapere', vou: 'andare', vai: 'andare', vamos: 'andare', tenho: 'avere',
+  temos: 'avere', faz: 'fare', fiz: 'fare', falando: 'parlare', vi: 'vedere', olha: 'guardare',
+  espera: 'aspettare', acho: 'credere', acredito: 'credere', entendo: 'capire', entendeu: 'capire',
+  lembro: 'ricordare', conheço: 'conoscere', gosto: 'piacere', chegou: 'arrivare', volto: 'tornare',
+  fica: 'restare', deixa: 'lasciare', pode: 'potere', podemos: 'potere', estou: 'essere', somos: 'essere',
+  chamo: 'chiamarsi', moro: 'abitare', bonita: 'bello', pequena: 'piccolo', nova: 'nuovo', velha: 'vecchio',
+  boa: 'buono', cansada: 'stanco', louca: 'pazzo', sozinha: 'da solo', linda: 'bellissimo', querida: 'caro',
+  primeira: 'primo', muita: 'molto', muitos: 'molto', todos: 'tutto',
+};
+
 function build() {
   const entries = new Map();
   for (const line of RAW.split('\n')) {
     const t = line.trim();
     if (!t) continue;
     const [source, target, ipa, pos, meaning, example] = t.split('|').map((s) => s.trim());
-    entries.set(source.toLowerCase(), { source, target, ipa, pos, meaning, example });
+    const key = source.toLowerCase();
+    const lemma = LEMMAS[key] ?? target.toLowerCase();
+    entries.set(key, { source, target, lemma, ipa, pos, meaning, example });
   }
   return entries;
 }

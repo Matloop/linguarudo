@@ -10,6 +10,7 @@ import {
 	type ReviewCounts,
 	type ReviewItem
 } from '#lib/review.ts';
+import { formatSource } from '#lib/stremio.ts';
 import { previewIntervals, type CardRow } from './scheduler.ts';
 
 type Client = SupabaseClient<Database>;
@@ -17,7 +18,7 @@ type Client = SupabaseClient<Database>;
 export const CARD_COLUMNS =
 	'id, due_at, stability, stability_fast, difficulty, state, schedule_status, last_review_at, reps, lapses, scheduled_days, learning_step, paused, created_at';
 
-export const CARD_WITH_WORD = `${CARD_COLUMNS}, words!inner(term, translation, lang, context, source)`;
+export const CARD_WITH_WORD = `${CARD_COLUMNS}, words!inner(term, translation, lang, context, context_highlight, source, source_title, source_time_s)`;
 
 export interface ReviewSummary extends ReviewCounts {
 	count: number;
@@ -42,7 +43,11 @@ export async function fetchReviewSummary(supabase: Client, now: Date): Promise<R
 }
 
 type CardWithWord = CardRow & {
-	words: Pick<ReviewItem, 'term' | 'translation' | 'lang' | 'context' | 'source'>;
+	words: Pick<ReviewItem, 'term' | 'translation' | 'lang' | 'context' | 'source'> & {
+		context_highlight: string;
+		source_title: string;
+		source_time_s: number | null;
+	};
 };
 
 export async function toReviewItem(row: CardWithWord, now: Date): Promise<ReviewItem> {
@@ -55,7 +60,9 @@ export async function toReviewItem(row: CardWithWord, now: Date): Promise<Review
 		translation: row.words.translation,
 		lang: row.words.lang,
 		context: row.words.context,
+		contextHighlight: row.words.context_highlight,
 		source: row.words.source,
+		sourceDetail: formatSource(row.words.source_title, row.words.source_time_s),
 		intervals: await previewIntervals(row, now)
 	};
 }

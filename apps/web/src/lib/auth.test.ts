@@ -29,6 +29,11 @@ describe('isProtectedPath', () => {
 		expect(isProtectedPath('/revisar')).toBe(true);
 	});
 
+	test('/integracoes exige login; /api usa token, não sessão', () => {
+		expect(isProtectedPath('/integracoes')).toBe(true);
+		expect(isProtectedPath('/api/words')).toBe(false);
+	});
+
 	test('rotas públicas não exigem', () => {
 		expect(isProtectedPath('/')).toBe(false);
 		expect(isProtectedPath('/entrar')).toBe(false);

@@ -40,6 +40,7 @@ export function findHits(text) {
         annotation: {
           source,
           target: matchCase(source, entry.target),
+          lemma: entry.lemma,
           ipa: entry.ipa,
           pos: entry.pos,
           meaning: entry.meaning,
@@ -58,24 +59,30 @@ export function createMockProvider() {
   return {
     name: 'mock',
     model: 'mock-dict-v1',
-    async annotate({ sourceLang, targetLang, density, texts }) {
+    async annotate({ sourceLang, targetLang, density, texts, preferWords = [] }) {
       const result = texts.map(() => []);
       if (sourceLang !== 'pt' || targetLang !== 'it' || !(density > 0)) return result;
 
       const totalWords = texts.reduce((n, t) => n + countWords(t), 0);
       let quota = Math.max(1, Math.round(density * totalWords));
+      const prefer = new Set(preferWords);
       // por cue: candidatos ordenados pelo hash (determinístico, mas "aleatório")
       const perCue = texts.map((t) => findHits(t).sort((a, b) => a.score - b.score));
 
-      // rodadas: 1ª escolhe o melhor de cada cue, 2ª o segundo melhor... para espalhar
-      for (let round = 0; round < MAX_PER_CUE && quota > 0; round++) {
-        const picks = [];
-        perCue.forEach((hits, idx) => {
-          if (hits[round]) picks.push({ idx, hit: hits[round] });
-        });
-        picks.sort((a, b) => a.hit.score - b.hit.score);
-        for (const { idx, hit } of picks.slice(0, quota)) result[idx].push(hit);
-        quota -= Math.min(quota, picks.length);
+      // 1º as palavras do banco do usuário, depois as novas completam a cota.
+      // Em cada fase, rodadas: 1ª escolhe o melhor de cada cue, 2ª o segundo melhor... para espalhar.
+      for (const preferred of [true, false]) {
+        const pools = perCue.map((hits) => hits.filter((h) => prefer.has(h.annotation.lemma) === preferred));
+        for (let round = 0; round < MAX_PER_CUE && quota > 0; round++) {
+          const picks = [];
+          pools.forEach((hits, idx) => {
+            const hit = hits[round];
+            if (hit && result[idx].length < MAX_PER_CUE) picks.push({ idx, hit });
+          });
+          picks.sort((a, b) => a.hit.score - b.hit.score);
+          for (const { idx, hit } of picks.slice(0, quota)) result[idx].push(hit);
+          quota -= Math.min(quota, picks.length);
+        }
       }
       // ordem de leitura dentro da cue
       return result.map((hits) => hits.sort((a, b) => a.start - b.start).map((h) => h.annotation));

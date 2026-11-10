@@ -6,6 +6,7 @@ import { validateBatch } from './validate.js';
 export const MAX_BODY = 2 * 1024 * 1024;
 export const MAX_CUES = 500;
 export const DEFAULT_DENSITY = 0.1;
+export const MAX_PREFER_WORDS = 1000;
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -66,16 +67,31 @@ export function parseAnnotateRequest(body) {
     if (typeof c.text !== 'string') throw new HttpError(400, `cues[${i}].text inválido`);
     return { id, text: c.text };
   });
-  return { sourceLang, targetLang, density, cues };
+  const preferWords = parsePreferWords(body.preferWords);
+  return { sourceLang, targetLang, density, cues, preferWords };
+}
+
+/** Lemas (língua-alvo) que o usuário está aprendendo: minúsculos, sem duplicatas, ordenados (chave de cache estável). */
+function parsePreferWords(raw) {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) throw new HttpError(400, 'preferWords deve ser uma lista');
+  if (raw.length > MAX_PREFER_WORDS) throw new HttpError(400, `no máximo ${MAX_PREFER_WORDS} preferWords`);
+  const words = new Set();
+  for (const w of raw) {
+    if (typeof w !== 'string') continue;
+    const v = w.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+    if (v && v.length <= 80) words.add(v);
+  }
+  return [...words].sort();
 }
 
 /**
  * Lógica de anotação, independente de HTTP.
- * provider: { name, model, annotate({ sourceLang, targetLang, density, texts }) -> Array<raw[]> }
+ * provider: { name, model, annotate({ sourceLang, targetLang, density, texts, preferWords }) -> Array<raw[]> }
  * cache: { get(key), set(key, annotationsByIndex) } ou null
  */
 export async function annotate({ provider, cache }, req) {
-  const { sourceLang, targetLang, density, cues } = req;
+  const { sourceLang, targetLang, density, cues, preferWords = [] } = req;
   const texts = cues.map((c) => c.text);
   let byIndex = null;
   let cached = false;
@@ -83,12 +99,12 @@ export async function annotate({ provider, cache }, req) {
   if (sourceLang === targetLang || density === 0 || texts.every((t) => !t.trim())) {
     byIndex = texts.map(() => []);
   } else {
-    const key = cacheKey({ provider: provider.name, model: provider.model, sourceLang, targetLang, density, texts });
+    const key = cacheKey({ provider: provider.name, model: provider.model, sourceLang, targetLang, density, texts, preferWords });
     byIndex = cache ? await cache.get(key) : null;
     if (byIndex && byIndex.length === texts.length) {
       cached = true;
     } else {
-      const raw = await provider.annotate({ sourceLang, targetLang, density, texts });
+      const raw = await provider.annotate({ sourceLang, targetLang, density, texts, preferWords });
       byIndex = validateBatch(texts, raw);
       if (cache) await cache.set(key, byIndex).catch((e) => console.warn('[cache] falha ao gravar:', e.message));
     }

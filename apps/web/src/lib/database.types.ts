@@ -9,6 +9,36 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      api_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          last_used_at: string | null
+          token_hash: string
+          token_hint: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          token_hash: string
+          token_hint: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          token_hash?: string
+          token_hint?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       cards: {
         Row: {
           created_at: string
@@ -136,30 +166,57 @@ export type Database = {
       words: {
         Row: {
           context: string
+          context_highlight: string
           created_at: string
+          example: string
           id: string
+          ipa: string
           lang: Database["public"]["Enums"]["word_lang"]
+          last_seen_at: string | null
+          meaning: string
+          pos: string
+          seen_count: number
           source: Database["public"]["Enums"]["word_source"]
+          source_time_s: number | null
+          source_title: string
           term: string
           translation: string
           user_id: string
         }
         Insert: {
           context?: string
+          context_highlight?: string
           created_at?: string
+          example?: string
           id?: string
+          ipa?: string
           lang: Database["public"]["Enums"]["word_lang"]
+          last_seen_at?: string | null
+          meaning?: string
+          pos?: string
+          seen_count?: number
           source?: Database["public"]["Enums"]["word_source"]
+          source_time_s?: number | null
+          source_title?: string
           term: string
           translation?: string
           user_id?: string
         }
         Update: {
           context?: string
+          context_highlight?: string
           created_at?: string
+          example?: string
           id?: string
+          ipa?: string
           lang?: Database["public"]["Enums"]["word_lang"]
+          last_seen_at?: string | null
+          meaning?: string
+          pos?: string
+          seen_count?: number
           source?: Database["public"]["Enums"]["word_source"]
+          source_time_s?: number | null
+          source_title?: string
           term?: string
           translation?: string
           user_id?: string
@@ -171,6 +228,44 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      api_list_words: {
+        Args: {
+          p_lang: Database["public"]["Enums"]["word_lang"]
+          p_token: string
+        }
+        Returns: {
+          due_at: string
+          paused: boolean
+          state: number
+          term: string
+          translation: string
+        }[]
+      }
+      api_mark_seen: {
+        Args: {
+          p_lang: Database["public"]["Enums"]["word_lang"]
+          p_terms: string[]
+          p_token: string
+        }
+        Returns: number
+      }
+      api_me: {
+        Args: { p_token: string }
+        Returns: {
+          email: string
+        }[]
+      }
+      api_save_words: {
+        Args: { p_token: string; p_words: Json }
+        Returns: {
+          created: boolean
+          due_at: string
+          lang: Database["public"]["Enums"]["word_lang"]
+          state: number
+          term: string
+        }[]
+      }
+      api_token_owner: { Args: { p_token: string }; Returns: string }
       new_cards_limit: { Args: never; Returns: number }
       review_card: {
         Args: {

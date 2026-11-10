@@ -224,7 +224,11 @@ export interface ReviewItem {
 	translation: string;
 	lang: Lang;
 	context: string;
+	/** Trecho do contexto a destacar (a forma vista na legenda); vazio = o termo. */
+	contextHighlight: string;
 	source: WordSource;
+	/** "Kaguya, 42:10" para palavras do Stremio; vazio se não há. */
+	sourceDetail: string;
 	intervals: Record<Grade, string>;
 }
 

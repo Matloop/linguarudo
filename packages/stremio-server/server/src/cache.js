@@ -2,9 +2,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-/** Chave estável: depende só do provider/modelo/idiomas/densidade e dos textos (não dos ids). */
-export function cacheKey({ provider, model, sourceLang, targetLang, density, texts }) {
-  const payload = JSON.stringify(['v1', provider, model ?? '', sourceLang, targetLang, Number(density), texts]);
+/** Chave estável: depende só do provider/modelo/idiomas/densidade/preferências e dos textos (não dos ids). */
+export function cacheKey({ provider, model, sourceLang, targetLang, density, texts, preferWords = [] }) {
+  // v2: anotações com `lemma`. preferWords só entra na chave quando não está vazio.
+  const parts = ['v2', provider, model ?? '', sourceLang, targetLang, Number(density), texts];
+  if (preferWords.length > 0) parts.push(preferWords);
+  const payload = JSON.stringify(parts);
   return createHash('sha256').update(payload).digest('hex');
 }
 

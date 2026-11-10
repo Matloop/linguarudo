@@ -25,8 +25,8 @@ export const OUTPUT_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { cue: { type: 'integer' }, source: STR, target: STR, ipa: STR, pos: STR, meaning: STR, example: STR },
-        required: ['cue', 'source', 'target', 'ipa', 'pos', 'meaning', 'example'],
+        properties: { cue: { type: 'integer' }, source: STR, target: STR, lemma: STR, ipa: STR, pos: STR, meaning: STR, example: STR },
+        required: ['cue', 'source', 'target', 'lemma', 'ipa', 'pos', 'meaning', 'example'],
         additionalProperties: false,
       },
     },
@@ -44,24 +44,27 @@ How to choose:
 - Skip proper names, interjections and filler ("ah", "hum", "ei"), numbers, and words that are spelled the same in both languages (they teach nothing).
 - Spread choices across the batch. At most ${MAX_PER_CUE} per cue; many cues should have none.
 - Do not pick overlapping spans in the same cue.
+- The request may list words the viewer is studying (target-language dictionary forms). When a cue contains a word whose translation is one of them, pick it first; those picks count toward the requested number, and new words fill the rest.
 
 How to fill each annotation:
 - cue: the number of the cue it belongs to.
 - source: the word or expression copied character-for-character from that cue, same accents and capitalisation, whole words only (never part of a word). In the cue list, " / " marks a line break and is not part of the text.
 - target: the translation in the target language as it would read in this sentence: matching gender, number, tense, person and capitalisation, so it can replace the source word in place. Use the natural equivalent, which may be more than one word (Portuguese "preciso" -> Italian "ho bisogno").
+- lemma: the dictionary form of target, in lowercase: singular (masculine when the language inflects adjectives) for nouns and adjectives, infinitive for verbs, the whole expression for multi-word expressions (Italian "feste" -> "festa", "voglio" -> "volere", "ho bisogno" -> "avere bisogno").
 - ipa: IPA pronunciation of target, between slashes.
 - pos: part of speech of target, written in Portuguese and abbreviated (e.g. "subst. fem. plural", "verbo, 1ª p. sing. presente", "adj. masc.", "adv.", "expr.").
 - meaning: short meaning in Portuguese (2 to 6 words).
 - example: one short, natural sentence in the target language using target (or its base form).`;
 
-export function buildUserMessage({ sourceLang, targetLang, density, texts }) {
+export function buildUserMessage({ sourceLang, targetLang, density, texts, preferWords = [] }) {
   const words = texts.reduce((n, t) => n + countWords(t), 0);
   const want = Math.max(1, Math.round(density * words));
   const lines = texts.map((t, i) => `[${i + 1}] ${t.replace(/\s*\n\s*/g, ' / ')}`);
+  const studying = preferWords.length > 0 ? `Words the viewer is studying (pick these first when they fit): ${preferWords.join(', ')}\n` : '';
   return `Source language: ${langName(sourceLang)} (${sourceLang})
 Target language: ${langName(targetLang)} (${targetLang})
 The batch has ${texts.length} cues and ${words} words. Pick about ${want} words (density ${density}).
-
+${studying}
 Cues:
 ${lines.join('\n')}`;
 }
