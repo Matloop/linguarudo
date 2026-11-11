@@ -18,6 +18,9 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { findWord, languageName, languageProfile, segmentWords } from '@linguetta/language';
 import { DICT_SCHEMA } from './build.js';
+
+// Versão da escolha de verbete (pontuação, acepções); entra na chave de cache do /lookup.
+const RESOLVER_VERSION = 4;
 import { dictKey } from './key.js';
 
 export const MAX_DEPTH = 5;
@@ -77,6 +80,9 @@ export function openDictionary(file) {
   };
   const isLemma = (e) => e.s.length > 0;
   const weight = (e) => Math.min(e.s.length, 10) + Math.min((e.n ?? 0) / 20, 5);
+  // Classes fechadas (pronome, artigo, preposição...) são muito mais frequentes na fala que o
+  // homógrafo raro: "mi" é "me", não a nota musical; "ci" é "nos/lá", não a família de línguas.
+  const CLOSED_POS = new Set(['pron', 'article', 'det', 'prep', 'conj', 'particle', 'contraction', 'prep_phrase']);
 
   // Alvo da remissão; o Wiktextract às vezes junta lixo ("avere and", "il/lo"): cai na primeira palavra.
   function targetEntries(target) {
@@ -124,6 +130,7 @@ export function openDictionary(file) {
       else if (lowerCase) score += 50;
       if (e.pos === 'name' && !exactCase) score -= 60;
       if (e.via === 'head') score += 10;
+      if (CLOSED_POS.has(e.pos)) score += 15;
       if (isLemma(e)) score += 5; // a palavra já é lema ("finta" substantivo), mas o verbo rico ainda pode vencer
       if (!isLemma(r.entry)) score -= 30; // remissão sem saída
       // Contexto: depois de artigo/determinante, nome ou adjetivo ("la porta"); depois de verbo, particípio ("ha detto").
@@ -206,7 +213,8 @@ export function openDictionary(file) {
     const cands = resolve(prev.segment);
     if (!cands.length) return null;
     // "la" também é nota musical e pronome: basta um dos verbetes ser artigo/determinante.
-    if (cands.some((c) => c.from.pos === 'article' || c.from.pos === 'det' || c.entry.pos === 'article')) return 'nominal';
+    // Determinante só quando é a leitura principal: "che" é antes conjunção/pronome ("che ci fai").
+    if (cands.some((c) => c.from.pos === 'article' || c.entry.pos === 'article') || cands[0].from.pos === 'det') return 'nominal';
     const best = cands[0];
     if (best.from.pos === 'adj') return 'nominal'; // "una nuova era"
     return best.from.pos === 'verb' || best.entry.pos === 'verb' ? 'verbal' : null;
@@ -222,7 +230,12 @@ export function openDictionary(file) {
       gender: e.g ?? '',
       ipa: lemma && lemma !== e.word ? '' : e.ipa,
       // Remissão sem saída: as próprias notas fazem as vezes de acepção.
-      senses: (e.s.length ? e.s.map(([g, tags]) => (tags.length ? `(${tags.join(', ')}) ${g}` : g)) : e.f.map((x) => x[2]).filter(Boolean)).slice(0, MAX_SENSES_OUT),
+      // Pronome átono: as remissões ("clitic accusative of io. me") dizem mais que a acepção própria.
+      senses: [
+        ...(e.s.length === 0 || CLOSED_POS.has(e.pos) ? e.f.filter((x) => x[0] === 'form').map((x) => x[2]) : []),
+        ...e.s.map(([g, tags]) => (tags.length ? `(${tags.join(', ')}) ${g}` : g)),
+        ...(e.s.length === 0 ? e.f.filter((x) => x[0] !== 'form').map((x) => x[2]) : []),
+      ].filter(Boolean).slice(0, MAX_SENSES_OUT),
       grammar: notes ?? r.notes,
       url: `https://en.wiktionary.org/wiki/${encodeURIComponent(e.word.replace(/ /g, '_'))}#${encodeURIComponent(languageName(lang, 'en').replace(/ /g, '_'))}`,
     };
@@ -251,7 +264,7 @@ export function openDictionary(file) {
     lang,
     entries: Number(meta.entries) || 0,
     builtAt: meta.builtAt ?? '',
-    version: `${DICT_SCHEMA}:${meta.builtAt ?? ''}`,
+    version: `${DICT_SCHEMA}:${RESOLVER_VERSION}:${meta.builtAt ?? ''}`,
     source: { name: 'Wiktionary', license: LICENSE, via: 'kaikki.org (Wiktextract)' },
     lookup,
     resolve,

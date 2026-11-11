@@ -102,13 +102,14 @@ export async function lookup({ provider, translator = null, dictionaries = null,
 }
 
 // Classe gramatical do Wiktionary (inglês) → rótulo curto. Português na nativa pt; senão o inglês.
+// Por extenso: o cartão mostra só a classe, sem abreviação para decifrar.
 const POS_PT = {
-  noun: 'subst.', verb: 'verbo', adj: 'adj.', adv: 'adv.', pron: 'pron.', prep: 'prep.', conj: 'conj.', intj: 'interj.',
-  article: 'art.', det: 'det.', num: 'num.', name: 'nome próprio', contraction: 'contração', particle: 'partícula',
-  phrase: 'expr.', proverb: 'provérbio', prep_phrase: 'loc. prep.',
+  noun: 'substantivo', verb: 'verbo', adj: 'adjetivo', adv: 'advérbio', pron: 'pronome', prep: 'preposição', conj: 'conjunção', intj: 'interjeição',
+  article: 'artigo', det: 'determinante', num: 'numeral', name: 'nome próprio', contraction: 'contração', particle: 'partícula',
+  phrase: 'expressão', proverb: 'provérbio', prep_phrase: 'locução prepositiva',
 };
-const POS_PT_MULTI = { verb: 'loc. verbal', adv: 'loc. adv.', adj: 'loc. adj.', noun: 'loc. subst.', prep: 'loc. prep.', conj: 'loc. conj.' };
-const GENDER_PT = { masculine: 'masc.', feminine: 'fem.', neuter: 'neutro' };
+const POS_PT_MULTI = { verb: 'locução verbal', adv: 'locução adverbial', adj: 'locução adjetiva', noun: 'locução substantiva', prep: 'locução prepositiva', conj: 'locução conjuntiva' };
+const GENDER_PT = { masculine: 'masculino', feminine: 'feminino', neuter: 'neutro' };
 const GENDER_EN = { masculine: 'm.', feminine: 'f.', neuter: 'n.' };
 
 export function posLabel({ pos, gender, lemma }, nativeLanguage) {
@@ -137,6 +138,13 @@ export function tidyWordTranslation(source, out) {
     if (c && rest.length && rest.join('') !== rest.join('').toUpperCase()) t = c.toLowerCase() + rest.join('');
   }
   return t.slice(0, 200);
+}
+
+// O MT não traduz pronome átono solto ("mi" → "mi"): o eco vira "sem significado" e o cartão
+// fica com a classe, a fala traduzida e as acepções. Preposição/conjunção ecoam certo ("a", "e").
+function echoedPronoun(entry, source, out) {
+  const fold = (x) => String(x ?? '').toLocaleLowerCase().replace(/[\p{P}\s]+/gu, '');
+  return entry.found && entry.pos === 'pron' && fold(source) === fold(out);
 }
 
 async function lookupLocal({ provider, translator, dictionaries, cache }, req) {
@@ -172,7 +180,7 @@ async function lookupLocal({ provider, translator, dictionaries, cache }, req) {
     reading: '',
     ipa: str(entry.ipa, 120),
     pos: entry.found ? posLabel({ pos: entry.pos, gender: entry.gender, lemma }, req.nativeLanguage).slice(0, 60) : '',
-    meaning: same ? '' : tidyWordTranslation(meaningSource, meaning),
+    meaning: same ? '' : echoedPronoun(entry, meaningSource, meaning) ? '' : tidyWordTranslation(meaningSource, meaning),
     translation: str(translation, MAX_SENTENCE * 2),
     engine: 'local',
     found: Boolean(entry.found),

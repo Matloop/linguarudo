@@ -208,7 +208,7 @@ test('lookup local: dicionário + tradução do lema e da fala, sem chamar a IA'
       lemma: 'pulito',
       reading: '',
       ipa: '/puˈli.to/',
-      pos: 'adj.',
+      pos: 'adjetivo',
       meaning: 'limpo',
       translation: '[Pulitissima, come la mia coscienza.]',
       engine: 'local',
@@ -225,7 +225,7 @@ test('lookup local: dicionário + tradução do lema e da fala, sem chamar a IA'
     const expr = await lookup({ provider, translator: fakeTranslator(), dictionaries: dicts, cache: null }, { ...PULI, text: 'facevo finta di', sentence: 'Facevo finta di dormire.' });
     assert.equal(expr.result.lemma, 'fare finta di');
     assert.equal(expr.result.meaning, '[fare finta]');
-    assert.equal(expr.result.pos, 'loc. verbal');
+    assert.equal(expr.result.pos, 'locução verbal');
     assert.equal(provider.calls.length, 0);
   });
 });
@@ -320,8 +320,8 @@ test('tidyWordTranslation e posLabel', () => {
   assert.equal(tidyWordTranslation('ciao!', 'Oi!'), 'oi!');
   assert.equal(tidyWordTranslation('onu', 'ONU'), 'ONU');
   assert.equal(tidyWordTranslation('in bocca al lupo', '- Boca a boca'), 'boca a boca');
-  assert.equal(posLabel({ pos: 'noun', gender: 'feminine', lemma: 'porta' }, 'pt-BR'), 'subst. fem.');
-  assert.equal(posLabel({ pos: 'verb', gender: '', lemma: 'fare finta' }, 'pt'), 'loc. verbal');
+  assert.equal(posLabel({ pos: 'noun', gender: 'feminine', lemma: 'porta' }, 'pt-BR'), 'substantivo feminino');
+  assert.equal(posLabel({ pos: 'verb', gender: '', lemma: 'fare finta' }, 'pt'), 'locução verbal');
   assert.equal(posLabel({ pos: 'noun', gender: 'masculine', lemma: 'stato' }, 'en'), 'noun m.');
   assert.equal(posLabel({ pos: 'prep_phrase', gender: '', lemma: 'a b' }, 'de'), 'prep phrase');
 });
@@ -369,6 +369,13 @@ test('dicionário real do italiano', { skip: existsSync(REAL) ? false : `sem ${R
     assert.equal(d.lookup('bambini', 'I bambini giocano.').lemma, 'bambino');
     assert.equal(d.lookup('in bocca al lupo', 'In bocca al lupo!').lemma, 'in bocca al lupo');
     assert.equal(d.lookup('zxqwvk', 'zxqwvk').found, false);
+    // Classe fechada antes do homógrafo raro (nota musical, letra, família de línguas).
+    const mi = d.lookup('mi', 'Non è che non mi piaccia.');
+    assert.equal(mi.pos, 'pron');
+    assert.match(mi.senses[0], /\bme\b/);
+    assert.equal(d.lookup('ci', 'Che ci fai qui?').pos, 'pron');
+    assert.equal(d.lookup('fa', 'Che fa?').lemma, 'fare');
+    assert.equal(d.lookup('porta', 'Apri la porta.').pos, 'noun');
   } finally {
     d.close();
   }
