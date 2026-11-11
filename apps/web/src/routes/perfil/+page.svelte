@@ -12,6 +12,7 @@
 		parseLanguage,
 		type Language
 	} from '#lib/languages.ts';
+	import type { LeechAction, NewOrder } from '#lib/decks.ts';
 	import type { Theme } from '#lib/prefs.ts';
 	import { applyTheme, toast } from '#lib/ui/app-state.svelte.ts';
 	import Icon from '#lib/ui/Icon.svelte';
@@ -29,11 +30,11 @@
 		nativeNone: 'Ainda não escolhida',
 		nativeChange: 'Trocar',
 		nativeSaved: (name: string) => `Língua nativa: ${name}`,
-		study: 'Estudo',
-		studySub: 'Cada idioma tem as próprias palavras e revisões',
-		studyNone: 'Nenhum idioma ainda. Adicione o primeiro.',
-		studyList: 'Seus idiomas',
-		studyAdd: 'Adicionar idioma',
+		langs: 'Idiomas de estudo',
+		langsSub: 'Cada idioma tem as próprias palavras e revisões',
+		langsNone: 'Nenhum idioma ainda. Adicione o primeiro.',
+		langsList: 'Seus idiomas',
+		langsAdd: 'Adicionar idioma',
 		added: (name: string) => `${name} adicionado aos seus idiomas`,
 		removed: (name: string) => `${name} saiu dos seus idiomas`,
 		removeLabel: (name: string) => `Tirar ${name}`,
@@ -57,6 +58,24 @@
 	const name = $derived(email.split('@')[0] ?? '');
 
 	let newPerDay = $derived(data.newPerDay);
+	let leechLapses = $derived(data.leechLapses);
+	const ORDER_LABELS: [NewOrder, string, string][] = [
+		['importance', 'Importância', 'Vem antes o que você mais viu, em mais obras'],
+		['deck', 'Ordem do deck', 'Cada deck na ordem em que as palavras entraram'],
+		['random', 'Aleatória', 'Sorteio estável no dia']
+	];
+	const LEECH_LABELS: [LeechAction, string][] = [
+		['wait', 'Esperar reencontro'],
+		['tag', 'Só avisar'],
+		['suspend', 'Pausar']
+	];
+	const leechHint = $derived(
+		data.leechAction === 'wait'
+			? 'Sai da fila e volta quando você a encontrar de novo numa obra'
+			: data.leechAction === 'tag'
+				? 'Continua na fila, marcada como teimosa'
+				: 'Sai da fila até você trazer de volta na aba Teimosas'
+	);
 	let retention = $derived(data.retention);
 	const clock = $derived(shell?.clock ?? { timeZone: 'America/Sao_Paulo', startHour: 4 });
 	let startHour = $derived(clock.startHour);
@@ -119,6 +138,11 @@
 
 	const submitStep: SubmitFunction = ({ formData }) => {
 		newPerDay = Number(formData.get('novasPorDia'));
+		return afterSave();
+	};
+
+	const submitLapses: SubmitFunction = ({ formData }) => {
+		leechLapses = Number(formData.get('erros'));
 		return afterSave();
 	};
 
@@ -208,13 +232,13 @@
 
 	<section class="set-row langs" id="idiomas" aria-labelledby="idiomas-titulo">
 		<div>
-			<b id="idiomas-titulo">{T.study}</b>
-			<span>{T.studySub}</span>
+			<b id="idiomas-titulo">{T.langs}</b>
+			<span>{T.langsSub}</span>
 		</div>
 		{#if study.length === 0}
-			<p class="faint none">{T.studyNone}</p>
+			<p class="faint none">{T.langsNone}</p>
 		{:else}
-			<ul class="chips" aria-label={T.studyList}>
+			<ul class="chips" aria-label={T.langsList}>
 				{#each study as lang (lang)}
 					<li>
 						<span class="code">{lang.toUpperCase()}</span>
@@ -245,7 +269,7 @@
 		{/if}
 		{#if study.length < MAX_STUDY_LANGUAGES}
 			<details class="pick" bind:open={pickingStudy}>
-				<summary class="btn btn-soft"><Icon name="plus" size="sm" />{T.studyAdd}</summary>
+				<summary class="btn btn-soft"><Icon name="plus" size="sm" />{T.langsAdd}</summary>
 				<div class="pick-box">
 					<LanguagePicker
 						id="estudo-picker"
@@ -265,13 +289,7 @@
 		{/if}
 	</section>
 
-	<div class="set-row">
-		<div>
-			<b>Integrações</b>
-			<span>{data.stremioConnected ? 'Stremio conectado' : 'Nenhuma conectada ainda'}</span>
-		</div>
-		<a class="btn btn-soft" href={resolve('/integracoes')}>Ver integrações</a>
-	</div>
+	<h2 class="group" id="estudo">Estudo</h2>
 
 	<div class="set-row">
 		<div>
@@ -296,6 +314,25 @@
 				aria-label="Mais"
 				disabled={newPerDay >= data.maxNewPerDay}>+</button
 			>
+		</form>
+	</div>
+
+	<div class="set-row stack">
+		<div>
+			<b id="ordem-titulo">Ordem das novas</b>
+			<span>{ORDER_LABELS.find(([k]) => k === data.newOrder)?.[2]}. Vale para Estudar tudo.</span>
+		</div>
+		<form
+			class="seg"
+			method="POST"
+			action="?/ordem"
+			use:enhance={quiet('Ordem salva')}
+			aria-labelledby="ordem-titulo"
+		>
+			<input type="hidden" name="voltar" value="/perfil" />
+			{#each ORDER_LABELS as [key, label] (key)}
+				<button name="ordem" value={key} aria-pressed={data.newOrder === key}>{label}</button>
+			{/each}
 		</form>
 	</div>
 
@@ -325,6 +362,54 @@
 				aria-label="Mais"
 				disabled={retention >= data.maxRetention}>+</button
 			>
+		</form>
+	</div>
+
+	<div class="set-row">
+		<div>
+			<b id="erros-titulo">Teimosa depois de</b>
+			<span>Erros seguidos no mesmo flashcard</span>
+		</div>
+		<form
+			class="stepper"
+			method="POST"
+			action="?/teimosas"
+			use:enhance={submitLapses}
+			aria-labelledby="erros-titulo"
+		>
+			<input type="hidden" name="voltar" value="/perfil" />
+			<button
+				name="erros"
+				value={leechLapses - 1}
+				aria-label="Menos"
+				disabled={leechLapses <= data.minLeechLapses}>−</button
+			>
+			<output aria-live="polite" class="wide">{leechLapses} erros</output>
+			<button
+				name="erros"
+				value={leechLapses + 1}
+				aria-label="Mais"
+				disabled={leechLapses >= data.maxLeechLapses}>+</button
+			>
+		</form>
+	</div>
+
+	<div class="set-row stack">
+		<div>
+			<b id="acao-titulo">Com a teimosa</b>
+			<span>{leechHint}</span>
+		</div>
+		<form
+			class="seg"
+			method="POST"
+			action="?/teimosas"
+			use:enhance={quiet()}
+			aria-labelledby="acao-titulo"
+		>
+			<input type="hidden" name="voltar" value="/perfil" />
+			{#each LEECH_LABELS as [key, label] (key)}
+				<button name="acao" value={key} aria-pressed={data.leechAction === key}>{label}</button>
+			{/each}
 		</form>
 	</div>
 
@@ -404,6 +489,16 @@
 		</form>
 	</div>
 
+	<h2 class="group" id="conta">Conta e aparência</h2>
+
+	<div class="set-row">
+		<div>
+			<b>Integrações</b>
+			<span>{data.stremioConnected ? 'Stremio conectado' : 'Nenhuma conectada ainda'}</span>
+		</div>
+		<a class="btn btn-soft" href={resolve('/integracoes')}>Ver integrações</a>
+	</div>
+
 	<div class="set-row">
 		<div>
 			<b id="tema-titulo">Tema</b>
@@ -454,6 +549,29 @@
 	.set-row > div > span {
 		font-size: 14.5px;
 		color: var(--ink-3);
+	}
+	.group {
+		margin: 34px 0 4px;
+		padding: 0 4px 10px;
+		border-bottom: 1px solid var(--line);
+		font: 600 17px/1.2 var(--f-head);
+		letter-spacing: -0.01em;
+		color: var(--ink);
+	}
+	.group + .set-row {
+		border-top: 0;
+	}
+	/* Seg de três opções: texto em cima, botões embaixo, largura cheia. */
+	.set-row.stack {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 12px;
+	}
+	.set-row.stack .seg {
+		display: flex;
+	}
+	.set-row.stack .seg > button {
+		flex: 1;
 	}
 	.profile-card {
 		display: flex;

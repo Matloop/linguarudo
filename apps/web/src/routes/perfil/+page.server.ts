@@ -16,6 +16,15 @@ import {
 	MAX_RETENTION,
 	MIN_RETENTION
 } from '#lib/review.ts';
+import {
+	DECK_LIMITS,
+	DEFAULT_LEECH_LAPSES,
+	parseLeechAction,
+	parseNewOrder,
+	type LeechAction,
+	type NewOrder
+} from '#lib/decks.ts';
+import { updateStudySettings, type StudySettings } from '#lib/server/decks.ts';
 import { loadSettings } from '#lib/server/settings.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -26,6 +35,12 @@ async function requireUser(locals: App.Locals) {
 	const user = await locals.getUser();
 	if (!user) error(401, 'Entre para ver seu perfil.');
 	return user;
+}
+
+async function saveStudy(locals: App.Locals, userId: string, form: FormData, s: StudySettings) {
+	const res = await updateStudySettings(locals.supabase, userId, s);
+	if (!res.ok) return fail(500, { message: 'Não deu para salvar agora.' });
+	back(form);
 }
 
 /** Sem JS, cada preferência volta para a página de onde veio. */
@@ -39,7 +54,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const [{ data: settings }, { count: tokens }] = await Promise.all([
 		locals.supabase
 			.from('user_settings')
-			.select('new_flashcards_per_day, autoplay_audio, desired_retention')
+			.select(
+				'new_flashcards_per_day, autoplay_audio, desired_retention, new_order, leech_lapses, leech_action'
+			)
 			.eq('user_id', user.id)
 			.maybeSingle(),
 		locals.supabase
@@ -50,6 +67,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 	return {
 		newPerDay: settings?.new_flashcards_per_day ?? DEFAULT_NEW_PER_DAY,
 		maxNewPerDay: MAX_NEW_PER_DAY,
+		newOrder: (parseNewOrder(settings?.new_order) ?? 'importance') as NewOrder,
+		leechLapses: settings?.leech_lapses ?? DEFAULT_LEECH_LAPSES,
+		leechAction: (parseLeechAction(settings?.leech_action) ?? 'wait') as LeechAction,
+		minLeechLapses: DECK_LIMITS.leechLapsesMin,
+		maxLeechLapses: DECK_LIMITS.leechLapsesMax,
 		autoplayAudio: settings?.autoplay_audio ?? false,
 		// Em pontos percentuais inteiros (90), como o stepper mostra.
 		retention: Math.round((settings?.desired_retention ?? DEFAULT_RETENTION) * 100),
@@ -173,12 +195,37 @@ export const actions: Actions = {
 		if (!Number.isInteger(n) || n < 0 || n > MAX_NEW_PER_DAY) {
 			return fail(400, { message: `Escolha um número de 0 a ${MAX_NEW_PER_DAY}.` });
 		}
-		const { error: dbError } = await locals.supabase
-			.from('user_settings')
-			.update({ new_flashcards_per_day: n })
-			.eq('user_id', user.id);
-		if (dbError) return fail(500, { message: 'Não deu para salvar agora.' });
-		back(form);
+		return saveStudy(locals, user.id, form, { newFlashcardsPerDay: n });
+	},
+
+	/** Como "Estudar tudo" intercala as novas dos decks. */
+	ordem: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		const form = await request.formData();
+		const order = parseNewOrder(form.get('ordem'));
+		if (!order) return fail(400, { message: 'Ordem desconhecida.' });
+		return saveStudy(locals, user.id, form, { newOrder: order });
+	},
+
+	/** Teimosas: quantos erros e o que fazer depois. */
+	teimosas: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		const form = await request.formData();
+		const patch: StudySettings = {};
+		if (form.has('erros')) {
+			const n = Number(form.get('erros'));
+			const { leechLapsesMin: min, leechLapsesMax: max } = DECK_LIMITS;
+			if (!Number.isInteger(n) || n < min || n > max) {
+				return fail(400, { message: `Escolha de ${min} a ${max} erros.` });
+			}
+			patch.leechLapses = n;
+		}
+		if (form.has('acao')) {
+			const action = parseLeechAction(form.get('acao'));
+			if (!action) return fail(400, { message: 'Escolha o que fazer com as teimosas.' });
+			patch.leechAction = action;
+		}
+		return saveStudy(locals, user.id, form, patch);
 	},
 
 	retencao: async ({ locals, request }) => {
