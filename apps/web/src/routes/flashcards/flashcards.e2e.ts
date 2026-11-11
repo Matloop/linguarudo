@@ -7,10 +7,10 @@ async function addWord(page: Page, lemma: string, sense: string, sentence = '') 
 }
 
 const nav = (page: Page) => page.getByRole('navigation', { name: 'Principal' });
-const reviewLink = (page: Page) => nav(page).getByRole('link', { name: /^Revisar/ });
-const front = (page: Page) => page.locator('section[aria-label="Frente do cartão"]');
-const back = (page: Page) => page.locator('section[aria-label="Verso do cartão"]');
-const card = (page: Page) => page.getByTestId('cartao');
+const reviewLink = (page: Page) => nav(page).getByRole('link', { name: /^Flashcards/ });
+const front = (page: Page) => page.locator('section[aria-label="Frente do flashcard"]');
+const back = (page: Page) => page.locator('section[aria-label="Verso do flashcard"]');
+const card = (page: Page) => page.getByTestId('flashcard');
 const counter = (page: Page) => page.getByTestId('contador');
 const grades = (page: Page) => page.getByRole('form', { name: 'Como foi?' });
 const endTitle = (page: Page) => page.getByRole('heading', { name: /^Pronto por/ });
@@ -27,15 +27,15 @@ async function markKnown(page: Page, lemma: string, known = true) {
 	).toBeVisible();
 }
 
-test('sem login, /revisar manda para /entrar', async ({ page }) => {
-	await page.goto('/revisar');
-	await expect(page).toHaveURL(/\/entrar\?next=%2Frevisar$/);
+test('sem login, /flashcards manda para /entrar', async ({ page }) => {
+	await page.goto('/flashcards');
+	await expect(page).toHaveURL(/\/entrar\?next=%2Fflashcards$/);
 });
 
-test('anon não lê cartões nem logs pela API', async () => {
+test('anon não lê flashcards nem logs pela API', async () => {
 	const key = process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 	test.skip(!key, 'PUBLIC_SUPABASE_PUBLISHABLE_KEY não definido');
-	for (const table of ['cards', 'review_logs', 'user_settings']) {
+	for (const table of ['flashcards', 'review_logs', 'user_settings']) {
 		const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
 			headers: { apikey: key!, authorization: `Bearer ${key}` }
 		});
@@ -53,7 +53,7 @@ test('revisão: conhecida, virar, avaliar, desfazer, teclado, fim e estado vazio
 	await addWord(page, 'however', 'porém');
 	await addWord(page, 'maybe', 'talvez');
 
-	// Todo item nasce com um cartão Reconhecer.
+	// Todo item nasce com um flashcard Reconhecer.
 	await expect(reviewLink(page)).toContainText('3 para revisar');
 
 	// Conhecida não entra na revisão.
@@ -61,7 +61,7 @@ test('revisão: conhecida, virar, avaliar, desfazer, teclado, fim e estado vazio
 	await expect(reviewLink(page)).toContainText('2 para revisar');
 
 	await reviewLink(page).click();
-	await expect(page).toHaveURL(/\/revisar$/);
+	await expect(page).toHaveURL(/\/flashcards$/);
 
 	const progresso = page.getByRole('progressbar', { name: 'Progresso da revisão' });
 	await expect(progresso).toHaveAttribute('aria-valuenow', '0');
@@ -82,7 +82,7 @@ test('revisão: conhecida, virar, avaliar, desfazer, teclado, fim e estado vazio
 		/Fácil\s*\d+ (d|mês|meses)/
 	]);
 
-	// Errei: o cartão volta para o fim da fila (vence em minutos).
+	// Errei: o flashcard volta para o fim da fila (vence em minutos).
 	await grades(page).getByRole('button', { name: /Errei/ }).click();
 	await expect(front(page)).toContainText('however');
 	await expect(counter(page)).toHaveText('2 de 3');
@@ -122,11 +122,11 @@ test('revisão: conhecida, virar, avaliar, desfazer, teclado, fim e estado vazio
 	await expect(page.getByRole('heading', { name: 'Nada para revisar' })).toBeVisible();
 	await expect(page.getByText(/A próxima palavra em inglês volta/)).toBeVisible();
 
-	// Voltar a conhecida para a revisão traz o cartão de volta.
+	// Voltar a conhecida para a revisão traz o flashcard de volta.
 	await markKnown(page, 'maybe', false);
 	await expect(reviewLink(page)).toContainText('1 para revisar');
 	await reviewLink(page).click();
-	await expect(page).toHaveURL(/\/revisar$/);
+	await expect(page).toHaveURL(/\/flashcards$/);
 	await expect(front(page)).toContainText('maybe');
 });
 
@@ -137,7 +137,7 @@ test('Produzir nasce quando o Reconhecer passa de 7 dias e pede o lema', async (
 	// Navegação no cliente: a página já está hidratada quando as teclas chegam.
 	await reviewLink(page).click();
 
-	// Fácil num cartão novo dá semanas de intervalo.
+	// Fácil num flashcard novo dá semanas de intervalo.
 	for (const lemma of ['wait', 'here']) {
 		await expect(front(page)).toContainText(lemma);
 		await page.keyboard.press('Space');
@@ -175,9 +175,9 @@ test('desfazer o Fácil do Reconhecer apaga o Produzir que ele liberou', async (
 	await page.keyboard.press('3');
 	await expect(endTitle(page)).toHaveText('Pronto por hoje');
 
-	// "Bom" deixa o cartão em minutos: o Produzir não volta.
+	// "Bom" deixa o flashcard em minutos: o Produzir não volta.
 	await page.goto('/palavras');
-	await page.goto('/revisar');
+	await page.goto('/flashcards');
 	await expect(page.getByText('Como se diz')).toHaveCount(0);
 });
 

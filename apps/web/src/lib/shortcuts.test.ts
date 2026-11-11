@@ -7,7 +7,7 @@ const key = (k: string, over: Record<string, unknown> = {}) => ({ key: k, ...ove
 describe('atalhos globais', () => {
 	test('N abre o Guardar em qualquer tela, maiúsculo ou não', () => {
 		expect(shortcutFor(key('n'), base)).toEqual({ type: 'guardar' });
-		expect(shortcutFor(key('N'), { ...base, screen: 'revisar' })).toEqual({ type: 'guardar' });
+		expect(shortcutFor(key('N'), { ...base, screen: 'flashcards' })).toEqual({ type: 'guardar' });
 	});
 
 	test('[ recolhe e abre a barra lateral', () => {
@@ -29,7 +29,7 @@ describe('atalhos globais', () => {
 
 describe('atalhos por tela', () => {
 	test('R no Início abre a revisão; fora dele não faz nada', () => {
-		expect(shortcutFor(key('r'), { ...base, screen: 'inicio' })).toEqual({ type: 'revisar' });
+		expect(shortcutFor(key('r'), { ...base, screen: 'inicio' })).toEqual({ type: 'flashcards' });
 		expect(shortcutFor(key('r'), base)).toBeNull();
 	});
 
@@ -38,8 +38,8 @@ describe('atalhos por tela', () => {
 		expect(shortcutFor(key('/'), base)).toBeNull();
 	});
 
-	test('na revisão: Espaço vira, 1–4 avaliam só com o cartão virado, Z desfaz', () => {
-		const rv: KeyContext = { ...base, screen: 'revisar', flipped: false };
+	test('na revisão: Espaço vira, 1–4 avaliam só com o flashcard virado, Z desfaz', () => {
+		const rv: KeyContext = { ...base, screen: 'flashcards', flipped: false };
 		expect(shortcutFor(key(' '), rv)).toEqual({ type: 'virar' });
 		expect(shortcutFor(key('3'), rv)).toBeNull();
 		expect(shortcutFor(key('3'), { ...rv, flipped: true })).toEqual({ type: 'nota', grade: 3 });
@@ -49,7 +49,7 @@ describe('atalhos por tela', () => {
 		expect(shortcutFor(key('Z'), rv)).toEqual({ type: 'desfazer' });
 	});
 
-	test('Espaço com o cartão já virado não faz nada', () => {
-		expect(shortcutFor(key(' '), { ...base, screen: 'revisar', flipped: true })).toBeNull();
+	test('Espaço com o flashcard já virado não faz nada', () => {
+		expect(shortcutFor(key(' '), { ...base, screen: 'flashcards', flipped: true })).toBeNull();
 	});
 });

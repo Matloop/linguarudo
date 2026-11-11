@@ -6,12 +6,12 @@ import {
 	replay,
 	scheduleReview,
 	unlocksProduce,
-	type CardRow
+	type FlashcardRow
 } from './scheduler';
 
 const now = new Date('2026-11-10T15:00:00.000Z');
 
-function newRow(over: Partial<CardRow> = {}): CardRow {
+function newRow(over: Partial<FlashcardRow> = {}): FlashcardRow {
 	return {
 		id: '3f0b6a5e-0000-4000-8000-000000000001',
 		due_at: '2026-11-10T12:00:00+00:00',
@@ -30,7 +30,7 @@ function newRow(over: Partial<CardRow> = {}): CardRow {
 }
 
 describe('applyRating', () => {
-	test('Bom num cartão novo agenda para dias depois e incrementa reps', async () => {
+	test('Bom num flashcard novo agenda para dias depois e incrementa reps', async () => {
 		const { next } = await applyRating(newRow(), 3, now);
 		expect(next.reps).toBe(1);
 		expect(next.state).toBeGreaterThan(0);
@@ -39,7 +39,7 @@ describe('applyRating', () => {
 		expect(new Date(next.due_at).getTime()).toBeGreaterThan(now.getTime() + 24 * 3600_000);
 	});
 
-	test('De novo deixa o cartão para daqui a minutos', async () => {
+	test('De novo deixa o flashcard para daqui a minutos', async () => {
 		const { next } = await applyRating(newRow(), 1, now);
 		const ms = new Date(next.due_at).getTime() - now.getTime();
 		expect(ms).toBeGreaterThan(0);
@@ -56,7 +56,7 @@ describe('applyRating', () => {
 		expect(new Set(dues).size).toBe(4);
 	});
 
-	test('errar um cartão em revisão conta um lapso', async () => {
+	test('errar um flashcard em revisão conta um lapso', async () => {
 		const { next: aprendido } = await applyRating(newRow(), 3, now);
 		const depois = new Date(aprendido.due_at);
 		const { next } = await applyRating({ ...newRow(), ...aprendido }, 1, depois);
@@ -64,7 +64,7 @@ describe('applyRating', () => {
 		expect(next.reps).toBe(2);
 	});
 
-	test('o resultado é determinístico para o mesmo cartão e momento', async () => {
+	test('o resultado é determinístico para o mesmo flashcard e momento', async () => {
 		const a = await applyRating(newRow({ reps: 0 }), 3, now);
 		const b = await applyRating(newRow({ reps: 0 }), 3, now);
 		expect(a.next).toEqual(b.next);
@@ -87,7 +87,7 @@ const seed = { id: '3f0b6a5e-0000-4000-8000-000000000002', created_at: '2026-11-
 const at = (iso: string) => new Date(iso).toISOString();
 
 describe('replay', () => {
-	test('sem revisões devolve o cartão novo, vencendo na criação', async () => {
+	test('sem revisões devolve o flashcard novo, vencendo na criação', async () => {
 		const { card, maxIntervalDays } = await replay(seed, []);
 		expect(card.state).toBe(0);
 		expect(card.reps).toBe(0);
@@ -140,7 +140,7 @@ describe('scheduleReview', () => {
 		expect(r.next).toEqual(full.card);
 	});
 
-	test('revisão fora de ordem (offline) recalcula o cartão inteiro', async () => {
+	test('revisão fora de ordem (offline) recalcula o flashcard inteiro', async () => {
 		const logs = [
 			{ rating: 3 as const, reviewed_at: t1 },
 			{ rating: 3 as const, reviewed_at: t3 }
@@ -172,11 +172,11 @@ describe('unlocksProduce', () => {
 		expect(unlocksProduce({ kind: 'reconhecer', sense: '', intervalDays: 30 })).toBe(false);
 	});
 
-	test('o próprio Produzir não cria outro cartão', () => {
+	test('o próprio Produzir não cria outro flashcard', () => {
 		expect(unlocksProduce({ kind: 'produzir', sense: 'festa', intervalDays: 30 })).toBe(false);
 	});
 
-	test('Bom repetido num cartão novo chega a 7 dias e libera', async () => {
+	test('Bom repetido num flashcard novo chega a 7 dias e libera', async () => {
 		let row = { ...seed, ...(await replay(seed, [])).card };
 		const logs: { rating: 3; reviewed_at: string }[] = [];
 		let now = new Date('2026-11-02T10:00:00Z');

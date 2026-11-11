@@ -7,7 +7,7 @@ import {
 	charLength,
 	normalizeLemma,
 	parseSaveEntry,
-	type CardKind,
+	type FlashcardKind,
 	type ItemStatus,
 	type ParsedEntry
 } from './items.ts';
@@ -45,18 +45,21 @@ export function parseBearer(header: string | null): string | null {
 
 // ---------- Preferência na legenda ----------
 
-export interface CardBrief {
+export interface FlashcardBrief {
 	state: number;
 	due_at: string;
 }
 
 /**
- * Entra na legenda primeiro: item ativo com algum cartão aprendendo/reaprendendo
+ * Entra na legenda primeiro: item ativo com algum flashcard aprendendo/reaprendendo
  * ou em revisão já vencida. Conhecido nunca entra.
  */
-export function isPreferred(item: { status: ItemStatus; cards: readonly CardBrief[] }, now: Date) {
+export function isPreferred(
+	item: { status: ItemStatus; flashcards: readonly FlashcardBrief[] },
+	now: Date
+) {
 	if (item.status !== 'ativo') return false;
-	return item.cards.some(
+	return item.flashcards.some(
 		(c) =>
 			c.state === 1 || c.state === 3 || (c.state === 2 && Date.parse(c.due_at) <= now.getTime())
 	);
@@ -95,8 +98,8 @@ export function parseSeenBody(body: unknown): { language: Language; lemmaKeys: s
 
 // ---------- Respostas ----------
 
-export interface ApiCard {
-	kind: CardKind;
+export interface ApiFlashcard {
+	kind: FlashcardKind;
 	state: number;
 	dueAt: string;
 	stability: number;
@@ -116,15 +119,17 @@ export interface ApiItem {
 	mastered: boolean;
 	/** Entra primeiro na legenda (ver isPreferred). */
 	prefer: boolean;
-	cards: ApiCard[];
+	flashcards: ApiFlashcard[];
 	/** Grafias já vistas nos encontros, como escritas, além do lema (destaque na legenda do modo só-alvo). */
 	forms: string[];
 }
 
-function cardBriefs(raw: unknown): (CardBrief & { kind: CardKind; stability: number })[] {
+function flashcardBriefs(
+	raw: unknown
+): (FlashcardBrief & { kind: FlashcardKind; stability: number })[] {
 	if (!Array.isArray(raw)) return [];
 	return raw.filter(
-		(c): c is CardBrief & { kind: CardKind; stability: number } =>
+		(c): c is FlashcardBrief & { kind: FlashcardKind; stability: number } =>
 			typeof c === 'object' &&
 			c !== null &&
 			(c.kind === 'reconhecer' || c.kind === 'produzir') &&
@@ -161,13 +166,13 @@ export function apiItem(
 		reading?: string | null;
 		sense: string;
 		status: string;
-		cards: unknown;
+		flashcards: unknown;
 		forms?: unknown;
 	},
 	language: Language,
 	now: Date
 ): ApiItem {
-	const cards = cardBriefs(row.cards);
+	const flashcards = flashcardBriefs(row.flashcards);
 	const status: ItemStatus = row.status === 'conhecido' ? 'conhecido' : 'ativo';
 	return {
 		id: row.id,
@@ -176,9 +181,9 @@ export function apiItem(
 		reading: row.reading ?? '',
 		sense: row.sense,
 		status,
-		mastered: isMastered(cards),
-		prefer: isPreferred({ status, cards }, now),
-		cards: cards.map((c) => ({
+		mastered: isMastered(flashcards),
+		prefer: isPreferred({ status, flashcards }, now),
+		flashcards: flashcards.map((c) => ({
 			kind: c.kind,
 			state: c.state,
 			dueAt: c.due_at,
@@ -199,7 +204,7 @@ export type ApiSaveResult =
 				/** false: o item já existia (o encontro entrou nele). */
 				created: boolean;
 				encounterId: string | null;
-				card: { state: number; dueAt: string };
+				flashcard: { state: number; dueAt: string };
 			};
 	  }
 	| { ok: false; error: string };
@@ -210,8 +215,8 @@ export interface SavedRow {
 	lemma: string;
 	created: boolean;
 	encounter_id: string | null;
-	card_state: number;
-	card_due_at: string;
+	flashcard_state: number;
+	flashcard_due_at: string;
 }
 
 /**
@@ -236,7 +241,7 @@ export function apiSaveResults(
 				lemmaKey: entry.entry.lemma_key,
 				created: r.created,
 				encounterId: r.encounter_id,
-				card: { state: r.card_state, dueAt: r.card_due_at }
+				flashcard: { state: r.flashcard_state, dueAt: r.flashcard_due_at }
 			}
 		};
 	});

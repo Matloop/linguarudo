@@ -3,7 +3,7 @@
 
 import type { Grade } from './review.ts';
 
-export type Screen = 'inicio' | 'palavras' | 'revisar' | 'outra';
+export type Screen = 'inicio' | 'palavras' | 'flashcards' | 'outra';
 
 export interface KeyContext {
 	screen: Screen;
@@ -11,7 +11,7 @@ export interface KeyContext {
 	typing: boolean;
 	/** Diálogo aberto: ele cuida das próprias teclas. */
 	dialogOpen: boolean;
-	/** Só na revisão: o verso do cartão está à mostra. */
+	/** Só na revisão: o verso do flashcard está à mostra. */
 	flipped?: boolean;
 }
 
@@ -26,7 +26,7 @@ export interface KeyLike {
 export type Shortcut =
 	| { type: 'guardar' }
 	| { type: 'barra' }
-	| { type: 'revisar' }
+	| { type: 'flashcards' }
 	| { type: 'buscar' }
 	| { type: 'virar' }
 	| { type: 'nota'; grade: Grade }
@@ -42,10 +42,10 @@ export function shortcutFor(e: KeyLike, ctx: KeyContext): Shortcut | null {
 
 	switch (ctx.screen) {
 		case 'inicio':
-			return k === 'r' ? { type: 'revisar' } : null;
+			return k === 'r' ? { type: 'flashcards' } : null;
 		case 'palavras':
 			return k === '/' ? { type: 'buscar' } : null;
-		case 'revisar':
+		case 'flashcards':
 			if (k === 'z') return { type: 'desfazer' };
 			if (!ctx.flipped) return k === ' ' || k === 'Enter' ? { type: 'virar' } : null;
 			if (k === '1' || k === '2' || k === '3' || k === '4') {

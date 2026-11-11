@@ -33,7 +33,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const [{ data: settings }, { count: tokens }] = await Promise.all([
 		locals.supabase
 			.from('user_settings')
-			.select('new_cards_per_day')
+			.select('new_flashcards_per_day')
 			.eq('user_id', user.id)
 			.maybeSingle(),
 		locals.supabase
@@ -42,7 +42,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.eq('user_id', user.id)
 	]);
 	return {
-		newPerDay: settings?.new_cards_per_day ?? DEFAULT_NEW_PER_DAY,
+		newPerDay: settings?.new_flashcards_per_day ?? DEFAULT_NEW_PER_DAY,
 		maxNewPerDay: MAX_NEW_PER_DAY,
 		stremioConnected: (tokens ?? 0) > 0
 	};
@@ -152,7 +152,7 @@ export const actions: Actions = {
 		}
 		const { error: dbError } = await locals.supabase
 			.from('user_settings')
-			.update({ new_cards_per_day: n })
+			.update({ new_flashcards_per_day: n })
 			.eq('user_id', user.id);
 		if (dbError) return fail(500, { message: 'Não deu para salvar agora.' });
 		back(form);

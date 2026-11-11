@@ -9,16 +9,16 @@ import type { Grade } from '#lib/review.ts';
 import {
 	scheduleReview,
 	unlocksProduce,
-	type CardRow,
-	type CardSeed
+	type FlashcardRow,
+	type FlashcardSeed
 } from '#lib/server/scheduler.ts';
 import {
-	cardState,
+	flashcardState,
 	parseOp,
 	SYNC_LIMITS,
 	SYNC_PROTOCOL,
 	toOpResult,
-	type CardRowJson,
+	type FlashcardRowJson,
 	type OpResult,
 	type ReviewOp,
 	type SyncOp
@@ -165,13 +165,13 @@ async function applySeen(token: string, op: Extract<SyncOp, { type: 'seen' }>): 
 }
 
 type ReviewTarget = {
-	card: CardRowJson & { item_id: string; kind: string };
+	flashcard: FlashcardRowJson & { item_id: string; kind: string };
 	sense: string | null;
 	logs: { rating: Grade; reviewed_at: string }[];
 };
 
 /**
- * Revisão: lê o cartão e o log, calcula como o app (scheduleReview, com replay da revisão
+ * Revisão: lê o flashcard e o log, calcula como o app (scheduleReview, com replay da revisão
  * atrasada) e grava com a checagem de reps. Se outra revisão entrar no meio, refaz.
  */
 async function applyReview(token: string, op: ReviewOp, now: Date): Promise<OpResult> {
@@ -180,15 +180,19 @@ async function applyReview(token: string, op: ReviewOp, now: Date): Promise<OpRe
 		const target = await apiClient().rpc('api_sync_review_target', {
 			p_token: token,
 			p_client_id: op.clientId,
-			p_card_id: op.cardId as string,
+			p_flashcard_id: op.flashcardId as string,
 			p_save_client_id: op.saveClientId as string
 		});
 		if (target.error) syncRpcFailure(target.error);
 		const data = (target.data ?? {}) as Stored & Partial<ReviewTarget>;
-		if (!data.card) return toOpResult(op.clientId, data);
+		if (!data.flashcard) return toOpResult(op.clientId, data);
 
-		const card = data.card;
-		const row: CardRow & CardSeed = { ...card, id: card.id, created_at: card.created_at };
+		const flashcard = data.flashcard;
+		const row: FlashcardRow & FlashcardSeed = {
+			...flashcard,
+			id: flashcard.id,
+			created_at: flashcard.created_at
+		};
 		const { next, intervalDays } = await scheduleReview(row, data.logs ?? [], {
 			rating: op.rating,
 			reviewed_at: reviewedAt
@@ -196,14 +200,14 @@ async function applyReview(token: string, op: ReviewOp, now: Date): Promise<OpRe
 		const unlock = unlocksProduce({ kind: 'reconhecer', sense: data.sense ?? '', intervalDays });
 		const result = {
 			status: 'applied',
-			cardId: card.id,
-			card: cardState({ ...card, ...next })
+			flashcardId: flashcard.id,
+			flashcard: flashcardState({ ...flashcard, ...next })
 		};
 		const { data: saved, error } = await apiClient().rpc('api_sync_review', {
 			p_token: token,
 			p_client_id: op.clientId,
-			p_card_id: card.id,
-			p_expected_reps: card.reps,
+			p_flashcard_id: flashcard.id,
+			p_expected_reps: flashcard.reps,
 			p_rating: op.rating,
 			p_reviewed_at: reviewedAt,
 			p_duration_ms: op.durationMs as number,
@@ -211,7 +215,7 @@ async function applyReview(token: string, op: ReviewOp, now: Date): Promise<OpRe
 			p_unlock_produce: unlock,
 			p_result: result as unknown as Json
 		});
-		if (error?.message === 'card_stale') continue;
+		if (error?.message === 'flashcard_stale') continue;
 		if (error) syncRpcFailure(error);
 		return toOpResult(op.clientId, asStored(saved));
 	}

@@ -12,7 +12,7 @@ Produção: https://linguetta-app.vercel.app
 
 - **Início** (`/inicio`): o que tem para revisar hoje e os primeiros passos (guardar à mão com N, conectar o Stremio).
 - **Palavras** (`/palavras`): o banco, com encontros, sentidos e filtro por idioma.
-- **Revisar** (`/revisar`): flashcards com FSRS ([ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)). Novos por dia vêm de `user_settings.new_cards_per_day`; o "dia" segue `REVIEW_TIME_ZONE` em `apps/web/src/lib/review.ts`.
+- **Flashcards** (`/flashcards`): revisão com FSRS ([ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)). Novos por dia vêm de `user_settings.new_flashcards_per_day`; o "dia" segue `REVIEW_TIME_ZONE` em `apps/web/src/lib/review.ts`.
 - **Música** (`/musica`): cole o link do YouTube e complete a letra sincronizada (LRCLIB) enquanto a música toca; as palavras vão para o banco.
 - **Integrações** (`/integracoes`) e **Parear** (`/parear`): token para o fork do Stremio e pareamento por QR para aparelhos via `/api/v1/sync`.
 - Login com Google ou link mágico; interface em PT ou EN.

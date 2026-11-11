@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { formatWorkSource } from './items';
 import { dayStart, nextDayStart, REVIEW_TIME_ZONE } from './review';
 import {
-	cardState,
+	flashcardState,
 	decodeCursor,
 	decodePageToken,
 	encodeCursor,
@@ -21,7 +21,7 @@ import {
 	USER_CODE_ALPHABET,
 	userCodeFrom,
 	utcOffsetMinutes,
-	type CardState,
+	type FlashcardState,
 	type SnapshotItemRow
 } from './sync';
 
@@ -49,7 +49,7 @@ type ItemFixture = {
 	updatedAt: string;
 	forms?: string[];
 	encounters?: { form?: string; sentence?: string; sense?: string; work?: string; at: string }[];
-	card: CardState;
+	flashcard: FlashcardState;
 };
 
 /** Monta a linha do banco (como api_sync_snapshot devolve) a partir da linha do fixture. */
@@ -80,20 +80,20 @@ function rowFrom(item: ItemFixture): SnapshotItemRow {
 			work: e.work ?? null,
 			at: pg(e.at)
 		})),
-		card: {
-			id: item.card.id,
-			created_at: pg(item.card.createdAt),
-			due_at: pg(item.card.dueAt),
-			stability: item.card.stability,
-			stability_fast: item.card.stabilityFast,
-			difficulty: item.card.difficulty,
-			state: item.card.state,
-			schedule_status: item.card.scheduleStatus,
-			last_review_at: item.card.lastReviewAt ? pg(item.card.lastReviewAt) : null,
-			reps: item.card.reps,
-			lapses: item.card.lapses,
-			scheduled_days: item.card.scheduledDays,
-			learning_step: item.card.learningStep
+		flashcard: {
+			id: item.flashcard.id,
+			created_at: pg(item.flashcard.createdAt),
+			due_at: pg(item.flashcard.dueAt),
+			stability: item.flashcard.stability,
+			stability_fast: item.flashcard.stabilityFast,
+			difficulty: item.flashcard.difficulty,
+			state: item.flashcard.state,
+			schedule_status: item.flashcard.scheduleStatus,
+			last_review_at: item.flashcard.lastReviewAt ? pg(item.flashcard.lastReviewAt) : null,
+			reps: item.flashcard.reps,
+			lapses: item.flashcard.lapses,
+			scheduled_days: item.flashcard.scheduledDays,
+			learning_step: item.flashcard.learningStep
 		}
 	};
 }
@@ -176,7 +176,7 @@ describe('linha item do snapshot', () => {
 			forms: Array.from({ length: 10 }, (_, i) => `${i}${'ã'.repeat(700)}`)
 		});
 		expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(16384);
-		expect(JSON.parse(line).card.id).toBe(base.card.id);
+		expect(JSON.parse(line).flashcard.id).toBe(base.flashcard.id);
 	});
 });
 
@@ -192,7 +192,7 @@ describe('cabeçalho e fim da página', () => {
 			uiLanguage: 'pt',
 			nativeLanguage: 'pt',
 			studyLanguages: ['it', 'en'],
-			newCardsPerDay: 10,
+			newFlashcardsPerDay: 10,
 			timeZone: REVIEW_TIME_ZONE,
 			dayStart: dayStart(serverNow),
 			nextDayStart: nextDayStart(serverNow),
@@ -212,7 +212,7 @@ describe('cabeçalho e fim da página', () => {
 				uiLanguage: null,
 				nativeLanguage: null,
 				studyLanguages: [],
-				newCardsPerDay: 10,
+				newFlashcardsPerDay: 10,
 				timeZone: REVIEW_TIME_ZONE,
 				dayStart: dayStart(serverNow),
 				nextDayStart: nextDayStart(serverNow),
@@ -319,18 +319,18 @@ describe('operações do push', () => {
 		});
 	});
 
-	test('review por cardId e por saveClientId, seen', () => {
+	test('review por flashcardId e por saveClientId, seen', () => {
 		const byCard = parseOp(request.ops[1]);
 		expect(byCard.ok && byCard.op).toMatchObject({
 			type: 'review',
-			cardId: '5d2a7e10-0c43-4b8f-a6d9-71e0c4b2f902',
+			flashcardId: '5d2a7e10-0c43-4b8f-a6d9-71e0c4b2f902',
 			saveClientId: null,
 			rating: 3,
 			durationMs: 6400
 		});
 		const bySave = parseOp(request.ops[4]);
 		expect(bySave.ok && bySave.op).toMatchObject({
-			cardId: null,
+			flashcardId: null,
 			saveClientId: 'd4b3a2c1-0f9e-4d8c-b7a6-958473625103',
 			rating: 1
 		});
@@ -360,10 +360,10 @@ describe('operações do push', () => {
 		expect(errorsOf({ ...base, saveClientId: request.ops[3].clientId })).toMatchObject({
 			status: 'rejected',
 			reason: 'invalid',
-			errors: { cardId: expect.any(String) }
+			errors: { flashcardId: expect.any(String) }
 		});
-		expect(errorsOf({ ...base, cardId: undefined })).toMatchObject({
-			errors: { cardId: expect.any(String) }
+		expect(errorsOf({ ...base, flashcardId: undefined })).toMatchObject({
+			errors: { flashcardId: expect.any(String) }
 		});
 		expect(errorsOf({ ...base, rating: 5 })).toMatchObject({
 			errors: { rating: expect.any(String) }
@@ -414,13 +414,13 @@ describe('operações do push', () => {
 	test('o resultado guardado vira duplicate no reenvio', () => {
 		const first = toOpResult('c1', {
 			prior: false,
-			result: { status: 'applied', itemId: 'i', cardId: 'k', created: false, encounterId: 'e' }
+			result: { status: 'applied', itemId: 'i', flashcardId: 'k', created: false, encounterId: 'e' }
 		});
 		expect(first).toEqual({
 			clientId: 'c1',
 			status: 'applied',
 			itemId: 'i',
-			cardId: 'k',
+			flashcardId: 'k',
 			created: false,
 			encounterId: 'e'
 		});
@@ -444,9 +444,9 @@ describe('operações do push', () => {
 		).toBe('rejected');
 	});
 
-	test('CardState do fixture', () => {
-		const expected = response.results[1].card;
-		const state = cardState({
+	test('FlashcardState do fixture', () => {
+		const expected = response.results[1].flashcard;
+		const state = flashcardState({
 			id: expected.id,
 			created_at: '2026-11-03 10:00:00+00',
 			due_at: '2026-12-08T22:40:00+00:00',

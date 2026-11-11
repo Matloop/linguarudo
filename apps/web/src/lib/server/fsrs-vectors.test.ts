@@ -1,15 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import type { Grade } from '#lib/review.ts';
-import { replay, scheduleReview, type CardFields, type LogEntry } from './scheduler';
+import { replay, scheduleReview, type FlashcardFields, type LogEntry } from './scheduler';
 
 // Paridade do FSRS (docs/sync/CONTRACT.md, seção 11): o servidor tem de continuar
 // passando os mesmos vetores que o firmware do e-reader passa.
 
-type Step = { rating: Grade; reviewedAt: string; expected: CardFields };
+type Step = { rating: Grade; reviewedAt: string; expected: FlashcardFields };
 type Case = {
 	name: string;
-	cardId: string;
+	flashcardId: string;
 	createdAt: string;
 	steps: Step[];
 	arrivalOrder?: number[];
@@ -24,7 +24,7 @@ const vectors = JSON.parse(
 
 const { float, dueAtMs } = vectors.tolerance;
 
-function expectCard(actual: CardFields, expected: CardFields) {
+function expectCard(actual: FlashcardFields, expected: FlashcardFields) {
 	for (const k of ['stability', 'stability_fast', 'difficulty', 'scheduled_days'] as const) {
 		const diff = Math.abs(actual[k] - expected[k]);
 		expect(diff <= Math.max(float, float * Math.abs(expected[k]))).toBe(true);
@@ -42,7 +42,7 @@ function expectCard(actual: CardFields, expected: CardFields) {
 
 describe('fsrs-vectors.json', () => {
 	for (const c of vectors.cases) {
-		const seed = { id: c.cardId, created_at: c.createdAt };
+		const seed = { id: c.flashcardId, created_at: c.createdAt };
 
 		test(`${c.name}: cada passo em ordem`, async () => {
 			for (let n = 1; n <= c.steps.length; n++) {

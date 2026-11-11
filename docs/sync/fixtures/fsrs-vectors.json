@@ -15,7 +15,7 @@
 		],
 		"maximumInterval": 36500,
 		"weights": "default (FSRS7_DEFAULT_WEIGHTS)",
-		"fuzzSeed": "cardId + String(reps after the review)"
+		"fuzzSeed": "flashcardId + String(reps after the review)"
 	},
 	"tolerance": {
 		"float": 0.000001,
@@ -25,7 +25,7 @@
 		{
 			"name": "bom-sempre",
 			"note": "Novo, depois Bom em cada vencimento (aprendizado → revisão, fuzz nos intervalos longos).",
-			"cardId": "0b9f3c2e-6a51-4d7e-9c1a-3f2b8d4e5a01",
+			"flashcardId": "0b9f3c2e-6a51-4d7e-9c1a-3f2b8d4e5a01",
 			"createdAt": "2026-11-01T12:00:00.000Z",
 			"steps": [
 				{
@@ -152,7 +152,7 @@
 		{
 			"name": "erros-e-lapsos",
 			"note": "Errei no aprendizado, depois um lapso em revisão (reaprendendo) e volta.",
-			"cardId": "5d2a7e10-0c43-4b8f-a6d9-71e0c4b2f902",
+			"flashcardId": "5d2a7e10-0c43-4b8f-a6d9-71e0c4b2f902",
 			"createdAt": "2026-11-01T12:00:00.000Z",
 			"steps": [
 				{
@@ -313,7 +313,7 @@
 		{
 			"name": "facil-e-dificil",
 			"note": "Fácil direto do novo, depois Difícil e Fácil em revisão.",
-			"cardId": "a7c41f88-2e0b-4c55-8d13-9b6e2f7a0c03",
+			"flashcardId": "a7c41f88-2e0b-4c55-8d13-9b6e2f7a0c03",
 			"createdAt": "2026-10-20T08:00:00.000Z",
 			"steps": [
 				{
@@ -389,7 +389,7 @@
 		{
 			"name": "atrasado-e-adiantado",
 			"note": "Revisão muito atrasada (meses) e revisão antes do vencimento.",
-			"cardId": "c3e85b21-9f7d-4a2c-b0e4-5d1f6a8c9b04",
+			"flashcardId": "c3e85b21-9f7d-4a2c-b0e4-5d1f6a8c9b04",
 			"createdAt": "2026-06-01T00:00:00.000Z",
 			"steps": [
 				{
@@ -499,7 +499,7 @@
 		{
 			"name": "fora-de-ordem",
 			"note": "O log chega fora de ordem (o aparelho estava offline). Os passos estão em ordem de reviewed_at, que é como o servidor reaplica; o campo arrivalOrder mostra a ordem em que chegaram.",
-			"cardId": "e1f02d3c-7b6a-4958-8e2f-0a9c1b3d4e05",
+			"flashcardId": "e1f02d3c-7b6a-4958-8e2f-0a9c1b3d4e05",
 			"createdAt": "2026-11-01T09:00:00.000Z",
 			"arrivalOrder": [
 				0,

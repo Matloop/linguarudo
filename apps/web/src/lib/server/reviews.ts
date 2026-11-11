@@ -1,9 +1,9 @@
-// Acesso ao banco da revisão: cartões com o item e o encontro mais recente,
+// Acesso ao banco da revisão: flashcards com o item e o encontro mais recente,
 // review_logs e as funções record_review / undo_review / review_counts.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '#lib/database.types.ts';
-import { formatWorkSource, type CardKind, type Origin } from '#lib/items.ts';
+import { formatWorkSource, type FlashcardKind, type Origin } from '#lib/items.ts';
 import type { Language } from '#lib/languages.ts';
 import {
 	dayStart,
@@ -13,24 +13,29 @@ import {
 	type ReviewCounts,
 	type ReviewItem
 } from '#lib/review.ts';
-import { previewIntervals, type CardRow, type CardSeed, type LogEntry } from './scheduler.ts';
+import {
+	previewIntervals,
+	type FlashcardRow,
+	type FlashcardSeed,
+	type LogEntry
+} from './scheduler.ts';
 
 type Client = SupabaseClient<Database>;
 
-const CARD_COLUMNS =
+const FLASHCARD_COLUMNS =
 	'id, kind, due_at, stability, stability_fast, difficulty, state, schedule_status, last_review_at, reps, lapses, scheduled_days, learning_step, created_at';
 
-const CARD_WITH_ITEM = `${CARD_COLUMNS}, items!inner(lemma, reading, sense, ipa, language, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
+const FLASHCARD_WITH_ITEM = `${FLASHCARD_COLUMNS}, items!inner(lemma, reading, sense, ipa, language, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
 
 /**
- * Cartões revisáveis do usuário: o item está ativo e não foi apagado. Cada um vem
+ * Flashcards revisáveis do usuário: o item está ativo e não foi apagado. Cada um vem
  * com o encontro mais recente (a frase que aparece no verso). Com `language`, só
  * os daquele idioma.
  */
-export function reviewableCards(supabase: Client, userId: string, language?: Language) {
+export function reviewableFlashcards(supabase: Client, userId: string, language?: Language) {
 	const query = supabase
-		.from('cards')
-		.select(CARD_WITH_ITEM)
+		.from('flashcards')
+		.select(FLASHCARD_WITH_ITEM)
 		.eq('user_id', userId)
 		.eq('items.status', 'ativo')
 		.is('items.deleted_at', null)
@@ -40,9 +45,9 @@ export function reviewableCards(supabase: Client, userId: string, language?: Lan
 	return language ? query.eq('items.language', language) : query;
 }
 
-export type ReviewCardRow = CardRow &
-	CardSeed & {
-		kind: CardKind;
+export type ReviewFlashcardRow = FlashcardRow &
+	FlashcardSeed & {
+		kind: FlashcardKind;
 		items: {
 			lemma: string;
 			sense: string;
@@ -59,26 +64,26 @@ export type ReviewCardRow = CardRow &
 		};
 	};
 
-export async function loadReviewCard(supabase: Client, userId: string, cardId: string) {
-	const { data } = await reviewableCards(supabase, userId).eq('id', cardId).maybeSingle();
-	return data as ReviewCardRow | null;
+export async function loadReviewFlashcard(supabase: Client, userId: string, flashcardId: string) {
+	const { data } = await reviewableFlashcards(supabase, userId).eq('id', flashcardId).maybeSingle();
+	return data as ReviewFlashcardRow | null;
 }
 
-/** Log do cartão, na ordem em que as revisões aconteceram. */
-export async function loadLogs(supabase: Client, cardId: string) {
+/** Log do flashcard, na ordem em que as revisões aconteceram. */
+export async function loadLogs(supabase: Client, flashcardId: string) {
 	const { data, error } = await supabase
 		.from('review_logs')
 		.select('id, rating, reviewed_at')
-		.eq('card_id', cardId)
+		.eq('flashcard_id', flashcardId)
 		.order('reviewed_at');
 	if (error) throw new Error(`review_logs: ${error.message}`);
 	return data as (LogEntry & { id: string })[];
 }
 
-export async function toReviewItem(row: ReviewCardRow, now: Date): Promise<ReviewItem> {
+export async function toReviewItem(row: ReviewFlashcardRow, now: Date): Promise<ReviewItem> {
 	const encounter = row.items.encounters[0] ?? null;
 	return {
-		cardId: row.id,
+		flashcardId: row.id,
 		kind: row.kind,
 		reps: row.reps,
 		state: row.state,
@@ -121,11 +126,11 @@ export async function fetchReviewSummary(supabase: Client, now: Date): Promise<R
 /** Erros de record_review/undo_review, em PT. */
 export function reviewErrorMessage(message: string | undefined): { status: number; text: string } {
 	switch (message) {
-		case 'card_stale':
-			return { status: 409, text: 'Esse cartão já foi avaliado em outra aba.' };
-		case 'card_not_found':
+		case 'flashcard_stale':
+			return { status: 409, text: 'Esse flashcard já foi avaliado em outra aba.' };
+		case 'flashcard_not_found':
 		case 'log_not_found':
-			return { status: 404, text: 'Cartão não encontrado.' };
+			return { status: 404, text: 'Flashcard não encontrado.' };
 		default:
 			return { status: 500, text: 'Não deu para salvar agora. Tente de novo.' };
 	}

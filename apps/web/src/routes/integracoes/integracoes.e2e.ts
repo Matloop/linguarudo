@@ -147,7 +147,7 @@ test('API v1: salvar com encontro e obra, repetir, listar com prefer, visto e CO
 	expect(results).toHaveLength(3);
 	expect(results[0]).toMatchObject({
 		ok: true,
-		item: { language: 'it', lemma: 'festa', created: true, card: { state: 0 } }
+		item: { language: 'it', lemma: 'festa', created: true, flashcard: { state: 0 } }
 	});
 	expect(results[0].item.encounterId).toEqual(expect.any(String));
 	// Mesmo lema em outra caixa: o mesmo item, sem encontro novo.
@@ -164,7 +164,7 @@ test('API v1: salvar com encontro e obra, repetir, listar com prefer, visto e CO
 		encounterId: results[0].item.encounterId
 	});
 
-	// Em outro lote (o Revisar mostra as novas por ordem de criação: festa primeiro).
+	// Em outro lote (Flashcards mostra as novas por ordem de criação: festa primeiro).
 	await client.post('/api/v1/items', { items: [{ language: 'it', lemma: 'giorno' }] });
 
 	expect((await client.post('/api/v1/items', { items: [] })).status()).toBe(400);
@@ -179,7 +179,7 @@ test('API v1: salvar com encontro e obra, repetir, listar com prefer, visto e CO
 		status: 'ativo',
 		mastered: false,
 		prefer: false,
-		cards: [{ kind: 'reconhecer', state: 0, stability: 0 }]
+		flashcards: [{ kind: 'reconhecer', state: 0, stability: 0 }]
 	});
 	// Novos (state 0) não entram como preferidos.
 	expect(body.preferWords).toEqual([]);
@@ -193,11 +193,11 @@ test('API v1: salvar com encontro e obra, repetir, listar com prefer, visto e CO
 	expect(await seen.json()).toEqual({ updated: 1 });
 	// Visto não mexe no FSRS.
 	const after = (await (await client.get('/api/v1/items?language=it')).json()).items;
-	expect(after.find((i: { lemma: string }) => i.lemma === 'festa').cards[0]).toMatchObject({
+	expect(after.find((i: { lemma: string }) => i.lemma === 'festa').flashcards[0]).toMatchObject({
 		state: 0
 	});
 
-	// O item aparece em /palavras (italiano) com o encontro e no Revisar com o destaque e a origem.
+	// O item aparece em /palavras (italiano) com o encontro e em Flashcards com o destaque e a origem.
 	await page.goto('/palavras');
 	await switchLanguage(page, 'Italiano', 'IT');
 	const row = page.getByRole('list', { name: 'Palavras' }).getByRole('link', { name: /festa/ });
@@ -207,13 +207,13 @@ test('API v1: salvar com encontro e obra, repetir, listar com prefer, visto e CO
 	await expect(drawer).toContainText('Kaguya · T1E2, 42:10');
 	await expect(drawer.locator('mark')).toHaveText('feste');
 
-	await page.goto('/revisar');
-	const front = page.locator('section[aria-label="Frente do cartão"]');
+	await page.goto('/flashcards');
+	const front = page.locator('section[aria-label="Frente do flashcard"]');
 	await expect(front).toContainText('festa');
 	await expect(front.locator('u')).toHaveText('feste');
 	await expect(front).toContainText('Kaguya · T1E2, 42:10');
 	await page.getByRole('button', { name: 'Mostrar resposta' }).click();
-	await expect(page.locator('section[aria-label="Verso do cartão"]')).toContainText(
+	await expect(page.locator('section[aria-label="Verso do flashcard"]')).toContainText(
 		'festa, celebração'
 	);
 });

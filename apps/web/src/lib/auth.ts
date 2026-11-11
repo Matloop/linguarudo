@@ -3,7 +3,7 @@ export const HOME_AFTER_LOGIN = '/inicio';
 const PROTECTED_PREFIXES = [
 	'/inicio',
 	'/palavras',
-	'/revisar',
+	'/flashcards',
 	'/integracoes',
 	'/musica',
 	'/perfil',

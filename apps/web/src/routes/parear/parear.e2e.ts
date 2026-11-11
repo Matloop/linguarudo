@@ -191,7 +191,7 @@ test('aprovar em /parear, push, snapshot e revogar', async ({ page }) => {
 		review,
 		seen,
 		{ ...save('x'), lemma: '' },
-		{ ...review, clientId: randomUUID(), saveClientId: undefined, cardId: randomUUID() },
+		{ ...review, clientId: randomUUID(), saveClientId: undefined, flashcardId: randomUUID() },
 		{ ...seen, clientId: randomUUID(), lemma: 'inesistente' }
 	];
 	const first = await x4.push(ops);
@@ -200,8 +200,8 @@ test('aprovar em /parear, push, snapshot e revogar', async ({ page }) => {
 	const r = first.body.results;
 	expect(r.map((x: { clientId: string }) => x.clientId)).toEqual(ops.map((o) => o.clientId));
 	expect(r[0]).toMatchObject({ status: 'applied', created: true });
-	expect(r[1]).toMatchObject({ status: 'applied', cardId: r[0].cardId });
-	expect(r[1].card).toMatchObject({ id: r[0].cardId, reps: 1 });
+	expect(r[1]).toMatchObject({ status: 'applied', flashcardId: r[0].flashcardId });
+	expect(r[1].flashcard).toMatchObject({ id: r[0].flashcardId, reps: 1 });
 	expect(r[2]).toMatchObject({ status: 'applied', itemId: r[0].itemId });
 	expect(r[3]).toMatchObject({ status: 'rejected', reason: 'invalid' });
 	expect(r[4]).toMatchObject({ status: 'dropped', reason: 'unknown_target' });
@@ -228,7 +228,12 @@ test('aprovar em /parear, push, snapshot e revogar', async ({ page }) => {
 	const late = (
 		await x4.push([
 			save('cancellare', new Date(Date.now() - 1_800_000).toISOString()),
-			{ ...review, clientId: randomUUID(), saveClientId: undefined, cardId: doomed.cardId }
+			{
+				...review,
+				clientId: randomUUID(),
+				saveClientId: undefined,
+				flashcardId: doomed.flashcardId
+			}
 		])
 	).body.results;
 	expect(late[0]).toMatchObject({ status: 'dropped', reason: 'item_deleted' });
@@ -270,7 +275,7 @@ test('aprovar em /parear, push, snapshot e revogar', async ({ page }) => {
 	expect(items.some((i) => i.id === doomed.itemId)).toBe(false);
 	const bello = items.find((i) => i.lemma === 'bello');
 	expect(bello).toMatchObject({ id: r[0].itemId, seenCount: 1 });
-	expect(bello.card).toEqual(r[1].card);
+	expect(bello.flashcard).toEqual(r[1].flashcard);
 
 	// Token de página de outro pedido: 410.
 	const other = await x4.snapshot(`language=it&limit=200&page=${encodeURIComponent(end1.next)}`);

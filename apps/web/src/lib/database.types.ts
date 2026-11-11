@@ -51,71 +51,6 @@ export type Database = {
         }
         Relationships: []
       }
-      cards: {
-        Row: {
-          created_at: string
-          difficulty: number
-          due_at: string
-          id: string
-          item_id: string
-          kind: string
-          lapses: number
-          last_review_at: string | null
-          learning_step: number
-          reps: number
-          schedule_status: string
-          scheduled_days: number
-          stability: number
-          stability_fast: number
-          state: number
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          difficulty?: number
-          due_at?: string
-          id?: string
-          item_id: string
-          kind: string
-          lapses?: number
-          last_review_at?: string | null
-          learning_step?: number
-          reps?: number
-          schedule_status?: string
-          scheduled_days?: number
-          stability?: number
-          stability_fast?: number
-          state?: number
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          difficulty?: number
-          due_at?: string
-          id?: string
-          item_id?: string
-          kind?: string
-          lapses?: number
-          last_review_at?: string | null
-          learning_step?: number
-          reps?: number
-          schedule_status?: string
-          scheduled_days?: number
-          stability?: number
-          stability_fast?: number
-          state?: number
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "cards_item_id_user_id_fkey"
-            columns: ["item_id", "user_id"]
-            isOneToOne: false
-            referencedRelation: "items"
-            referencedColumns: ["id", "user_id"]
-          },
-        ]
-      }
       device_pairings: {
         Row: {
           client_ip_hash: string | null
@@ -247,6 +182,132 @@ export type Database = {
           },
         ]
       }
+      fichas: {
+        Row: {
+          anki_guid: string | null
+          back: string
+          cloze_count: number
+          created_at: string
+          deleted_at: string | null
+          front: string
+          id: string
+          language: string
+          reverse: boolean
+          status: string
+          tags: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          anki_guid?: string | null
+          back?: string
+          cloze_count?: number
+          created_at?: string
+          deleted_at?: string | null
+          front: string
+          id?: string
+          language: string
+          reverse?: boolean
+          status?: string
+          tags?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          anki_guid?: string | null
+          back?: string
+          cloze_count?: number
+          created_at?: string
+          deleted_at?: string | null
+          front?: string
+          id?: string
+          language?: string
+          reverse?: boolean
+          status?: string
+          tags?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      flashcards: {
+        Row: {
+          created_at: string
+          difficulty: number
+          due_at: string
+          ficha_id: string | null
+          id: string
+          item_id: string | null
+          kind: string
+          lapses: number
+          last_review_at: string | null
+          learning_step: number
+          ord: number
+          reps: number
+          schedule_status: string
+          scheduled_days: number
+          stability: number
+          stability_fast: number
+          state: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          difficulty?: number
+          due_at?: string
+          ficha_id?: string | null
+          id?: string
+          item_id?: string | null
+          kind: string
+          lapses?: number
+          last_review_at?: string | null
+          learning_step?: number
+          ord?: number
+          reps?: number
+          schedule_status?: string
+          scheduled_days?: number
+          stability?: number
+          stability_fast?: number
+          state?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          difficulty?: number
+          due_at?: string
+          ficha_id?: string | null
+          id?: string
+          item_id?: string | null
+          kind?: string
+          lapses?: number
+          last_review_at?: string | null
+          learning_step?: number
+          ord?: number
+          reps?: number
+          schedule_status?: string
+          scheduled_days?: number
+          stability?: number
+          stability_fast?: number
+          state?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flashcards_ficha_id_user_id_fkey"
+            columns: ["ficha_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "fichas"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "flashcards_item_id_user_id_fkey"
+            columns: ["item_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       items: {
         Row: {
           created_at: string
@@ -263,6 +324,7 @@ export type Database = {
           seen_count: number
           sense: string
           status: string
+          tags: string[]
           updated_at: string
           user_id: string
         }
@@ -281,6 +343,7 @@ export type Database = {
           seen_count?: number
           sense?: string
           status?: string
+          tags?: string[]
           updated_at?: string
           user_id: string
         }
@@ -299,6 +362,7 @@ export type Database = {
           seen_count?: number
           sense?: string
           status?: string
+          tags?: string[]
           updated_at?: string
           user_id?: string
         }
@@ -306,9 +370,9 @@ export type Database = {
       }
       review_logs: {
         Row: {
-          card_id: string
           client_id: string | null
           duration_ms: number | null
+          flashcard_id: string
           id: string
           rating: number
           received_at: string
@@ -316,9 +380,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          card_id: string
           client_id?: string | null
           duration_ms?: number | null
+          flashcard_id: string
           id?: string
           rating: number
           received_at?: string
@@ -326,9 +390,9 @@ export type Database = {
           user_id: string
         }
         Update: {
-          card_id?: string
           client_id?: string | null
           duration_ms?: number | null
+          flashcard_id?: string
           id?: string
           rating?: number
           received_at?: string
@@ -337,10 +401,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "review_logs_card_id_user_id_fkey"
-            columns: ["card_id", "user_id"]
+            foreignKeyName: "review_logs_flashcard_id_user_id_fkey"
+            columns: ["flashcard_id", "user_id"]
             isOneToOne: false
-            referencedRelation: "cards"
+            referencedRelation: "flashcards"
             referencedColumns: ["id", "user_id"]
           },
         ]
@@ -372,7 +436,7 @@ export type Database = {
       user_settings: {
         Row: {
           native_language: string | null
-          new_cards_per_day: number
+          new_flashcards_per_day: number
           study_languages: unknown[]
           ui_language: string
           updated_at: string
@@ -380,7 +444,7 @@ export type Database = {
         }
         Insert: {
           native_language?: string | null
-          new_cards_per_day?: number
+          new_flashcards_per_day?: number
           study_languages?: unknown[]
           ui_language?: string
           updated_at?: string
@@ -388,7 +452,7 @@ export type Database = {
         }
         Update: {
           native_language?: string | null
-          new_cards_per_day?: number
+          new_flashcards_per_day?: number
           study_languages?: unknown[]
           ui_language?: string
           updated_at?: string
@@ -449,7 +513,7 @@ export type Database = {
       api_items: {
         Args: { p_language: string; p_token: string }
         Returns: {
-          cards: Json
+          flashcards: Json
           forms: string[]
           id: string
           lemma: string
@@ -475,10 +539,10 @@ export type Database = {
       api_save_items: {
         Args: { p_items: Json; p_token: string }
         Returns: {
-          card_due_at: string
-          card_state: number
           created: boolean
           encounter_id: string
+          flashcard_due_at: string
+          flashcard_state: number
           item_id: string
           language: string
           lemma: string
@@ -496,10 +560,10 @@ export type Database = {
       }
       api_sync_review: {
         Args: {
-          p_card_id: string
           p_client_id: string
           p_duration_ms: number
           p_expected_reps: number
+          p_flashcard_id: string
           p_next: Json
           p_rating: number
           p_result: Json
@@ -511,8 +575,8 @@ export type Database = {
       }
       api_sync_review_target: {
         Args: {
-          p_card_id: string
           p_client_id: string
+          p_flashcard_id: string
           p_save_client_id: string
           p_token: string
         }
@@ -552,9 +616,9 @@ export type Database = {
       open_work: { Args: { p_work: Json }; Returns: string }
       record_review: {
         Args: {
-          p_card_id: string
           p_client_id?: string
           p_expected_reps: number
+          p_flashcard_id: string
           p_next: Json
           p_rating: number
           p_reviewed_at: string
@@ -575,10 +639,10 @@ export type Database = {
       save_items: {
         Args: { p_items: Json }
         Returns: {
-          card_due_at: string
-          card_state: number
           created: boolean
           encounter_id: string
+          flashcard_due_at: string
+          flashcard_state: number
           item_id: string
           language: string
           lemma: string
@@ -587,10 +651,10 @@ export type Database = {
       save_items_for: {
         Args: { p_items: Json; p_user: string }
         Returns: {
-          card_due_at: string
-          card_state: number
           created: boolean
           encounter_id: string
+          flashcard_due_at: string
+          flashcard_state: number
           item_id: string
           language: string
           lemma: string
@@ -664,6 +728,7 @@ export type Database = {
         }
         Returns: string
       }
+      valid_tags: { Args: { p_tags: string[] }; Returns: boolean }
       work_for: { Args: { p_user: string; p_work: Json }; Returns: string }
     }
     Enums: {

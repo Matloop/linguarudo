@@ -13,7 +13,7 @@ export interface LanguageSummary {
 	language: Language;
 	/** Itens no banco (ativos e conhecidos), sem os apagados. */
 	items: number;
-	/** Cartões que entram na revisão agora: vencidos + novos até o limite do dia. */
+	/** Flashcards que entram na revisão agora: vencidos + novos até o limite do dia. */
 	toReview: number;
 	dueNow: number;
 	newAvailable: number;
@@ -25,9 +25,9 @@ export interface ShellSummary {
 	newDoneToday: number;
 }
 
-function activeCards(supabase: Client, userId: string, language: Language) {
+function activeFlashcards(supabase: Client, userId: string, language: Language) {
 	return supabase
-		.from('cards')
+		.from('flashcards')
 		.select('id, items!inner(language, status, deleted_at)', { count: 'exact', head: true })
 		.eq('user_id', userId)
 		.eq('items.language', language)
@@ -60,8 +60,8 @@ export async function loadShellSummary(
 						.eq('language', language)
 						.is('deleted_at', null)
 				),
-				count(activeCards(supabase, userId, language).gt('state', 0).lte('due_at', nowIso)),
-				count(activeCards(supabase, userId, language).eq('state', 0))
+				count(activeFlashcards(supabase, userId, language).gt('state', 0).lte('due_at', nowIso)),
+				count(activeFlashcards(supabase, userId, language).eq('state', 0))
 			])
 		)
 	]);
@@ -84,7 +84,7 @@ export async function loadShellSummary(
 	};
 }
 
-/** Quando o próximo cartão do idioma vence, para o "volta amanhã às 09:00". */
+/** Quando o próximo flashcard do idioma vence, para o "volta amanhã às 09:00". */
 export async function nextDueText(
 	supabase: Client,
 	userId: string,
@@ -92,7 +92,7 @@ export async function nextDueText(
 	now: Date
 ): Promise<string | null> {
 	const { data } = await supabase
-		.from('cards')
+		.from('flashcards')
 		.select('due_at, items!inner(language, status, deleted_at)')
 		.eq('user_id', userId)
 		.eq('items.language', language)

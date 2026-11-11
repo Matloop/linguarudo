@@ -82,7 +82,7 @@
 
 	function onkeydown(e: KeyboardEvent) {
 		const action = shortcutFor(e, {
-			screen: 'revisar',
+			screen: 'flashcards',
 			typing: isTypingTarget(e.target),
 			dialogOpen: !!document.querySelector('dialog[open], details.lang-wrap[open]'),
 			flipped
@@ -116,10 +116,10 @@
 				hit = null;
 				message = (result.data as { message?: string } | undefined)?.message ?? null;
 				message ??= 'Não deu para salvar agora.';
-				const failed = result.data as { cardId?: string } | undefined;
-				// Cartão avaliado em outra aba, item apagado ou marcado como conhecido: sai da fila.
+				const failed = result.data as { flashcardId?: string } | undefined;
+				// Flashcard avaliado em outra aba, item apagado ou marcado como conhecido: sai da fila.
 				if (result.status === 409 || result.status === 404) {
-					session.queue = session.queue.filter((i) => i.cardId !== failed?.cardId);
+					session.queue = session.queue.filter((i) => i.flashcardId !== failed?.flashcardId);
 					await showFront();
 					invalidate(REVIEW_DEPENDENCY);
 				}
@@ -165,7 +165,7 @@
 <svelte:window {onkeydown} />
 
 <svelte:head>
-	<title>Revisar · Linguetta</title>
+	<title>Flashcards · Linguetta</title>
 </svelte:head>
 
 {#snippet source()}
@@ -199,7 +199,7 @@
 </form>
 
 {#if session.answered === 0 && !current}
-	<div class="ph"><div><h1>Revisar</h1></div></div>
+	<div class="ph"><div><h1>Flashcards</h1></div></div>
 	<div class="empty">
 		<div>
 			<Mark class="mark mark-hero" />
@@ -210,8 +210,10 @@
 				<p>Quando você guardar palavras em {languageName}, elas aparecem aqui no dia certo.</p>
 			{/if}
 			<div class="acts">
-				<a class="btn btn-primary btn-lg" href={resolve('/revisar?guardar')} data-sveltekit-noscroll
-					><Icon name="plus" />Guardar palavra</a
+				<a
+					class="btn btn-primary btn-lg"
+					href={resolve('/flashcards?guardar')}
+					data-sveltekit-noscroll><Icon name="plus" />Guardar palavra</a
 				>
 				<a class="btn btn-soft btn-lg" href={resolve('/inicio')}>Voltar ao início</a>
 			</div>
@@ -240,10 +242,10 @@
 
 		{#if current}
 			<div class="rv-stage">
-				{#key current.cardId}
-					<div class="card3d enter" class:flipped data-testid="cartao">
+				{#key current.flashcardId}
+					<div class="card3d enter" class:flipped data-testid="flashcard">
 						<div class="card-in">
-							<section class="face front" inert={flipped} aria-label="Frente do cartão">
+							<section class="face front" inert={flipped} aria-label="Frente do flashcard">
 								{@render source()}
 								<div class="mid">
 									{#if current.kind === 'produzir'}
@@ -259,7 +261,7 @@
 								</div>
 								{#if current.kind === 'reconhecer'}{@render sentence(true)}{/if}
 							</section>
-							<section class="face back" inert={!flipped} aria-label="Verso do cartão">
+							<section class="face back" inert={!flipped} aria-label="Verso do flashcard">
 								{@render source()}
 								<div class="mid">
 									{#if current.kind === 'produzir'}
@@ -296,7 +298,7 @@
 						aria-label="Como foi?"
 						hidden={!flipped}
 					>
-						<input type="hidden" name="cardId" value={current.cardId} />
+						<input type="hidden" name="flashcardId" value={current.flashcardId} />
 						<input type="hidden" name="reps" value={current.reps} />
 						<div class="grade-row" bind:this={grades}>
 							{#each GRADES as grade (grade)}

@@ -25,7 +25,7 @@
 		},
 		{
 			q: 'Como funciona a revisão?',
-			r: 'Cada palavra guardada vira um cartão. O FSRS decide quando ela volta: a que você lembra fácil some por mais tempo, a que você erra volta logo. São 10 palavras novas por dia, e você muda isso no perfil.'
+			r: 'Cada palavra guardada vira um flashcard. O FSRS decide quando ela volta: a que você lembra fácil some por mais tempo, a que você erra volta logo. São 10 palavras novas por dia, e você muda isso no perfil.'
 		},
 		{
 			q: 'Quais idiomas?',
@@ -89,7 +89,7 @@
 				</div>
 			</div>
 
-			<figure class="shot" aria-label="Exemplo de cartão de revisão">
+			<figure class="shot" aria-label="Exemplo de flashcard de revisão">
 				<div class="card">
 					<div class="card-h">
 						<span class="src"><Icon name="tv" size="sm" />Kaguya · T1E2, 42:10</span>
@@ -107,7 +107,7 @@
 					<span data-g="3"><b>Bom</b>1 dia</span>
 					<span data-g="4"><b>Fácil</b>4 dias</span>
 				</div>
-				<figcaption>Um cartão de verdade: a palavra, a frase e de onde ela veio.</figcaption>
+				<figcaption>Um flashcard de verdade: a palavra, a frase e de onde ela veio.</figcaption>
 			</figure>
 		</section>
 
@@ -125,7 +125,7 @@
 				</li>
 				<li>
 					<b>Revisa no dia certo</b>
-					<span>Um cartão por vez: você vê a palavra, lembra o sentido e diz como foi.</span>
+					<span>Um flashcard por vez: você vê a palavra, lembra o sentido e diz como foi.</span>
 				</li>
 			</ol>
 		</section>

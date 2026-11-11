@@ -6,7 +6,7 @@ import { apiClient, json, readJson, requireToken, rpcFailure } from '#lib/server
 import type { RequestHandler } from './$types';
 
 /**
- * Itens do banco num idioma, com os cartões. `preferWords` são os lemas que a
+ * Itens do banco num idioma, com os flashcards. `preferWords` são os lemas que a
  * legenda deve trocar primeiro (aprendendo, reaprendendo ou revisão vencida).
  */
 export const GET: RequestHandler = async (event) => {

@@ -7,7 +7,7 @@ import {
 	parseItemInput,
 	type ItemEditField,
 	type ItemField,
-	type CardKind,
+	type FlashcardKind,
 	type ItemStatus,
 	type Origin,
 	type SaveEntry
@@ -48,7 +48,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 	const { data, error: dbError } = await locals.supabase
 		.from('items')
 		.select(
-			'id, language, lemma, reading, sense, ipa, note, status, seen_count, created_at, cards(id, kind, state, stability, due_at), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
+			'id, language, lemma, reading, sense, ipa, note, status, seen_count, created_at, flashcards(id, kind, state, stability, due_at), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
 		)
 		.eq('user_id', user.id)
 		.eq('language', language)
@@ -60,16 +60,16 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 		.limit(PAGE_SIZE);
 	if (dbError) error(500, 'Não deu para carregar suas palavras agora.');
 
-	const items = data.map(({ cards, encounters, seen_count, created_at, ...item }) => {
+	const items = data.map(({ flashcards, encounters, seen_count, created_at, ...item }) => {
 		const status = item.status as ItemStatus;
-		const dueAts = status === 'ativo' ? cards.map((c) => c.due_at) : [];
+		const dueAts = status === 'ativo' ? flashcards.map((c) => c.due_at) : [];
 		return {
 			...item,
 			status,
 			createdAt: created_at,
 			seenCount: seen_count,
-			strength: itemStrength(cards),
-			hasProduce: cards.some((c) => c.kind === 'produzir'),
+			strength: itemStrength(flashcards),
+			hasProduce: flashcards.some((c) => c.kind === 'produzir'),
 			dueToday: status === 'ativo' && isDueToday(dueAts, now),
 			next: status === 'ativo' ? formatNextReview(dueAts, now) : '',
 			encounters: encounters.map((e) => ({
@@ -88,19 +88,19 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 	// O painel lateral (?item=) traz o histórico de revisões daquele item.
 	const selectedId = url.searchParams.get('item');
 	const selected = items.find((i) => i.id === selectedId) ?? null;
-	let history: { rating: number; reviewedAt: string; kind: CardKind }[] = [];
+	let history: { rating: number; reviewedAt: string; kind: FlashcardKind }[] = [];
 	if (selected) {
 		const { data: logs } = await locals.supabase
 			.from('review_logs')
-			.select('rating, reviewed_at, cards!inner(item_id, kind)')
+			.select('rating, reviewed_at, flashcards!inner(item_id, kind)')
 			.eq('user_id', user.id)
-			.eq('cards.item_id', selected.id)
+			.eq('flashcards.item_id', selected.id)
 			.order('reviewed_at', { ascending: false })
 			.limit(HISTORY_SHOWN);
 		history = (logs ?? []).map((l) => ({
 			rating: l.rating,
 			reviewedAt: l.reviewed_at,
-			kind: (l.cards as unknown as { kind: CardKind }).kind
+			kind: (l.flashcards as unknown as { kind: FlashcardKind }).kind
 		}));
 	}
 

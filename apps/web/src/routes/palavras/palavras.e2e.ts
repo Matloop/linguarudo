@@ -19,7 +19,7 @@ test('sem login, /palavras manda para /entrar', async ({ page }) => {
 test('anon não lê items nem encounters direto pela API', async () => {
 	const key = process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 	test.skip(!key, 'PUBLIC_SUPABASE_PUBLISHABLE_KEY não definido');
-	for (const table of ['items', 'encounters', 'works', 'cards']) {
+	for (const table of ['items', 'encounters', 'works', 'flashcards']) {
 		const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=id`, {
 			headers: { apikey: key!, authorization: `Bearer ${key}` }
 		});

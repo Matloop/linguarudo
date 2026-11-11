@@ -1,17 +1,17 @@
 // Agendamento FSRS (ts-fsrs). Só roda no servidor: o navegador recebe os
 // rótulos de intervalo prontos e manda a nota; quem calcula o próximo estado é aqui.
-// O cronograma de um cartão é função do log de revisões (ADR 0001): replay() o
+// O cronograma de um flashcard é função do log de revisões (ADR 0001): replay() o
 // reconstrói do zero, na ordem de reviewed_at.
 
 import { DefaultScheduler } from 'ts-fsrs';
-import type { CardKind } from '#lib/items.ts';
+import type { FlashcardKind } from '#lib/items.ts';
 import { formatInterval, type Grade } from '#lib/review.ts';
 
 /** Retenção desejada fixa no MVP. */
 export const DESIRED_RETENTION = 0.9;
 
 /** Colunas de agendamento da tabela cards (snake_case, como vêm do banco). */
-export interface CardFields {
+export interface FlashcardFields {
 	due_at: string;
 	stability: number;
 	stability_fast: number;
@@ -25,7 +25,7 @@ export interface CardFields {
 	learning_step: number;
 }
 
-export interface CardRow extends CardFields {
+export interface FlashcardRow extends FlashcardFields {
 	id: string;
 }
 
@@ -36,8 +36,8 @@ export interface LogEntry {
 	reviewed_at: string;
 }
 
-/** O que define o cartão antes de qualquer revisão. */
-export interface CardSeed {
+/** O que define o flashcard antes de qualquer revisão. */
+export interface FlashcardSeed {
 	id: string;
 	created_at: string;
 }
@@ -60,7 +60,7 @@ function scheduler() {
 type Scheduler = Awaited<ReturnType<typeof createScheduler>>;
 type FsrsCard = ReturnType<Scheduler['newCard']>;
 
-function toFsrs(row: CardRow): FsrsCard {
+function toFsrs(row: FlashcardRow): FsrsCard {
 	return {
 		cardId: row.id,
 		dueAt: new Date(row.due_at),
@@ -77,7 +77,7 @@ function toFsrs(row: CardRow): FsrsCard {
 	} as FsrsCard;
 }
 
-function fromFsrs(card: FsrsCard): CardFields {
+function fromFsrs(card: FsrsCard): FlashcardFields {
 	return {
 		due_at: card.dueAt.toISOString(),
 		stability: card.stability,
@@ -93,15 +93,15 @@ function fromFsrs(card: FsrsCard): CardFields {
 	};
 }
 
-/** Aplica uma nota ao cartão, no instante dado. */
-export async function applyRating(row: CardRow, grade: Grade, now: Date) {
+/** Aplica uma nota ao flashcard, no instante dado. */
+export async function applyRating(row: FlashcardRow, grade: Grade, now: Date) {
 	const s = await scheduler();
 	const result = s.review({ card: toFsrs(row), grade, now });
 	return { next: fromFsrs(result.card) };
 }
 
-/** Cartão novo, como o banco cria: vence na criação. */
-function emptyCard(seed: CardSeed): CardRow {
+/** Flashcard novo, como o banco cria: vence na criação. */
+function emptyFlashcard(seed: FlashcardSeed): FlashcardRow {
 	return {
 		id: seed.id,
 		due_at: seed.created_at,
@@ -118,20 +118,20 @@ function emptyCard(seed: CardSeed): CardRow {
 	};
 }
 
-function intervalDays(next: CardFields, reviewedAt: string): number {
+function intervalDays(next: FlashcardFields, reviewedAt: string): number {
 	return (Date.parse(next.due_at) - Date.parse(reviewedAt)) / DAY_MS;
 }
 
 /**
- * Reconstrói o cartão aplicando o log em ordem de reviewed_at (empate: ordem recebida).
+ * Reconstrói o flashcard aplicando o log em ordem de reviewed_at (empate: ordem recebida).
  * maxIntervalDays é o maior intervalo que alguma revisão deu (para o Produzir).
  */
-export async function replay(seed: CardSeed, logs: readonly LogEntry[]) {
+export async function replay(seed: FlashcardSeed, logs: readonly LogEntry[]) {
 	const ordered = logs
 		.map((log, i) => ({ log, i }))
 		.sort((a, b) => Date.parse(a.log.reviewed_at) - Date.parse(b.log.reviewed_at) || a.i - b.i);
-	const { id, ...empty } = emptyCard(seed);
-	let card: CardFields = empty;
+	const { id, ...empty } = emptyFlashcard(seed);
+	let card: FlashcardFields = empty;
 	let maxIntervalDays = 0;
 	for (const { log } of ordered) {
 		const { next } = await applyRating({ id, ...card }, log.rating, new Date(log.reviewed_at));
@@ -144,10 +144,10 @@ export async function replay(seed: CardSeed, logs: readonly LogEntry[]) {
 /**
  * Próximo estado depois de uma revisão nova. Se ela é mais recente que a última
  * aplicada, basta aplicar a nota. Se chegou atrasada (revisada offline antes de
- * outra que já entrou), o cartão inteiro é recalculado pelo log.
+ * outra que já entrou), o flashcard inteiro é recalculado pelo log.
  */
 export async function scheduleReview(
-	row: CardRow & CardSeed,
+	row: FlashcardRow & FlashcardSeed,
 	logs: readonly LogEntry[],
 	review: LogEntry
 ) {
@@ -163,7 +163,7 @@ export async function scheduleReview(
 
 /** Uma revisão de Reconhecer com intervalo longo cria o Produzir, se houver sentido a pedir. */
 export function unlocksProduce(r: {
-	kind: CardKind;
+	kind: FlashcardKind;
 	sense: string;
 	intervalDays: number;
 }): boolean {
@@ -171,7 +171,10 @@ export function unlocksProduce(r: {
 }
 
 /** Rótulos em PT do próximo intervalo de cada botão. */
-export async function previewIntervals(row: CardRow, now: Date): Promise<Record<Grade, string>> {
+export async function previewIntervals(
+	row: FlashcardRow,
+	now: Date
+): Promise<Record<Grade, string>> {
 	const s = await scheduler();
 	const labels = {} as Record<Grade, string>;
 	for (const { grade, card } of s.preview({ card: toFsrs(row), now })) {

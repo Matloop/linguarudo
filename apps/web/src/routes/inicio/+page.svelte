@@ -122,7 +122,7 @@
 					</h1>
 					<p class="sub">{sub}</p>
 					<div class="h1-cta">
-						<a class="btn btn-primary btn-lg" href={resolve('/revisar')}
+						<a class="btn btn-primary btn-lg" href={resolve('/flashcards')}
 							><Icon name="play" size="sm" />Revisar agora</a
 						>
 						<span class="hint">ou aperte <kbd>R</kbd></span>

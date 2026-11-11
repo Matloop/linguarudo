@@ -26,7 +26,7 @@ type SnapshotPage = {
 		ui_language: string | null;
 		native_language: string | null;
 		study_languages: string[] | null;
-		new_cards_per_day: number;
+		new_flashcards_per_day: number;
 	} | null;
 	total?: number;
 	newDoneToday?: number;
@@ -82,7 +82,7 @@ export const GET: RequestHandler = (event) =>
 				uiLanguage: parseUiLanguage(res.account?.ui_language),
 				nativeLanguage: parseLanguage(res.account?.native_language),
 				studyLanguages: parseStudyLanguages(res.account?.study_languages ?? []) ?? [],
-				newCardsPerDay: res.account?.new_cards_per_day ?? DEFAULT_NEW_PER_DAY,
+				newFlashcardsPerDay: res.account?.new_flashcards_per_day ?? DEFAULT_NEW_PER_DAY,
 				timeZone: REVIEW_TIME_ZONE,
 				dayStart: dayStart(now),
 				nextDayStart: nextDayStart(now),

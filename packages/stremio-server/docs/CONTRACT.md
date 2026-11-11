@@ -148,16 +148,16 @@ O vocabulário é o do glossário do app (`CONTEXT.md`): **item** (palavra ou ex
   lemma: "festa",
   sense: "festa, celebração",  // pode vir vazio
   status: "ativo",             // "ativo" | "conhecido" (conhecido não entra na revisão)
-  mastered: false,             // dominado: todo cartão em revisão com estabilidade >= 90 dias
+  mastered: false,             // dominado: todo flashcard em revisão com estabilidade >= 90 dias
   prefer: true,                // entra primeiro na legenda
-  cards: [{ kind: "reconhecer", state: 2, dueAt: "2026-11-10T12:00:00.000Z", stability: 12.5 }],
+  flashcards: [{ kind: "reconhecer", state: 2, dueAt: "2026-11-10T12:00:00.000Z", stability: 12.5 }],
   forms: ["feste"]             // formas vistas nos encontros, com a caixa como foram vistas, sem o lema (até 20)
 }
 ```
 
 - `kind`: `reconhecer` (ver o lema, lembrar o sentido) ou `produzir` (ver o sentido, lembrar o lema). Todo item nasce com o Reconhecer. O Produzir nasce quando uma revisão do Reconhecer dá intervalo de 7 dias ou mais e o item tem sentido.
-- `state` é o estado FSRS do cartão: 0 novo, 1 aprendendo, 2 revisão, 3 reaprendendo.
-- `prefer` vale para item ativo com algum cartão em 1 ou 3, ou em 2 com `dueAt` vencido. `preferWords` é a lista desses lemas, pronta para o `/annotate`.
+- `state` é o estado FSRS do flashcard: 0 novo, 1 aprendendo, 2 revisão, 3 reaprendendo.
+- `prefer` vale para item ativo com algum flashcard em 1 ou 3, ou em 2 com `dueAt` vencido. `preferWords` é a lista desses lemas, pronta para o `/annotate`.
 - Itens apagados não aparecem.
 - `forms` serve ao modo só língua-alvo (seção 6): uma palavra da legenda conta como do banco se a `lemmaKey` dela for a do lema ou a de uma dessas formas.
 - `lemma` vem com a caixa do dicionário ("Haus"); `preferWords` idem. Compare sempre pela `lemmaKey`.
@@ -203,13 +203,13 @@ Só `language` e `lemma` são obrigatórios. Textos longos demais são cortados;
 ### `SaveResult`
 
 ```js
-{ ok: true, item: { id, language, lemma, created, encounterId, card: { state, dueAt } } }
+{ ok: true, item: { id, language, lemma, created, encounterId, flashcard: { state, dueAt } } }
 { ok: false, error: "lemma vazio" }
 ```
 
 - `created: false`: o item já estava no banco (ou repetido no lote). O encontro entra nele mesmo assim.
 - `encounterId` é `null` quando o item veio sem `encounter`. Reenviar o mesmo `clientId` devolve o mesmo `encounterId`.
-- `card` é o Reconhecer do item.
+- `flashcard` é o Reconhecer do item.
 
 ### Visto
 

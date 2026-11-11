@@ -5,7 +5,7 @@ import type { PageServerLoad } from './$types';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** O cartão do leque: o primeiro que a revisão vai mostrar (vencido, senão novo). */
+/** O flashcard do leque: o primeiro que a revisão vai mostrar (vencido, senão novo). */
 const CARD_ITEM =
 	'id, due_at, state, items!inner(lemma, ipa, language, status, deleted_at, encounters(origin, position, seen_at, deleted_at, works(title, subtitle)))';
 
@@ -43,9 +43,9 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 		};
 	}
 
-	const cards = () =>
+	const flashcards = () =>
 		locals.supabase
-			.from('cards')
+			.from('flashcards')
 			.select(CARD_ITEM)
 			.eq('user_id', user.id)
 			.eq('items.language', language)
@@ -56,8 +56,8 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 			.limit(1, { referencedTable: 'items.encounters' });
 
 	const [due, fresh, last, week, song, tokens, nextDue] = await Promise.all([
-		cards().gt('state', 0).lte('due_at', nowIso).order('due_at').limit(1).maybeSingle(),
-		cards().eq('state', 0).order('created_at').limit(1).maybeSingle(),
+		flashcards().gt('state', 0).lte('due_at', nowIso).order('due_at').limit(1).maybeSingle(),
+		flashcards().eq('state', 0).order('created_at').limit(1).maybeSingle(),
 		locals.supabase
 			.from('items')
 			.select('lemma, created_at')

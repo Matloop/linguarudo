@@ -52,7 +52,10 @@ describe('parseBearer', () => {
 describe('isPreferred', () => {
 	const now = new Date('2026-11-10T15:00:00.000Z');
 	const card = (state: number, due_at = '2026-11-10T12:00:00.000Z') => ({ state, due_at });
-	const ativo = (...cards: ReturnType<typeof card>[]) => ({ status: 'ativo' as const, cards });
+	const ativo = (...flashcards: ReturnType<typeof card>[]) => ({
+		status: 'ativo' as const,
+		flashcards
+	});
 
 	test('aprendendo e reaprendendo entram sempre', () => {
 		expect(isPreferred(ativo(card(1, '2026-12-01T00:00:00Z')), now)).toBe(true);
@@ -64,14 +67,14 @@ describe('isPreferred', () => {
 		expect(isPreferred(ativo(card(2, '2026-11-11T00:00:00Z')), now)).toBe(false);
 	});
 
-	test('basta um cartão do item (Reconhecer ou Produzir)', () => {
+	test('basta um flashcard do item (Reconhecer ou Produzir)', () => {
 		expect(isPreferred(ativo(card(0), card(2)), now)).toBe(true);
 	});
 
-	test('novos, sem cartão e conhecidos não entram', () => {
+	test('novos, sem flashcard e conhecidos não entram', () => {
 		expect(isPreferred(ativo(card(0)), now)).toBe(false);
 		expect(isPreferred(ativo(), now)).toBe(false);
-		expect(isPreferred({ status: 'conhecido', cards: [card(1)] }, now)).toBe(false);
+		expect(isPreferred({ status: 'conhecido', flashcards: [card(1)] }, now)).toBe(false);
 	});
 });
 
@@ -137,13 +140,13 @@ describe('apiItem', () => {
 		reading: '',
 		sense: 'esperar',
 		status: 'ativo',
-		cards: [
+		flashcards: [
 			{ kind: 'reconhecer', state: 2, due_at: '2026-11-10T00:00:00Z', stability: 12.5 },
 			{ kind: 'produzir', state: 0, due_at: '2026-11-11T00:00:00Z', stability: 0 }
 		]
 	};
 
-	test('item com cartões em camelCase, prefer e dominado', () => {
+	test('item com flashcards em camelCase, prefer e dominado', () => {
 		expect(apiItem(row, 'it', now)).toEqual({
 			id: 'i1',
 			lemma: 'aspettare',
@@ -153,7 +156,7 @@ describe('apiItem', () => {
 			status: 'ativo',
 			mastered: false,
 			prefer: true,
-			cards: [
+			flashcards: [
 				{ kind: 'reconhecer', state: 2, dueAt: '2026-11-10T00:00:00Z', stability: 12.5 },
 				{ kind: 'produzir', state: 0, dueAt: '2026-11-11T00:00:00Z', stability: 0 }
 			],
@@ -187,16 +190,16 @@ describe('apiItem', () => {
 		expect(apiItem({ ...neko, reading: null }, 'ja', now).reading).toBe('');
 	});
 
-	test('cards fora do formato viram lista vazia', () => {
-		expect(apiItem({ ...row, cards: null }, 'it', now).cards).toEqual([]);
-		expect(apiItem({ ...row, cards: [{ kind: 'x' }] }, 'it', now).cards).toEqual([]);
+	test('flashcards fora do formato viram lista vazia', () => {
+		expect(apiItem({ ...row, flashcards: null }, 'it', now).flashcards).toEqual([]);
+		expect(apiItem({ ...row, flashcards: [{ kind: 'x' }] }, 'it', now).flashcards).toEqual([]);
 	});
 
-	test('dominado quando todos os cartões estão estáveis', () => {
-		const cards = [
+	test('dominado quando todos os flashcards estão estáveis', () => {
+		const flashcards = [
 			{ kind: 'reconhecer', state: 2, due_at: '2027-06-01T00:00:00Z', stability: 120 }
 		];
-		const out = apiItem({ ...row, cards }, 'it', now);
+		const out = apiItem({ ...row, flashcards }, 'it', now);
 		expect(out.mastered).toBe(true);
 		expect(out.prefer).toBe(false);
 	});
@@ -209,8 +212,8 @@ describe('apiSaveResults', () => {
 		lemma: 'aspettare',
 		created: true,
 		encounter_id: 'e1',
-		card_state: 0,
-		card_due_at: '2026-11-11T12:00:00Z'
+		flashcard_state: 0,
+		flashcard_due_at: '2026-11-11T12:00:00Z'
 	};
 
 	test('uma resposta por entrada, na ordem; inválidas ficam no lugar', () => {
@@ -228,7 +231,7 @@ describe('apiSaveResults', () => {
 					lemmaKey: 'aspettare',
 					created: true,
 					encounterId: 'e1',
-					card: { state: 0, dueAt: '2026-11-11T12:00:00Z' }
+					flashcard: { state: 0, dueAt: '2026-11-11T12:00:00Z' }
 				}
 			},
 			{ ok: false, error: 'language inválido' }

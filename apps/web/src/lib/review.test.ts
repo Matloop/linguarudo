@@ -23,7 +23,7 @@ import {
 	startSession,
 	STRENGTH_LABELS,
 	undoLast,
-	type QueueCard,
+	type QueueFlashcard,
 	type ReviewItem
 } from './review';
 
@@ -31,7 +31,7 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
-function card(id: string, over: Partial<QueueCard> = {}): QueueCard {
+function card(id: string, over: Partial<QueueFlashcard> = {}): QueueFlashcard {
 	return {
 		id,
 		state: 2,
@@ -43,7 +43,7 @@ function card(id: string, over: Partial<QueueCard> = {}): QueueCard {
 
 function item(id: string, over: Partial<ReviewItem> = {}): ReviewItem {
 	return {
-		cardId: id,
+		flashcardId: id,
 		kind: 'reconhecer',
 		reps: 0,
 		state: 0,
@@ -78,7 +78,7 @@ describe('buildQueue', () => {
 		expect(q.map((c) => c.id)).toEqual(['venc-1', 'venc-2', 'novo-a', 'novo-b']);
 	});
 
-	test('ignora cartões que ainda não venceram', () => {
+	test('ignora flashcards que ainda não venceram', () => {
 		const q = buildQueue([card('futuro', { dueAt: '2026-11-11T00:00:00.000Z' }), card('ok')], {
 			now,
 			newLimit: 10,
@@ -261,7 +261,7 @@ describe('sessão', () => {
 			updated: item('a', { dueAt: '2026-11-15T00:00:00.000Z' }),
 			now
 		});
-		expect(s.queue.map((i) => i.cardId)).toEqual(['b']);
+		expect(s.queue.map((i) => i.flashcardId)).toEqual(['b']);
 		expect(s.answered).toBe(1);
 		expect(s.correct).toBe(1);
 		expect(sessionProgress(s)).toBe(50);
@@ -275,13 +275,13 @@ describe('sessão', () => {
 			updated: item('a', { reps: 1, state: 1, dueAt: '2026-11-10T15:01:00.000Z' }),
 			now
 		});
-		expect(s.queue.map((i) => i.cardId)).toEqual(['b', 'a']);
+		expect(s.queue.map((i) => i.flashcardId)).toEqual(['b', 'a']);
 		expect(s.queue[1].reps).toBe(1);
 		expect(s.correct).toBe(0);
 		expect(sessionProgress(s)).toBe(33);
 	});
 
-	test('desfazer devolve o cartão ao topo com o estado anterior e acerta as contas', () => {
+	test('desfazer devolve o flashcard ao topo com o estado anterior e acerta as contas', () => {
 		const original = item('a');
 		let s = startSession([original, item('b')]);
 		s = answerItem(s, {
@@ -293,7 +293,7 @@ describe('sessão', () => {
 		expect(s.last?.logId).toBe('l1');
 
 		s = undoLast(s, original);
-		expect(s.queue.map((i) => i.cardId)).toEqual(['a', 'b']);
+		expect(s.queue.map((i) => i.flashcardId)).toEqual(['a', 'b']);
 		expect(s.queue[0].reps).toBe(0);
 		expect(s.answered).toBe(0);
 		expect(s.correct).toBe(0);
@@ -324,12 +324,12 @@ describe('sessão', () => {
 describe('isMastered', () => {
 	const review = (stability: number) => ({ state: 2, stability });
 
-	test('todos os cartões em revisão com estabilidade alta', () => {
+	test('todos os flashcards em revisão com estabilidade alta', () => {
 		expect(isMastered([review(MASTERED_STABILITY_DAYS)])).toBe(true);
 		expect(isMastered([review(120), review(95)])).toBe(true);
 	});
 
-	test('basta um cartão abaixo do limite para não ser dominado', () => {
+	test('basta um flashcard abaixo do limite para não ser dominado', () => {
 		expect(isMastered([review(120), review(MASTERED_STABILITY_DAYS - 1)])).toBe(false);
 	});
 
@@ -337,7 +337,7 @@ describe('isMastered', () => {
 		expect(isMastered([{ state: 3, stability: 200 }])).toBe(false);
 	});
 
-	test('sem cartões não é dominado', () => {
+	test('sem flashcards não é dominado', () => {
 		expect(isMastered([])).toBe(false);
 	});
 
@@ -373,7 +373,7 @@ describe('sessão conta as notas', () => {
 describe('itemStrength', () => {
 	const c = (state: number, stability: number) => ({ state, stability });
 
-	test('só cartões novos é força 0 (Nova)', () => {
+	test('só flashcards novos é força 0 (Nova)', () => {
 		expect(itemStrength([c(0, 0)])).toBe(0);
 		expect(itemStrength([])).toBe(0);
 		expect(STRENGTH_LABELS[0]).toBe('Nova');
@@ -390,7 +390,7 @@ describe('itemStrength', () => {
 		expect(STRENGTH_LABELS[4]).toBe('Dominada');
 	});
 
-	test('cartão novo ao lado de um antigo não zera a força', () => {
+	test('flashcard novo ao lado de um antigo não zera a força', () => {
 		expect(itemStrength([c(2, 40), c(0, 0)])).toBe(3);
 	});
 });
@@ -399,7 +399,7 @@ describe('próxima revisão', () => {
 	// 15:00 UTC = 12:00 em São Paulo.
 	const now = new Date('2026-11-11T15:00:00.000Z');
 
-	test('o cartão que vence primeiro decide; vencido ou hoje é "hoje"', () => {
+	test('o flashcard que vence primeiro decide; vencido ou hoje é "hoje"', () => {
 		expect(formatNextReview(['2026-11-20T15:00:00.000Z', '2026-11-11T10:00:00.000Z'], now)).toBe(
 			'hoje'
 		);
@@ -434,7 +434,7 @@ describe('datas da interface', () => {
 		expect(formatAgo(new Date('2026-10-12T20:00:00.000Z'), now)).toBe('12 out');
 	});
 
-	test('estimateMinutes: uns 30 segundos por cartão, no mínimo 1', () => {
+	test('estimateMinutes: uns 30 segundos por flashcard, no mínimo 1', () => {
 		expect(estimateMinutes(1)).toBe(1);
 		expect(estimateMinutes(13)).toBe(7);
 		expect(estimateMinutes(0)).toBe(0);

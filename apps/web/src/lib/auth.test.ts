@@ -30,8 +30,8 @@ describe('isProtectedPath', () => {
 		expect(isProtectedPath('/perfil')).toBe(true);
 	});
 
-	test('/revisar exige login', () => {
-		expect(isProtectedPath('/revisar')).toBe(true);
+	test('/flashcards exige login', () => {
+		expect(isProtectedPath('/flashcards')).toBe(true);
 	});
 
 	test('/musica e subrotas exigem login', () => {

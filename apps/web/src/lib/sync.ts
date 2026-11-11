@@ -113,7 +113,7 @@ export type ReviewOp = {
 	clientId: string;
 	at: string;
 	language: Language;
-	cardId: string | null;
+	flashcardId: string | null;
 	saveClientId: string | null;
 	rating: Grade;
 	durationMs: number | null;
@@ -232,14 +232,15 @@ export function parseOp(raw: unknown): ParsedOp {
 	}
 
 	if (type === 'review') {
-		const cardId = r.cardId == null || r.cardId === '' ? null : uuid(r.cardId);
+		const flashcardId = r.flashcardId == null || r.flashcardId === '' ? null : uuid(r.flashcardId);
 		const saveClientId =
 			r.saveClientId == null || r.saveClientId === '' ? null : uuid(r.saveClientId);
-		const hasCard = !(r.cardId == null || r.cardId === '');
+		const hasFlashcard = !(r.flashcardId == null || r.flashcardId === '');
 		const hasSave = !(r.saveClientId == null || r.saveClientId === '');
-		if (hasCard && hasSave) errors.cardId = 'mande cardId ou saveClientId, não os dois';
-		else if (!hasCard && !hasSave) errors.cardId = 'falta cardId ou saveClientId';
-		else if (hasCard && !cardId) errors.cardId = 'cardId precisa ser um uuid';
+		if (hasFlashcard && hasSave)
+			errors.flashcardId = 'mande flashcardId ou saveClientId, não os dois';
+		else if (!hasFlashcard && !hasSave) errors.flashcardId = 'falta flashcardId ou saveClientId';
+		else if (hasFlashcard && !flashcardId) errors.flashcardId = 'flashcardId precisa ser um uuid';
 		else if (hasSave && !saveClientId) errors.saveClientId = 'saveClientId precisa ser um uuid';
 		if (!isGrade(r.rating)) errors.rating = 'nota de 1 a 4';
 		// Duração é opcional e só informativa: valor fora da faixa vira ausente.
@@ -256,7 +257,7 @@ export function parseOp(raw: unknown): ParsedOp {
 				clientId,
 				at: at!,
 				language: language as Language,
-				cardId,
+				flashcardId,
 				saveClientId,
 				rating: r.rating as Grade,
 				durationMs
@@ -333,10 +334,10 @@ export function toOpResult(
 	return { clientId, ...result, status } as OpResult;
 }
 
-// ---------- Estado do cartão ----------
+// ---------- Estado do flashcard ----------
 
-/** Linha de cards (snake_case, como sai do banco). */
-export interface CardRowJson {
+/** Linha de flashcards (snake_case, como sai do banco). */
+export interface FlashcardRowJson {
 	id: string;
 	created_at: string;
 	due_at: string;
@@ -352,7 +353,7 @@ export interface CardRowJson {
 	learning_step: number;
 }
 
-export interface CardState {
+export interface FlashcardState {
 	id: string;
 	createdAt: string;
 	dueAt: string;
@@ -374,7 +375,7 @@ export function iso(v: string): string {
 }
 
 /** O Reconhecer em camelCase, todos os campos sempre presentes. */
-export function cardState(c: CardRowJson): CardState {
+export function flashcardState(c: FlashcardRowJson): FlashcardState {
 	return {
 		id: c.id,
 		createdAt: iso(c.created_at),
@@ -418,7 +419,7 @@ export interface SnapshotItemRow {
 		work: string | null;
 		at: string;
 	}[];
-	card: CardRowJson;
+	flashcard: FlashcardRowJson;
 }
 
 function lineBytes(line: string): number {
@@ -485,7 +486,7 @@ export function itemLine(row: SnapshotItemRow): string {
 				forms: fs,
 				encounters: enc
 			}),
-			card: cardState(row.card)
+			flashcard: flashcardState(row.flashcard)
 		});
 	let line = build(encounters, forms);
 	for (let n = encounters.length - 1; n >= 0 && lineBytes(line) > SYNC_LIMITS.lineBytes; n--) {
@@ -503,7 +504,7 @@ export interface HeaderInput {
 	uiLanguage: UiLanguage | null;
 	nativeLanguage: Language | null;
 	studyLanguages: Language[];
-	newCardsPerDay: number;
+	newFlashcardsPerDay: number;
 	timeZone: string;
 	dayStart: Date;
 	nextDayStart: Date;
@@ -556,7 +557,7 @@ export function headerLine(h: HeaderInput): string {
 			uiLanguage: h.uiLanguage,
 			nativeLanguage: h.nativeLanguage,
 			studyLanguages: h.studyLanguages,
-			newCardsPerDay: h.newCardsPerDay,
+			newFlashcardsPerDay: h.newFlashcardsPerDay,
 			timeZone: h.timeZone,
 			utcOffsetMinutes: utcOffsetMinutes(h.timeZone, h.serverNow)
 		},

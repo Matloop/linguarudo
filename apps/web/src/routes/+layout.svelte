@@ -38,7 +38,7 @@
 	const SCREENS: Record<string, Screen> = {
 		'/inicio': 'inicio',
 		'/palavras': 'palavras',
-		'/revisar': 'revisar'
+		'/flashcards': 'flashcards'
 	};
 
 	function current(path: string) {
@@ -87,7 +87,7 @@
 		if (!action) return;
 		if (action.type === 'guardar') openSave();
 		else if (action.type === 'barra') toggleCollapsed();
-		else if (action.type === 'revisar') goto(resolve('/revisar'));
+		else if (action.type === 'flashcards') goto(resolve('/flashcards'));
 		else if (action.type === 'buscar') document.getElementById('busca')?.focus();
 		else return; // o resto é da tela de revisão
 		e.preventDefault();
@@ -167,10 +167,10 @@
 				>
 				<a
 					class="nav-item"
-					href={resolve('/revisar')}
-					aria-current={current('/revisar')}
-					title="Revisar"
-					><Icon name="repeat" /><span class="lb">Revisar</span>
+					href={resolve('/flashcards')}
+					aria-current={current('/flashcards')}
+					title="Flashcards"
+					><Icon name="repeat" /><span class="lb">Flashcards</span>
 					{#if toReview > 0}<span class="count"
 							>{toReview}<span class="visually-hidden">&nbsp;para revisar</span></span
 						>{/if}</a
@@ -255,8 +255,8 @@
 			<a class="tab" href={resolve('/palavras')} aria-current={current('/palavras')}
 				><Icon name="book" />Palavras</a
 			>
-			<a class="tab" href={resolve('/revisar')} aria-current={current('/revisar')}
-				><Icon name="repeat" />Revisar{#if toReview > 0}<span class="count"
+			<a class="tab" href={resolve('/flashcards')} aria-current={current('/flashcards')}
+				><Icon name="repeat" />Flashcards{#if toReview > 0}<span class="count"
 						>{toReview}<span class="visually-hidden">&nbsp;para revisar</span></span
 					>{/if}</a
 			>

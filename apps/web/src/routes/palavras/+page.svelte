@@ -471,7 +471,7 @@
 
 		<div class="dr-foot">
 			{#if selected.dueToday}
-				<a class="btn btn-primary" href={resolve('/revisar')}>Revisar agora</a>
+				<a class="btn btn-primary" href={resolve('/flashcards')}>Revisar agora</a>
 			{/if}
 			<button type="button" class="btn btn-ghost" onclick={() => (editing = !editing)}
 				><Icon name="pencil" size="sm" />Editar</button

@@ -26,7 +26,7 @@ export const LIMITS = {
 
 export type ItemStatus = 'ativo' | 'conhecido';
 
-export type CardKind = 'reconhecer' | 'produzir';
+export type FlashcardKind = 'reconhecer' | 'produzir';
 
 export const WORK_KINDS = ['livro', 'episodio', 'filme', 'musica', 'video'] as const;
 export type WorkKind = (typeof WORK_KINDS)[number];

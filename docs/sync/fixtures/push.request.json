@@ -32,7 +32,7 @@
 			"type": "review",
 			"at": "2026-11-10T22:40:00.000Z",
 			"language": "it",
-			"cardId": "5d2a7e10-0c43-4b8f-a6d9-71e0c4b2f902",
+			"flashcardId": "5d2a7e10-0c43-4b8f-a6d9-71e0c4b2f902",
 			"rating": 3,
 			"durationMs": 6400
 		},
@@ -41,7 +41,7 @@
 			"type": "review",
 			"at": "2026-11-10T22:41:10.000Z",
 			"language": "it",
-			"cardId": "e1f02d3c-7b6a-4958-8e2f-0a9c1b3d4e05",
+			"flashcardId": "e1f02d3c-7b6a-4958-8e2f-0a9c1b3d4e05",
 			"rating": 2,
 			"durationMs": 9100
 		},

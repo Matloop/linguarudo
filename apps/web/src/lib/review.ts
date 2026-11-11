@@ -1,20 +1,20 @@
 // Regras puras da revisão (fila, sessão, datas, formatação). Não importa o
 // ts-fsrs, para não pesar no navegador; o agendamento fica em server/scheduler.ts.
 
-import type { CardKind, Origin } from './items.ts';
+import type { FlashcardKind, Origin } from './items.ts';
 import { findWord } from '@linguetta/language';
 import type { Language } from './languages.ts';
 
-/** Fuso que define o "dia" dos limites de cartões novos. Único ponto do código. */
+/** Fuso que define o "dia" dos limites de flashcards novos. Único ponto do código. */
 export const REVIEW_TIME_ZONE = 'America/Sao_Paulo';
 
-/** Padrão de user_settings.new_cards_per_day (veja a migration de revisão). */
+/** Padrão de user_settings.new_flashcards_per_day (veja a migration de revisão). */
 export const DEFAULT_NEW_PER_DAY = 10;
 
 /** Dependência do load do layout; invalidar atualiza o "N para revisar". */
 export const REVIEW_DEPENDENCY = 'app:revisao';
 
-/** Cartão errado que vence dentro desta janela volta na mesma sessão. */
+/** Flashcard errado que vence dentro desta janela volta na mesma sessão. */
 export const LEARN_AHEAD_MS = 20 * 60_000;
 
 export type Grade = 1 | 2 | 3 | 4;
@@ -40,13 +40,13 @@ export const STATE_REVIEW = 2;
 // ---------- Dominado ----------
 
 /**
- * Estabilidade (dias) a partir da qual um cartão conta como dominado. O Anki chama
+ * Estabilidade (dias) a partir da qual um flashcard conta como dominado. O Anki chama
  * de "maduro" o intervalo de 21 dias; dominado pede bem mais: com retenção de 90%,
  * 90 dias de estabilidade são uns três meses sem esquecer.
  */
 export const MASTERED_STABILITY_DAYS = 90;
 
-/** Dominado é derivado, não guardado: todos os cartões do item em revisão e estáveis. */
+/** Dominado é derivado, não guardado: todos os flashcards do item em revisão e estáveis. */
 export function isMastered(cards: readonly { state: number; stability: number }[]): boolean {
 	return (
 		cards.length > 0 &&
@@ -61,7 +61,7 @@ export const STRENGTH_LABELS = ['Nova', 'Frágil', 'Firmando', 'Firme', 'Dominad
 export type Strength = 0 | 1 | 2 | 3 | 4;
 
 /**
- * Força do item pelo cartão mais fraco já estudado. Só cartões novos: 0. Um
+ * Força do item pelo flashcard mais fraco já estudado. Só flashcards novos: 0. Um
  * Produzir recém-liberado (novo) não derruba a força do Reconhecer.
  */
 export function itemStrength(cards: readonly { state: number; stability: number }[]): Strength {
@@ -76,7 +76,7 @@ export function itemStrength(cards: readonly { state: number; stability: number 
 
 // ---------- Fila ----------
 
-export interface QueueCard {
+export interface QueueFlashcard {
 	id: string;
 	state: number;
 	dueAt: string;
@@ -95,9 +95,9 @@ export function newRemaining(newLimit: number, newDoneToday: number): number {
 
 /**
  * Vencidos primeiro (mais atrasado antes), depois novos por ordem de criação, até o limite.
- * Quem chama já tirou os cartões de itens conhecidos ou apagados.
+ * Quem chama já tirou os flashcards de itens conhecidos ou apagados.
  */
-export function buildQueue<T extends QueueCard>(cards: T[], opts: QueueOptions): T[] {
+export function buildQueue<T extends QueueFlashcard>(cards: T[], opts: QueueOptions): T[] {
 	const now = opts.now.getTime();
 	const due = cards
 		.filter((c) => c.state !== STATE_NEW && Date.parse(c.dueAt) <= now)
@@ -116,12 +116,12 @@ export interface ReviewCounts {
 	newLimit: number;
 }
 
-/** Quantos cartões a pessoa pode revisar agora (o "N para revisar"). */
+/** Quantos flashcards a pessoa pode revisar agora (o "N para revisar"). */
 export function reviewCount(c: ReviewCounts): number {
 	return c.dueNow + Math.min(c.newAvailable, newRemaining(c.newLimit, c.newDoneToday));
 }
 
-/** Quando aparece o próximo cartão, para o estado vazio. */
+/** Quando aparece o próximo flashcard, para o estado vazio. */
 export function nextAvailableAt(
 	c: Omit<ReviewCounts, 'dueNow'> & { now: Date; nextDueAt: string | null }
 ): Date | null {
@@ -213,7 +213,7 @@ function earliest(dueAts: readonly string[]): Date | null {
 	return new Date(Math.min(...dueAts.map((d) => Date.parse(d))));
 }
 
-/** Algum cartão do item vence até o fim de hoje (ou já venceu). */
+/** Algum flashcard do item vence até o fim de hoje (ou já venceu). */
 export function isDueToday(
 	dueAts: readonly string[],
 	now: Date,
@@ -261,7 +261,7 @@ export function formatAgo(at: Date, now: Date, timeZone = REVIEW_TIME_ZONE): str
 		.replace(' de ', ' ');
 }
 
-/** Minutos de revisão para `n` cartões, a uns 30 s cada. */
+/** Minutos de revisão para `n` flashcards, a uns 30 s cada. */
 export function estimateMinutes(n: number): number {
 	return n <= 0 ? 0 : Math.max(1, Math.ceil(n / 2));
 }
@@ -313,11 +313,11 @@ export function highlightParts(context: string, term: string, language: Language
 
 // ---------- Sessão ----------
 
-/** O que a tela de revisão recebe por cartão. */
+/** O que a tela de revisão recebe por flashcard. */
 export interface ReviewItem {
-	cardId: string;
+	flashcardId: string;
 	/** Reconhecer: mostra o lema, pede o sentido. Produzir: mostra o sentido, pede o lema. */
-	kind: CardKind;
+	kind: FlashcardKind;
 	reps: number;
 	state: number;
 	dueAt: string;
@@ -343,33 +343,33 @@ export interface Session {
 	answered: number;
 	correct: number;
 	byGrade: Record<Grade, number>;
-	last: { logId: string; rating: Grade; cardId: string; requeued: boolean } | null;
+	last: { logId: string; rating: Grade; flashcardId: string; requeued: boolean } | null;
 }
 
 export function startSession(items: ReviewItem[]): Session {
 	return { queue: items, answered: 0, correct: 0, byGrade: { 1: 0, 2: 0, 3: 0, 4: 0 }, last: null };
 }
 
-/** Tira o cartão do topo; se ele vence logo (errou), volta para o fim da fila. */
+/** Tira o flashcard do topo; se ele vence logo (errou), volta para o fim da fila. */
 export function answerItem(
 	s: Session,
 	a: { rating: Grade; logId: string; updated: ReviewItem; now: Date }
 ): Session {
-	const rest = s.queue.filter((i) => i.cardId !== a.updated.cardId);
+	const rest = s.queue.filter((i) => i.flashcardId !== a.updated.flashcardId);
 	const requeued = Date.parse(a.updated.dueAt) <= a.now.getTime() + LEARN_AHEAD_MS;
 	return {
 		queue: requeued ? [...rest, a.updated] : rest,
 		answered: s.answered + 1,
 		correct: s.correct + (a.rating === 1 ? 0 : 1),
 		byGrade: { ...s.byGrade, [a.rating]: s.byGrade[a.rating] + 1 },
-		last: { logId: a.logId, rating: a.rating, cardId: a.updated.cardId, requeued }
+		last: { logId: a.logId, rating: a.rating, flashcardId: a.updated.flashcardId, requeued }
 	};
 }
 
-/** Desfaz a última nota: o cartão volta ao topo com o estado anterior. */
+/** Desfaz a última nota: o flashcard volta ao topo com o estado anterior. */
 export function undoLast(s: Session, restored: ReviewItem): Session {
 	if (!s.last) return s;
-	const rest = s.queue.filter((i) => i.cardId !== restored.cardId);
+	const rest = s.queue.filter((i) => i.flashcardId !== restored.flashcardId);
 	return {
 		queue: [restored, ...rest],
 		answered: s.answered - 1,

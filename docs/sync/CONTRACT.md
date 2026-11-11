@@ -5,9 +5,9 @@ Duas partes, implementadas em paralelo a partir deste documento:
 | Parte | Onde | Papel |
 |---|---|---|
 | Servidor | `apps/web` (SvelteKit + Supabase) | Rotas `/api/v1/sync/*`, página `/parear`, replay do FSRS, snapshot |
-| Aparelho | Fork do CrossPoint/CrossNext (`crossnext-blend`, C++, ESP32-S3) no Xteink X4 Pro | Lê o blend, salva itens, revisa cartões Reconhecer offline, guarda `bank.jsonl` e `outbox.jsonl` no SD |
+| Aparelho | Fork do CrossPoint/CrossNext (`crossnext-blend`, C++, ESP32-S3) no Xteink X4 Pro | Lê o blend, salva itens, revisa flashcards Reconhecer offline, guarda `bank.jsonl` e `outbox.jsonl` no SD |
 
-O vocabulário é o do glossário (`CONTEXT.md`): **item**, **lema**, **encontro**, **forma**, **sentido**, **obra**, **cartão** (Reconhecer/Produzir), **revisão**, **visto**, **conhecido**. A regra do FSRS é a do ADR 0001 (`docs/adr/0001-servidor-decide-o-fsrs-pelo-log.md`): o aparelho manda revisões, o servidor reaplica o log e o estado dele vale.
+O vocabulário é o do glossário (`CONTEXT.md`): **item**, **lema**, **encontro**, **forma**, **sentido**, **obra**, **flashcard** (Reconhecer/Produzir), **revisão**, **visto**, **conhecido**. A regra do FSRS é a do ADR 0001 (`docs/adr/0001-servidor-decide-o-fsrs-pelo-log.md`): o aparelho manda revisões, o servidor reaplica o log e o estado dele vale.
 
 As palavras **deve**, **não deve** e **pode** são normativas. Exemplos de cada pedido e resposta estão em `docs/sync/fixtures/` (seção 12).
 
@@ -15,7 +15,7 @@ As palavras **deve**, **não deve** e **pode** são normativas. Exemplos de cada
 
 - O aparelho é offline-first. Ele guarda no SD o **banco** de um idioma de estudo (`bank.jsonl`, cópia do servidor) e as **operações** feitas offline (`outbox.jsonl`).
 - **Sync** = enviar o outbox (`push`) e depois baixar o snapshot (`snapshot`). Dispara pelo botão "Sincronizar" ou ao abrir Flashcards com Wi-Fi.
-- O banco inteiro do idioma vai para o aparelho. O aparelho mostra um baralho só, "Linguetta · <Idioma>", e revisa só os cartões **Reconhecer**. Outros baralhos importados no aparelho ficam locais e nunca sincronizam.
+- O banco inteiro do idioma vai para o aparelho. O aparelho mostra um baralho só, "Linguetta · <Idioma>", e revisa só os flashcards **Reconhecer**. Outros baralhos importados no aparelho ficam locais e nunca sincronizam.
 - O aparelho produz três tipos de operação: `save` (salvar do blend), `review` (revisão de Reconhecer) e `seen` (visto).
 - Toda operação tem um `clientId` (UUID v4 gerado no aparelho). Reenviar é seguro.
 - Exclusão vence: item apagado no servidor some do aparelho, e operações que apontam para ele são aceitas e descartadas.
@@ -194,23 +194,23 @@ No servidor:
 - O app mostra a origem como "O nome da rosa · Primeiro dia · 12%".
 - Textos acima do limite são cortados no servidor; `lemma` vazio ou com mais de 80 code points recusa a operação (`rejected`, `invalid`). O aparelho já **deve** cortar antes de gravar no outbox.
 
-### `review`: revisão de um cartão Reconhecer
+### `review`: revisão de um flashcard Reconhecer
 
 ```js
 {
   clientId, type: "review", at, language: "it", // at = momento da resposta (reviewed_at)
-  cardId: "uuid",              // cartão do snapshot...
+  flashcardId: "uuid",              // flashcard do snapshot...
   saveClientId: "uuid",        // ...ou, para item salvo offline e ainda sem id, o clientId do save
   rating: 3,                   // 1 Errei, 2 Difícil, 3 Bom, 4 Fácil
   durationMs: 6400             // opcional: tempo até responder, 0–3600000
 }
 ```
 
-- Exatamente um entre `cardId` e `saveClientId`. Com `saveClientId`, o servidor acha o encontro com esse `client_id`, o item dele e o Reconhecer do item. O `save` vem antes no outbox, então já foi processado (no mesmo lote ou num anterior).
-- O aparelho só manda revisão de Reconhecer. `cardId` de um Produzir é recusado (`rejected`, `invalid`).
-- O servidor grava o log (`review_logs`: `rating`, `reviewed_at = min(at, agora)`, `client_id`, `duration_ms`) e recalcula o cartão como o app faz (`scheduleReview`/`replay` em `apps/web/src/lib/server/scheduler.ts`): revisão em ordem só aplica a nota; revisão atrasada (anterior à última do cartão) reaplica o log inteiro em ordem de `reviewed_at`. Os efeitos são os mesmos da revisão no app, inclusive liberar o Produzir.
+- Exatamente um entre `flashcardId` e `saveClientId`. Com `saveClientId`, o servidor acha o encontro com esse `client_id`, o item dele e o Reconhecer do item. O `save` vem antes no outbox, então já foi processado (no mesmo lote ou num anterior).
+- O aparelho só manda revisão de Reconhecer. `flashcardId` de um Produzir é recusado (`rejected`, `invalid`).
+- O servidor grava o log (`review_logs`: `rating`, `reviewed_at = min(at, agora)`, `client_id`, `duration_ms`) e recalcula o flashcard como o app faz (`scheduleReview`/`replay` em `apps/web/src/lib/server/scheduler.ts`): revisão em ordem só aplica a nota; revisão atrasada (anterior à última do flashcard) reaplica o log inteiro em ordem de `reviewed_at`. Os efeitos são os mesmos da revisão no app, inclusive liberar o Produzir.
 - Item `conhecido` ainda aceita a revisão: o log é a verdade.
-- Item apagado: `dropped`, `item_deleted`. `cardId` que não existe, ou `saveClientId` cujo save foi recusado ou descartado: `dropped`, `unknown_target`.
+- Item apagado: `dropped`, `item_deleted`. `flashcardId` que não existe, ou `saveClientId` cujo save foi recusado ou descartado: `dropped`, `unknown_target`.
 
 ### `seen`: visto
 
@@ -259,8 +259,8 @@ Resposta `200`, com um resultado por operação, **na mesma ordem**:
   "protocol": 1,
   "serverNow": "2026-11-11T21:30:01.208Z",
   "results": [
-    { "clientId": "...", "status": "applied", "itemId": "uuid", "cardId": "uuid", "created": true, "encounterId": "uuid" },
-    { "clientId": "...", "status": "applied", "cardId": "uuid", "card": { "...": "CardState" } },
+    { "clientId": "...", "status": "applied", "itemId": "uuid", "flashcardId": "uuid", "created": true, "encounterId": "uuid" },
+    { "clientId": "...", "status": "applied", "flashcardId": "uuid", "flashcard": { "...": "FlashcardState" } },
     { "clientId": "...", "status": "applied", "itemId": "uuid" },
     { "clientId": "...", "status": "duplicate", "...": "mesmos campos do applied" },
     { "clientId": "...", "status": "dropped", "reason": "item_deleted" },
@@ -278,8 +278,8 @@ Resposta `200`, com um resultado por operação, **na mesma ordem**:
 
 Campos extras do `applied`/`duplicate`:
 
-- `save`: `itemId`, `cardId` (o Reconhecer), `created` (false = o item já existia), `encounterId`.
-- `review`: `cardId` e `card` (o `CardState` oficial depois do replay, seção 7).
+- `save`: `itemId`, `flashcardId` (o Reconhecer), `created` (false = o item já existia), `encounterId`.
+- `review`: `flashcardId` e `flashcard` (o `FlashcardState` oficial depois do replay, seção 7).
 - `seen`: `itemId`.
 
 Os quatro status são definitivos: o aparelho trata a operação como resolvida (seção 8). Se o número de resultados não bate com o de operações, o aparelho trata a resposta como erro e não resolve nada.
@@ -324,7 +324,7 @@ end
   "serverNow": "2026-11-11T21:30:02.417Z",
   "deckName": "Linguetta · Italiano",
   "total": 5,
-  "settings": { "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"], "newCardsPerDay": 10, "timeZone": "America/Sao_Paulo", "utcOffsetMinutes": -180 },
+  "settings": { "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"], "newFlashcardsPerDay": 10, "timeZone": "America/Sao_Paulo", "utcOffsetMinutes": -180 },
   "today": { "dayStart": "2026-11-11T03:00:00.000Z", "nextDayStart": "2026-11-12T03:00:00.000Z", "newDoneToday": 1 },
   "fsrs": { "tsFsrs": "6.0.0", "version": "FSRS-7", "desiredRetention": 0.9, "enableFuzz": true,
             "learningSteps": ["1m", "10m"], "relearningSteps": ["10m"], "maximumInterval": 36500 }
@@ -335,8 +335,8 @@ end
 - `deckName`: "Linguetta · " + nome do idioma na língua da interface (`uiLanguage`); sem `uiLanguage`, o nome do idioma nele mesmo ("Linguetta · Deutsch").
 - `settings.uiLanguage`, `settings.nativeLanguage`, `settings.studyLanguages`: como no `account` do pareamento, sem padrão (`null`, `null`, `[]` numa conta sem preferências).
 - `total`: linhas `item` + `del` somadas em todas as páginas (para a barra de progresso; pode diferir um pouco do recebido).
-- `settings.newCardsPerDay`: limite de cartões novos por dia (`user_settings`). `timeZone`/`utcOffsetMinutes`: o fuso que define o "dia" (`REVIEW_TIME_ZONE`).
-- `today`: o dia corrente no fuso e quantos cartões novos já tiveram a primeira revisão nele (em qualquer aparelho). Depois de `nextDayStart`, o aparelho zera a contagem e passa a usar dias de 24 h a partir dele até o próximo sync.
+- `settings.newFlashcardsPerDay`: limite de flashcards novos por dia (`user_settings`). `timeZone`/`utcOffsetMinutes`: o fuso que define o "dia" (`REVIEW_TIME_ZONE`).
+- `today`: o dia corrente no fuso e quantos flashcards novos já tiveram a primeira revisão nele (em qualquer aparelho). Depois de `nextDayStart`, o aparelho zera a contagem e passa a usar dias de 24 h a partir dele até o próximo sync.
 - `fsrs`: os parâmetros do agendador do servidor. Se diferirem dos que o firmware implementa, o aparelho continua funcionando (o servidor decide), mas mostra um aviso discreto de "agendamento aproximado".
 
 ### `item`
@@ -355,7 +355,7 @@ end
   "encounters": [
     { "form": "bella", "sentence": "Era uma bella manhã do fim de novembro.", "sense": "bonita", "work": "O nome da rosa", "at": "2026-11-09T20:12:00.000Z" }
   ],
-  "card": { "...": "CardState" }
+  "flashcard": { "...": "FlashcardState" }
 }
 ```
 
@@ -365,7 +365,7 @@ end
 | `lemma`, `language` | Como no banco: lema como escrito, tag canônica |
 | `lemmaKey` | Chave do item no idioma (calculada pelo servidor). Use para comparar lemas e formas; nunca mande de volta |
 | `reading` | Leitura do lema (furigana, pinyin), até 100. Ausente se vazia |
-| `sense` | Sentido principal (até 200). É o verso do cartão |
+| `sense` | Sentido principal (até 200). É o verso do flashcard |
 | `note` | Nota do item, **cortada em 200 code points** no snapshot |
 | `ipa`, `pos` | Pronúncia e classe (`part_of_speech`) |
 | `status` | `ativo` ou `conhecido`. Conhecido fica no banco (conta como "no seu banco" e recebe visto) mas não entra no baralho |
@@ -374,13 +374,13 @@ end
 | `updatedAt` | Última mudança do item, do Reconhecer ou dos encontros. Aumenta a cada mudança |
 | `forms` | Formas vistas nos encontros, como escritas, uma por chave e sem a do lema, até 10 |
 | `encounters` | Os 2 encontros mais recentes (por `seen_at`), cada um com `form`, `sentence`, `sense`, `work` (título da obra ou ausente) e `at` |
-| `card` | O Reconhecer (`CardState`). Sempre presente |
+| `flashcard` | O Reconhecer (`FlashcardState`). Sempre presente |
 
-O servidor pode omitir campos de texto vazios, `null` e listas vazias (exceto em `card`). O Produzir não vem: o aparelho não o revisa.
+O servidor pode omitir campos de texto vazios, `null` e listas vazias (exceto em `flashcard`). O Produzir não vem: o aparelho não o revisa.
 
-### `CardState`
+### `FlashcardState`
 
-Os campos do `Card` do ts-fsrs 6, em camelCase (as colunas de `cards`). **Todos sempre presentes**:
+Os campos do `Card` do ts-fsrs 6, em camelCase (as colunas de `flashcards`). **Todos sempre presentes**:
 
 ```json
 {
@@ -401,7 +401,7 @@ Os campos do `Card` do ts-fsrs 6, em camelCase (as colunas de `cards`). **Todos 
 ```
 
 - `state`: 0 novo, 1 aprendendo, 2 revisão, 3 reaprendendo. `scheduleStatus`: `new`, `learning` ou `review` (reaprendendo também é `learning`).
-- `stability`, `stabilityFast`, `difficulty`, `scheduledDays`: double (`scheduledDays` pode ser fracionário: 1 min = 0.000694…). `lastReviewAt`: `null` no cartão novo.
+- `stability`, `stabilityFast`, `difficulty`, `scheduledDays`: double (`scheduledDays` pode ser fracionário: 1 min = 0.000694…). `lastReviewAt`: `null` no flashcard novo.
 
 ### `del` (só no delta)
 
@@ -420,7 +420,7 @@ Os campos do `Card` do ts-fsrs 6, em camelCase (as colunas de `cards`). **Todos 
 
 ## 8. Arquivos no SD
 
-Pasta `/.linguetta/` na raiz do cartão. Toda reescrita é atômica: grava `<nome>.tmp`, faz `flush`/`fsync` e renomeia por cima.
+Pasta `/.linguetta/` na raiz do cartão SD. Toda reescrita é atômica: grava `<nome>.tmp`, faz `flush`/`fsync` e renomeia por cima.
 
 ### `bank.jsonl`
 
@@ -455,7 +455,7 @@ Pasta `/.linguetta/` na raiz do cartão. Toda reescrita é atômica: grava `<nom
 }
 ```
 
-- `token` fica em claro no SD (o aparelho não tem cofre). Quem pega o cartão pega o token; a defesa é revogar em Integrações.
+- `token` fica em claro no SD (o aparelho não tem cofre). Quem pega o cartão SD pega o token; a defesa é revogar em Integrações.
 - `cursor`: só é gravado depois de um snapshot completo terminar. `null` = o próximo snapshot é completo.
 - `lastSyncStatus`: `ok` ou `error`; `lastError`: o `code` ou uma mensagem curta.
 - Trocar de idioma: `cursor = null` e o próximo sync baixa o banco completo do idioma novo. O outbox fica (cada operação leva seu `language`).
@@ -465,9 +465,9 @@ Pasta `/.linguetta/` na raiz do cartão. Toda reescrita é atômica: grava `<nom
 O que o aparelho mostra entre um sync e outro é `bank.jsonl` + o outbox:
 
 - **Itens:** os do banco, mais um item local para cada `save` do outbox cujo lema não está no banco. O aparelho não calcula `lemmaKey`: compara o lema do `save` com o `lemmaKey` dos itens do banco por uma aproximação local (minúsculas Unicode simples); no próximo sync vale a resposta do servidor. Um `save` de lema que já está no banco acrescenta o encontro só na visão local.
-- **Cartões:** o estado do banco, com as `review` do outbox daquele cartão aplicadas pelo FSRS local em ordem de `at`. O cartão de um item local nasce novo (`state` 0, `dueAt = at` do save) e usa o `saveClientId` no lugar do `cardId` (também como semente do fuzz).
+- **Flashcards:** o estado do banco, com as `review` do outbox daquele flashcard aplicadas pelo FSRS local em ordem de `at`. O flashcard de um item local nasce novo (`state` 0, `dueAt = at` do save) e usa o `saveClientId` no lugar do `flashcardId` (também como semente do fuzz).
 - **Visto:** `seenCount` do banco + `seen` do outbox.
-- **Novos de hoje:** `today.newDoneToday` + as `review` do outbox, com `at >= today.dayStart`, de cartões que estavam novos na visão local.
+- **Novos de hoje:** `today.newDoneToday` + as `review` do outbox, com `at >= today.dayStart`, de flashcards que estavam novos na visão local.
 
 ### Ordem do sync
 
@@ -527,9 +527,9 @@ Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 1
   - modelo **FSRS-7**, pesos padrão (`FSRS7_DEFAULT_WEIGHTS`), dias fracionários (`fractionalDays: true`);
   - `enableShortTerm: true`, passos de aprendizado `["1m", "10m"]`, reaprendizado `["10m"]`, `maximumInterval` 36500;
   - middlewares na ordem: retenção desejada, fuzz, estatísticas, scheduled days, passos de aprendizado, intervalo máximo, intervalo monotônico;
-  - fuzz determinístico: semente = `cardId` + `String(reps)` (o `reps` **depois** da revisão), hash FNV-1a de 32 bits sobre as unidades UTF-16 da string, PRNG mulberry32, primeiro valor; só para intervalo ≥ 2,5 dias, faixas `FUZZ_RANGES` (2,5–7 d: 15%; 7–20 d: 10%; > 20 d: 5%).
+  - fuzz determinístico: semente = `flashcardId` + `String(reps)` (o `reps` **depois** da revisão), hash FNV-1a de 32 bits sobre as unidades UTF-16 da string, PRNG mulberry32, primeiro valor; só para intervalo ≥ 2,5 dias, faixas `FUZZ_RANGES` (2,5–7 d: 15%; 7–20 d: 10%; > 20 d: 5%).
 - A fonte de referência para o port é o pacote instalado: `apps/web/node_modules/ts-fsrs/dist/models/fsrs-7.mjs` (modelo), `dist/middlewares-*.mjs` (fuzz, passos, intervalos) e `dist/index.mjs` (`DefaultScheduler`), mais `@open-spaced-repetition/srs-kit` 1.0.0.
-- O FSRS do aparelho **deve** passar `fixtures/fsrs-vectors.json`: para cada caso, partindo de um cartão novo (`dueAt = createdAt`, tudo zero, `scheduleStatus: "new"`) com o `cardId` dado, aplica cada revisão (`rating`, `reviewedAt`) e compara com `expected`. Tolerância: `float` (1e-6, relativa ou absoluta, a maior) em `stability`, `stability_fast`, `difficulty` e `scheduled_days`; `dueAtMs` (1000 ms) em `due_at`; igualdade exata em `state`, `schedule_status`, `reps`, `lapses`, `learning_step` e `last_review_at`. Os `steps` estão sempre em ordem de `reviewedAt`, e o `expected` do passo N é o cartão depois das N primeiras. O caso `fora-de-ordem` testa também o replay: entregue as revisões na ordem `arrivalOrder` (índices em `steps`); depois de todas, o cartão tem de ser o `expected` do último passo, porque o replay ordena por `reviewedAt` (empate: ordem de chegada).
+- O FSRS do aparelho **deve** passar `fixtures/fsrs-vectors.json`: para cada caso, partindo de um flashcard novo (`dueAt = createdAt`, tudo zero, `scheduleStatus: "new"`) com o `flashcardId` dado, aplica cada revisão (`rating`, `reviewedAt`) e compara com `expected`. Tolerância: `float` (1e-6, relativa ou absoluta, a maior) em `stability`, `stability_fast`, `difficulty` e `scheduled_days`; `dueAtMs` (1000 ms) em `due_at`; igualdade exata em `state`, `schedule_status`, `reps`, `lapses`, `learning_step` e `last_review_at`. Os `steps` estão sempre em ordem de `reviewedAt`, e o `expected` do passo N é o flashcard depois das N primeiras. O caso `fora-de-ordem` testa também o replay: entregue as revisões na ordem `arrivalOrder` (índices em `steps`); depois de todas, o flashcard tem de ser o `expected` do último passo, porque o replay ordena por `reviewedAt` (empate: ordem de chegada).
 - O servidor **deve** continuar passando os mesmos vetores (um teste em `apps/web` que lê o arquivo). Trocar a versão do ts-fsrs ou os parâmetros pede vetores novos: `bun docs/sync/fixtures/generate-fsrs-vectors.ts > docs/sync/fixtures/fsrs-vectors.json`, e o aviso do `header.fsrs` cobre os aparelhos ainda não atualizados.
 - Mesmo com paridade, o estado local vale só até o próximo sync: o snapshot traz o estado oficial e o aparelho o adota sem comparar.
 
@@ -538,10 +538,10 @@ Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 1
 A mesma regra do app (`buildQueue` em `apps/web/src/lib/review.ts`), sobre a visão local, só itens `ativo`:
 
 1. Vencidos (`state > 0` e `dueAt <= agora`), mais atrasado primeiro.
-2. Novos (`state = 0`) em ordem de `card.createdAt`, até `newCardsPerDay − novos de hoje`.
-3. Cartão errado que vence em até 20 minutos volta para o fim da fila da mesma sessão.
+2. Novos (`state = 0`) em ordem de `flashcard.createdAt`, até `newFlashcardsPerDay − novos de hoje`.
+3. Flashcard errado que vence em até 20 minutos volta para o fim da fila da mesma sessão.
 
-Frente do cartão: o lema (com `reading` acima, se houver, e `ipa`). Verso: `sense`, `note` e a frase do encontro mais recente com a forma destacada.
+Frente do flashcard: o lema (com `reading` acima, se houver, e `ipa`). Verso: `sense`, `note` e a frase do encontro mais recente com a forma destacada.
 
 ## 12. Fixtures
 
@@ -559,7 +559,7 @@ Em `docs/sync/fixtures/`. Todas descrevem o mesmo momento: o X4 Pro sincroniza �
 | `fsrs-vectors.json` | Vetores do FSRS gerados com o ts-fsrs real por `generate-fsrs-vectors.ts` |
 | `kosync-hash-vectors.json` | Vetores do hash parcial gerados por `generate-kosync-vectors.ts` |
 
-Os estados de cartão nos fixtures também saíram do `replay()` do servidor.
+Os estados de flashcard nos fixtures também saíram do `replay()` do servidor.
 
 ## 13. Notas para o servidor (não normativas)
 
