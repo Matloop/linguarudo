@@ -435,3 +435,14 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# Produção (Supabase Cloud). Só estes valores mudam em relação ao local.
+# `supabase config push` falha no plano free com o SMTP padrão (não aceita template de e-mail).
+# Até ter SMTP próprio, aplique site_url/redirects pela API de gestão ou pelo painel.
+# Lá mailer_autoconfirm = true, como enable_confirmations = false aqui.
+[remotes.production]
+project_id = "xiutyxhneamvqxmmtnll"
+
+[remotes.production.auth]
+site_url = "https://linguarudo-app.vercel.app"
+additional_redirect_urls = ["https://linguarudo-app.vercel.app/**", "https://linguarudo-*-matloops-projects.vercel.app/**"]
