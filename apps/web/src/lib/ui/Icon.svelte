@@ -34,7 +34,10 @@
 		| 'cards'
 		| 'image'
 		| 'upload'
-		| 'chart';
+		| 'chart'
+		| 'more'
+		| 'pause'
+		| 'folder';
 </script>
 
 <script lang="ts">

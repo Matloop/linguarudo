@@ -158,6 +158,18 @@
 			d="M2.5 10.5L5 8.5L7.5 8L9.5 5L8.5 3"
 		/></symbol
 	>
+	<symbol id="i-more" viewBox="0 0 24 24"
+		><circle cx="5.5" cy="12" r="1.2" fill="currentColor" /><circle
+			cx="12"
+			cy="12"
+			r="1.2"
+			fill="currentColor"
+		/><circle fill="currentColor" cx="18.5" cy="12" r="1.2" /></symbol
+	>
+	<symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14" /><path d="M15 5v14" /></symbol>
+	<symbol id="i-folder" viewBox="0 0 24 24"
+		><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol
+	>
 	<symbol id="i-tag" viewBox="0 0 24 24"
 		><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.3" /></symbol
 	>
