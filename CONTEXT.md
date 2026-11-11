@@ -29,6 +29,9 @@ O lar do vocabulário do usuário: recolhe itens de tudo que ele lê, assiste e 
 - **Tag**: rótulo livre num item ou numa ficha, usado para filtrar a revisão. Decks do Anki chegam como tags (`Deck::Sub`). _Evite_: baralho, deck, coleção, pasta.
 - **Mídia**: imagem ou áudio guardado com o usuário. O item tem no máximo uma imagem e uma pronúncia; a ficha tem mídia em cada lado. _Evite_: anexo, arquivo.
 - **Revisão**: uma resposta do usuário a um flashcard (Errei, Difícil, Bom, Fácil), feita em qualquer aparelho. _Evite_: repetição, estudo.
+- **Dia de estudo**: o dia que conta para o limite de novos, o "vence hoje" e as estatísticas. Vira na hora escolhida pelo usuário (padrão 4 h), no fuso dele. _Evite_: dia, data, 24 h.
+- **Irmãos**: os flashcards do mesmo item. Um irmão revisado no dia de estudo deixa o outro para amanhã, exceto em aprendizado. _Evite_: par, gêmeo.
+- **Teimosa**: item com um flashcard errado 8 vezes ou mais depois de aprendido. Fica marcado em Palavras e continua em revisão. _Evite_: sanguessuga, leech, difícil.
 - **Atividade**: prática dentro do app que lê e escreve no banco (música, blend). _Evite_: módulo, jogo, modo.
 - **Blend**: atividade que devolve uma obra na língua nativa com itens do banco trocados para o idioma de estudo. _Evite_: mistura, leitura misturada, LingoBlend (é o nome do fork do Stremio).
 - **Integração**: aparelho ou serviço externo ligado à conta que lê e escreve no banco (Stremio, CrossNext, Anki). _Evite_: plugin, conector, extensão.

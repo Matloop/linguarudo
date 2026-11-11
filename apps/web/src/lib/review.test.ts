@@ -2,6 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import {
 	REVIEW_TIME_ZONE,
 	answerItem,
+	clockFrom,
+	DEFAULT_CLOCK,
+	isLeech,
+	leechAlert,
 	buildQueue,
 	dayStart,
 	estimateMinutes,
@@ -39,6 +43,7 @@ const DAY = 24 * HOUR;
 function card(id: string, over: Partial<QueueFlashcard> = {}): QueueFlashcard {
 	return {
 		id,
+		itemId: `item-${id}`,
 		state: 2,
 		dueAt: '2026-11-10T12:00:00.000Z',
 		createdAt: '2026-11-01T12:00:00.000Z',
@@ -50,6 +55,7 @@ function item(id: string, over: Partial<ItemReview> = {}): ReviewItem {
 	return {
 		flashcardId: id,
 		source: 'item',
+		itemId: `item-${id}`,
 		kind: 'reconhecer',
 		reps: 0,
 		state: 0,
@@ -141,6 +147,70 @@ describe('buildQueue', () => {
 	});
 });
 
+describe('irmãos ocultos', () => {
+	const now = new Date('2026-11-10T15:00:00.000Z');
+	const opts = { now, newLimit: 10, newDoneToday: 0 };
+
+	test('só um cartão em revisão por item entra no dia', () => {
+		const q = buildQueue(
+			[
+				card('rec', { itemId: 'a', dueAt: '2026-11-09T10:00:00.000Z' }),
+				card('prod', { itemId: 'a', dueAt: '2026-11-10T10:00:00.000Z' }),
+				card('outro', { itemId: 'b' })
+			],
+			opts
+		);
+		expect(q.map((c) => c.id)).toEqual(['rec', 'outro']);
+	});
+
+	test('irmão revisado hoje oculta o cartão em revisão e o novo', () => {
+		const q = buildQueue(
+			[
+				card('prod', { itemId: 'a' }),
+				card('novo', { itemId: 'b', state: 0 }),
+				card('livre', { itemId: 'c' })
+			],
+			{
+				...opts,
+				reviewedToday: [
+					{ id: 'rec', itemId: 'a' },
+					{ id: 'rec-b', itemId: 'b' }
+				]
+			}
+		);
+		expect(q.map((c) => c.id)).toEqual(['livre']);
+	});
+
+	test('o próprio cartão revisado hoje não se oculta, e aprendendo não espera o irmão', () => {
+		const q = buildQueue(
+			[
+				card('rec', { itemId: 'a', state: 3 }),
+				card('prod', { itemId: 'a', state: 1, dueAt: '2026-11-10T14:00:00.000Z' }),
+				card('sozinho', { itemId: 'b' })
+			],
+			{
+				...opts,
+				reviewedToday: [
+					{ id: 'rec', itemId: 'a' },
+					{ id: 'sozinho', itemId: 'b' }
+				]
+			}
+		);
+		expect(q.map((c) => c.id)).toEqual(['rec', 'sozinho', 'prod']);
+	});
+});
+
+describe('sanguessuga', () => {
+	test('teimosa a partir de 8 lapsos em algum cartão', () => {
+		expect(isLeech([{ lapses: 7 }, { lapses: 2 }])).toBe(false);
+		expect(isLeech([{ lapses: 0 }, { lapses: 8 }])).toBe(true);
+	});
+
+	test('avisa no 8º lapso e depois a cada 4', () => {
+		expect([7, 8, 9, 11, 12, 16].map(leechAlert)).toEqual([false, true, false, false, true, true]);
+	});
+});
+
 describe('reviewCount', () => {
 	test('soma vencidos e novos que ainda cabem no limite', () => {
 		expect(reviewCount({ dueNow: 4, newAvailable: 30, newDoneToday: 3, newLimit: 10 })).toBe(11);
@@ -177,32 +247,54 @@ describe('formatInterval', () => {
 });
 
 describe('limites do dia no fuso', () => {
-	test('o fuso fica num ponto só', () => {
-		expect(REVIEW_TIME_ZONE).toBe('America/Sao_Paulo');
+	const midnight = { timeZone: REVIEW_TIME_ZONE, startHour: 0 };
+
+	test('padrão: São Paulo, virada às 4 h como no Anki', () => {
+		expect(DEFAULT_CLOCK).toEqual({ timeZone: 'America/Sao_Paulo', startHour: 4 });
 	});
 
-	test('meia-noite de São Paulo (UTC−3)', () => {
-		// 01:30 UTC do dia 11 ainda é dia 10 em São Paulo (22:30).
-		expect(dayStart(new Date('2026-11-11T01:30:00.000Z')).toISOString()).toBe(
-			'2026-11-10T03:00:00.000Z'
+	test('o dia vira às 4 h de São Paulo (07:00 UTC)', () => {
+		// 06:30 UTC = 03:30 em São Paulo: ainda é o dia 10.
+		expect(dayStart(new Date('2026-11-11T06:30:00.000Z')).toISOString()).toBe(
+			'2026-11-10T07:00:00.000Z'
 		);
-		expect(dayStart(new Date('2026-11-11T03:00:00.000Z')).toISOString()).toBe(
-			'2026-11-11T03:00:00.000Z'
+		expect(dayStart(new Date('2026-11-11T07:00:00.000Z')).toISOString()).toBe(
+			'2026-11-11T07:00:00.000Z'
 		);
 		expect(nextDayStart(new Date('2026-11-10T15:00:00.000Z')).toISOString()).toBe(
+			'2026-11-11T07:00:00.000Z'
+		);
+	});
+
+	test('virada à meia-noite (UTC−3)', () => {
+		// 01:30 UTC do dia 11 ainda é dia 10 em São Paulo (22:30).
+		expect(dayStart(new Date('2026-11-11T01:30:00.000Z'), midnight).toISOString()).toBe(
+			'2026-11-10T03:00:00.000Z'
+		);
+		expect(nextDayStart(new Date('2026-11-10T15:00:00.000Z'), midnight).toISOString()).toBe(
 			'2026-11-11T03:00:00.000Z'
 		);
 	});
 
 	test('funciona com fuso que tem horário de verão', () => {
+		const ny = { timeZone: 'America/New_York', startHour: 0 };
 		// Nova York: 9 de março de 2026 já é EDT (UTC−4).
-		expect(dayStart(new Date('2026-03-09T12:00:00.000Z'), 'America/New_York').toISOString()).toBe(
+		expect(dayStart(new Date('2026-03-09T12:00:00.000Z'), ny).toISOString()).toBe(
 			'2026-03-09T04:00:00.000Z'
 		);
-		// Dia da troca (8/3): meia-noite ainda é EST (UTC−5).
-		expect(dayStart(new Date('2026-03-08T20:00:00.000Z'), 'America/New_York').toISOString()).toBe(
+		// Dia da troca (8/3): meia-noite ainda é EST (UTC−5); às 4 h já é EDT.
+		expect(dayStart(new Date('2026-03-08T20:00:00.000Z'), ny).toISOString()).toBe(
 			'2026-03-08T05:00:00.000Z'
 		);
+		expect(
+			dayStart(new Date('2026-03-08T20:00:00.000Z'), { ...ny, startHour: 4 }).toISOString()
+		).toBe('2026-03-08T08:00:00.000Z');
+	});
+
+	test('clockFrom cai no padrão com fuso ou hora inválidos', () => {
+		expect(clockFrom(null, null)).toEqual(DEFAULT_CLOCK);
+		expect(clockFrom('Foo/Bar', 30)).toEqual(DEFAULT_CLOCK);
+		expect(clockFrom('Europe/Rome', 0)).toEqual({ timeZone: 'Europe/Rome', startHour: 0 });
 	});
 });
 
@@ -245,7 +337,7 @@ describe('nextAvailableAt', () => {
 				newDoneToday: 10,
 				newLimit: 10
 			})?.toISOString()
-		).toBe('2026-11-11T03:00:00.000Z');
+		).toBe('2026-11-11T07:00:00.000Z');
 	});
 
 	test('sem nada agendado volta null', () => {
@@ -436,6 +528,8 @@ describe('próxima revisão', () => {
 			'hoje'
 		);
 		expect(formatNextReview(['2026-11-12T02:00:00.000Z'], now)).toBe('hoje');
+		// 03:30 do dia 12 em São Paulo ainda é o dia de estudo 11.
+		expect(formatNextReview(['2026-11-12T06:30:00.000Z'], now)).toBe('hoje');
 	});
 
 	test('amanhã e em N dias, contando dias do calendário', () => {

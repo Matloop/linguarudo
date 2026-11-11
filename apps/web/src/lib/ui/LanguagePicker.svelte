@@ -167,7 +167,7 @@
 		background: none;
 		color: var(--ink);
 		font: inherit;
-		font-size: 14px;
+		font-size: 15.5px;
 		outline: none;
 	}
 	ul {
@@ -205,17 +205,17 @@
 		font-weight: 500;
 	}
 	.t span {
-		font-size: 12px;
+		font-size: 13.5px;
 		color: var(--ink-3);
 	}
 	code {
-		font: 500 11.5px/1 var(--f-body);
+		font: 500 13px/1 var(--f-body);
 		color: var(--ink-3);
 		font-variant-numeric: tabular-nums;
 	}
 	.empty {
 		margin: 4px 10px;
-		font-size: 13px;
+		font-size: 14.5px;
 		color: var(--ink-3);
 	}
 	.other {
@@ -226,7 +226,7 @@
 		border-top: 1px solid var(--line);
 	}
 	.other label {
-		font-size: 12px;
+		font-size: 13.5px;
 		font-weight: 500;
 		color: var(--ink-3);
 	}
@@ -245,13 +245,13 @@
 		box-shadow: inset 0 0 0 1px var(--line);
 		color: var(--ink);
 		font: inherit;
-		font-size: 14px;
+		font-size: 15.5px;
 	}
 	.other input[aria-invalid='true'] {
 		box-shadow: inset 0 0 0 1px var(--terra-ink);
 	}
 	.hint {
-		font-size: 12px;
+		font-size: 13.5px;
 		color: var(--ink-3);
 	}
 	.err {

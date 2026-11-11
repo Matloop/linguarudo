@@ -33,7 +33,8 @@
 		| 'tag'
 		| 'cards'
 		| 'image'
-		| 'upload';
+		| 'upload'
+		| 'chart';
 </script>
 
 <script lang="ts">

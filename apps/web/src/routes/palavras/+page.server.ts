@@ -13,7 +13,7 @@ import {
 	type SaveEntry
 } from '#lib/items.ts';
 import { lemmaKey } from '@linguetta/language';
-import { formatNextReview, isDueToday, itemStrength } from '#lib/review.ts';
+import { formatNextReview, isDueToday, isLeech, itemStrength } from '#lib/review.ts';
 import { droppedMedia, parseMediaField, type MediaKind } from '#lib/media.ts';
 import { releaseMedia, signMedia } from '#lib/server/media.ts';
 import { loadSettings } from '#lib/server/settings.ts';
@@ -50,7 +50,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 	const { data, error: dbError } = await locals.supabase
 		.from('items')
 		.select(
-			'id, language, lemma, reading, sense, ipa, note, tags, image, audio, status, seen_count, created_at, flashcards(id, kind, state, stability, due_at), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
+			'id, language, lemma, reading, sense, ipa, note, tags, image, audio, status, seen_count, created_at, flashcards(id, kind, state, stability, due_at, lapses), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
 		)
 		.eq('user_id', user.id)
 		.eq('language', language)
@@ -71,9 +71,11 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 			createdAt: created_at,
 			seenCount: seen_count,
 			strength: itemStrength(flashcards),
+			leech: isLeech(flashcards),
+			lapses: Math.max(0, ...flashcards.map((c) => c.lapses)),
 			hasProduce: flashcards.some((c) => c.kind === 'produzir'),
-			dueToday: status === 'ativo' && isDueToday(dueAts, now),
-			next: status === 'ativo' ? formatNextReview(dueAts, now) : '',
+			dueToday: status === 'ativo' && isDueToday(dueAts, now, shell.clock),
+			next: status === 'ativo' ? formatNextReview(dueAts, now, shell.clock) : '',
 			encounters: encounters.map((e) => ({
 				id: e.id,
 				sentence: e.sentence,

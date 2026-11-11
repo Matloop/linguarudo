@@ -2,6 +2,8 @@ import { error, fail } from '@sveltejs/kit';
 import { generateToken } from '#lib/server/tokens.ts';
 import { formatWorkSource, normalizeLemma } from '#lib/items.ts';
 import type { Actions, PageServerLoad } from './$types';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '#lib/database.types.ts';
 
 const LABEL_MAX = 60;
 
@@ -14,9 +16,48 @@ async function requireUser(locals: App.Locals) {
 /** O que chega pelo LingoBlend (Stremio) entra com uma destas origens. */
 const STREMIO_ORIGINS = ['stremio', 'blend'];
 
+type SourceKey = 'tv' | 'mu' | 'mao' | 'er';
+
+/** Origem do encontro → fonte da barra. Anki (importação) conta como "à mão". */
+const SOURCE_OF: Record<string, SourceKey> = {
+	stremio: 'tv',
+	blend: 'tv',
+	musica: 'mu',
+	manual: 'mao',
+	anki: 'mao',
+	ereader: 'er'
+};
+
+const PAGE = 1000;
+
+/**
+ * Quantas palavras vieram de cada fonte. Cada palavra conta uma vez, pela origem do
+ * primeiro encontro (sem encontro: à mão). Pagina porque o PostgREST corta em 1000 linhas.
+ */
+async function wordSources(supabase: SupabaseClient<Database>, userId: string) {
+	const counts: Record<SourceKey, number> = { tv: 0, mu: 0, mao: 0, er: 0 };
+	for (let from = 0; ; from += PAGE) {
+		const { data, error: dbError } = await supabase
+			.from('items')
+			.select('id, encounters(origin, seen_at)')
+			.eq('user_id', userId)
+			.is('deleted_at', null)
+			.is('encounters.deleted_at', null)
+			.order('id')
+			.order('seen_at', { referencedTable: 'encounters', ascending: true })
+			.limit(1, { referencedTable: 'encounters' })
+			.range(from, from + PAGE - 1);
+		if (dbError) return null;
+		for (const row of data) {
+			counts[SOURCE_OF[row.encounters[0]?.origin ?? 'manual'] ?? 'mao']++;
+		}
+		if (data.length < PAGE) return counts;
+	}
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = await requireUser(locals);
-	const [tokens, words, last] = await Promise.all([
+	const [tokens, words, last, sources] = await Promise.all([
 		locals.supabase
 			.from('api_tokens')
 			.select('id, label, token_hint, created_at, last_used_at, kind, device_model')
@@ -37,7 +78,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.in('origin', STREMIO_ORIGINS)
 			.order('seen_at', { ascending: false })
 			.limit(1)
-			.maybeSingle()
+			.maybeSingle(),
+		wordSources(locals.supabase, user.id)
 	]);
 	if (tokens.error) error(500, 'Não deu para carregar suas integrações agora.');
 	const lastRow = last.data as {
@@ -63,6 +105,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 					}
 				: null
 		},
+		sources,
 		now: new Date().toISOString()
 	};
 };

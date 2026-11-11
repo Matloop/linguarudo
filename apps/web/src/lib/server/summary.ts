@@ -1,11 +1,18 @@
 // Contagens por idioma de estudo para o shell (seletor de idioma, "N para
-// revisar") sem mudar o schema: contagens "head" do PostgREST por idioma, mais
-// o review_counts para o que é global (novas feitas hoje e o limite diário).
+// revisar"): review_counts por idioma (com irmãos ocultos, como a fila) e a
+// contagem "head" de itens.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '#lib/database.types.ts';
 import type { Language } from '#lib/languages.ts';
-import { DEFAULT_NEW_PER_DAY, dayStart, formatWhen, newRemaining } from '#lib/review.ts';
+import {
+	DEFAULT_CLOCK,
+	DEFAULT_NEW_PER_DAY,
+	dayStart,
+	formatWhen,
+	newRemaining,
+	type DayClock
+} from '#lib/review.ts';
 
 type Client = SupabaseClient<Database>;
 
@@ -25,49 +32,22 @@ export interface ShellSummary {
 	newDoneToday: number;
 }
 
-/** Flashcards ativos do idioma, de item e de ficha (consultas separadas: o embed é !inner). */
-function activeFlashcards(supabase: Client, userId: string, language: Language) {
-	return [
-		supabase
-			.from('flashcards')
-			.select('id, items!inner(language, status, deleted_at)', { count: 'exact', head: true })
-			.eq('user_id', userId)
-			.eq('items.language', language)
-			.eq('items.status', 'ativo')
-			.is('items.deleted_at', null),
-		supabase
-			.from('flashcards')
-			.select('id, fichas!inner(language, status, deleted_at)', { count: 'exact', head: true })
-			.eq('user_id', userId)
-			.eq('fichas.language', language)
-			.eq('fichas.status', 'ativo')
-			.is('fichas.deleted_at', null)
-	];
-}
-
 async function count(query: PromiseLike<{ count: number | null; error: unknown }>) {
 	const { count, error } = await query;
 	if (error) throw new Error('contagem por idioma');
 	return count ?? 0;
 }
 
-type CountQuery = ReturnType<typeof activeFlashcards>[number];
-
-async function countAll(queries: CountQuery[], narrow: (q: CountQuery) => CountQuery) {
-	const counts = await Promise.all(queries.map((q) => count(narrow(q))));
-	return counts.reduce((a, b) => a + b, 0);
-}
-
 export async function loadShellSummary(
 	supabase: Client,
 	userId: string,
 	study: readonly Language[],
-	now: Date
+	now: Date,
+	clock: DayClock = DEFAULT_CLOCK
 ): Promise<ShellSummary> {
-	const nowIso = now.toISOString();
-	const [global, ...perLanguage] = await Promise.all([
-		supabase.rpc('review_counts', { p_day_start: dayStart(now).toISOString() }).single(),
-		...study.map((language) =>
+	const p_day_start = dayStart(now, clock).toISOString();
+	const perLanguage = await Promise.all(
+		study.map((language) =>
 			Promise.all([
 				count(
 					supabase
@@ -77,21 +57,30 @@ export async function loadShellSummary(
 						.eq('language', language)
 						.is('deleted_at', null)
 				),
-				countAll(activeFlashcards(supabase, userId, language), (q) =>
-					q.gt('state', 0).lte('due_at', nowIso)
-				),
-				countAll(activeFlashcards(supabase, userId, language), (q) => q.eq('state', 0))
+				supabase.rpc('review_counts', { p_day_start, p_language: language }).single()
 			])
 		)
-	]);
-	const newLimit = global.data?.new_limit ?? DEFAULT_NEW_PER_DAY;
-	const newDoneToday = global.data?.new_done_today ?? 0;
+	);
+	let newLimit = DEFAULT_NEW_PER_DAY;
+	let newDoneToday: number;
+	if (perLanguage.length === 0) {
+		const { data } = await supabase.rpc('review_counts', { p_day_start }).single();
+		newLimit = data?.new_limit ?? newLimit;
+		newDoneToday = data?.new_done_today ?? 0;
+	} else {
+		const first = perLanguage[0][1].data;
+		newLimit = first?.new_limit ?? newLimit;
+		newDoneToday = first?.new_done_today ?? 0;
+	}
 	const remaining = newRemaining(newLimit, newDoneToday);
 	return {
 		newLimit,
 		newDoneToday,
 		languages: study.map((language, i) => {
-			const [items, dueNow, newAvailable] = perLanguage[i];
+			const [items, counts] = perLanguage[i];
+			if (counts.error) throw new Error('contagem por idioma');
+			const dueNow = counts.data?.due_now ?? 0;
+			const newAvailable = counts.data?.new_available ?? 0;
 			return {
 				language,
 				items,
@@ -108,7 +97,8 @@ export async function nextDueText(
 	supabase: Client,
 	userId: string,
 	language: Language,
-	now: Date
+	now: Date,
+	clock: DayClock = DEFAULT_CLOCK
 ): Promise<string | null> {
 	const nowIso = now.toISOString();
 	const [item, ficha] = await Promise.all([
@@ -139,7 +129,7 @@ export async function nextDueText(
 	]);
 	const dues = [item.data?.due_at, ficha.data?.due_at].filter((d): d is string => !!d);
 	if (dues.length === 0) return null;
-	return formatWhen(new Date(Math.min(...dues.map((d) => Date.parse(d)))), now);
+	return formatWhen(new Date(Math.min(...dues.map((d) => Date.parse(d)))), now, clock.timeZone);
 }
 
 /** Tags usadas em itens e fichas do idioma, em ordem alfabética (para os filtros). */

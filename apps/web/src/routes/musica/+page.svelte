@@ -208,7 +208,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		font: 600 16px var(--f-head);
+		font: 600 17.5px var(--f-head);
 		letter-spacing: -0.01em;
 	}
 	.campo {
@@ -224,7 +224,7 @@
 	}
 	label,
 	legend {
-		font-size: 12.5px;
+		font-size: 14px;
 		font-weight: 500;
 		color: var(--ink-3);
 	}
@@ -238,7 +238,7 @@
 		color: var(--ink);
 		padding: 0 12px;
 		font: inherit;
-		font-size: 15px;
+		font-size: 16.5px;
 		transition: box-shadow 0.15s;
 	}
 	input:not([type='radio']):focus {
@@ -251,7 +251,7 @@
 	.ajuda,
 	.nota {
 		margin: 0;
-		font-size: 13px;
+		font-size: 14.5px;
 		color: var(--ink-3);
 		text-wrap: pretty;
 	}
@@ -293,7 +293,7 @@
 		line-height: 30px;
 		padding: 0 12px;
 		border-radius: var(--r-s);
-		font-size: 13.5px;
+		font-size: 15px;
 		font-weight: 500;
 		color: var(--ink-2);
 	}
@@ -319,7 +319,7 @@
 	.erro {
 		margin: 0;
 		color: var(--terra-ink);
-		font-size: 13.5px;
+		font-size: 15px;
 	}
 
 	.recentes .eyebrow {
@@ -370,21 +370,21 @@
 		min-width: 0;
 	}
 	.texto b {
-		font: 600 15.5px/1.3 var(--f-head);
+		font: 600 17px/1.3 var(--f-head);
 		letter-spacing: -0.01em;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	.texto span {
-		font-size: 13px;
+		font-size: 14.5px;
 		color: var(--ink-3);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	.data {
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 		font-variant-numeric: tabular-nums;
 	}

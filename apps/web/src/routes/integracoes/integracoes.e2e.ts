@@ -5,6 +5,7 @@ const FORK_ORIGIN = 'http://lingoblend.peario.xyz.localhost:8080';
 
 async function newToken(page: Page, label?: string): Promise<string> {
 	await page.goto('/integracoes');
+	await page.getByRole('button', { name: 'Conectar' }).click();
 	if (label) await page.getByLabel('Nome').fill(label);
 	await page.getByRole('button', { name: 'Gerar token' }).click();
 	const field = page.getByRole('textbox', { name: 'Token gerado' });
@@ -51,13 +52,14 @@ test('gerar token, mostrar uma vez, listar e revogar', async ({ page }) => {
 		.getByRole('link', { name: 'Integrações' })
 		.click();
 	await expect(page.getByRole('heading', { name: 'Integrações' })).toBeVisible();
-	await expect(page.getByText('Nenhum token ainda.')).toBeVisible();
+	await expect(page.getByText('Legendas viram palavras no seu banco')).toBeVisible();
 
 	const token = await newToken(page, 'Notebook');
-	await expect(page.getByText('Este token não aparece de novo.')).toBeVisible();
+	await expect(page.getByText('Copie agora: ele aparece uma vez só.')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Gerenciar' })).toBeVisible();
 	const item = page.getByRole('listitem').filter({ hasText: 'Notebook' });
 	await expect(item).toContainText(`…${token.slice(-4)}`);
-	await expect(item).toContainText('Último uso: nunca');
+	await expect(item).toContainText('Nunca usado');
 
 	// Recarregou: o token some, fica só a dica.
 	await page.reload();
@@ -74,10 +76,12 @@ test('gerar token, mostrar uma vez, listar e revogar', async ({ page }) => {
 	});
 
 	await page.reload();
-	await expect(item).not.toContainText('Último uso: nunca');
+	await page.getByRole('button', { name: 'Gerenciar' }).click();
+	await expect(item).toContainText('Usado agora');
 
 	await item.getByRole('button', { name: /Revogar/ }).click();
-	await expect(page.getByText('Nenhum token ainda.')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Conectar' })).toBeVisible();
+	await expect(page.getByText('Legendas viram palavras no seu banco')).toBeVisible();
 	expect((await api(page.request, token).get('/api/v1/me')).status()).toBe(401);
 });
 

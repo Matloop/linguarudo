@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { languageLabel } from '#lib/languages.ts';
 	import { REVIEW_DEPENDENCY } from '#lib/review.ts';
 	import FimDeJogo from '#lib/music/FimDeJogo.svelte';
 	import Inicio from '#lib/music/Inicio.svelte';
@@ -23,6 +24,7 @@
 
 	const song = $derived(data.song);
 	const lang = $derived(song.language);
+	const langName = $derived(languageLabel(lang, data.shell?.uiLanguage ?? 'pt'));
 
 	// ---------- banco do usuário (cresce quando ele salva palavras) ----------
 	interface BankEntry {
@@ -224,7 +226,7 @@
 
 	// ---------- relógio ----------
 	let clockSeconds = $state(0);
-	let waveFill: SVGPathElement | undefined = $state();
+	let progFill: HTMLDivElement | undefined = $state();
 
 	onMount(() => {
 		void boot();
@@ -237,8 +239,8 @@
 			clockSeconds = Math.floor(t);
 			if (syncing) syncTime = t;
 			if (duration === 0) duration = player.duration();
-			if (waveFill && duration > 0) {
-				waveFill.style.strokeDashoffset = String(100 - Math.min(1, t / duration) * 100);
+			if (progFill && duration > 0) {
+				progFill.style.width = `${Math.min(1, t / duration) * 100}%`;
 			}
 			if (!game) return;
 			const now = performance.now();
@@ -268,13 +270,15 @@
 		null
 	);
 	let notice = $state('');
+	let noticeTone = $state<'ok' | 'err' | ''>('');
 	let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 	let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
 	const PRAISE = ['Isso!', 'Na mosca!', 'Certinho!'];
 	let streak = 0;
 
-	function say(text: string, ms = 3200) {
+	function say(text: string, ms = 3200, tone: 'ok' | 'err' | '' = '') {
 		notice = text;
+		noticeTone = tone;
 		clearTimeout(noticeTimer);
 		noticeTimer = setTimeout(() => (notice = ''), ms);
 	}
@@ -289,9 +293,9 @@
 		clearTimeout(feedbackTimer);
 		feedbackTimer = setTimeout(() => (feedback = null), 1400);
 		if (result.ok) {
-			say(`+${result.points} · ${PRAISE[streak++ % PRAISE.length]}`);
+			say(`${PRAISE[streak++ % PRAISE.length]} +${result.points}`, 3200, 'ok');
 		} else {
-			say(`Era “${gap.answer}”`);
+			say(`Era “${gap.answer}”. Foi para revisar.`, 3200, 'err');
 		}
 		sync();
 	}
@@ -614,6 +618,7 @@
 			return;
 		}
 		if (e.key === 'Escape') {
+			revOpen = false;
 			closeCard();
 			return;
 		}
@@ -659,12 +664,30 @@
 	const estado = $derived(
 		syncing
 			? 'Ajustando a sincronia'
-			: phase === 'waiting' && waitSeconds !== null
-				? `A música espera você · ${waitSeconds}s`
+			: phase === 'waiting'
+				? 'A música espera você'
 				: phase === 'paused'
 					? 'Pausado'
-					: 'Tocando'
+					: answerable
+						? 'Escolha a palavra que falta'
+						: 'Tocando'
 	);
+	/** Tocando, o resultado da resposta toma o lugar da dica; nos outros estados ficam os dois. */
+	const estadoOculto = $derived(!syncing && phase === 'playing' && notice !== '');
+
+	// ---------- popover "para revisar" ----------
+	let revOpen = $state(false);
+	let revChip: HTMLButtonElement | undefined = $state();
+	let revPop: HTMLDivElement | undefined = $state();
+	$effect(() => {
+		if (wrongGaps.length === 0) revOpen = false;
+	});
+	function onPointerdown(e: PointerEvent) {
+		if (!revOpen) return;
+		const t = e.target as Node;
+		if (revChip?.contains(t) || revPop?.contains(t)) return;
+		revOpen = false;
+	}
 
 	let lettersBox: HTMLDivElement | undefined = $state();
 	let lineEls = $state<HTMLElement[]>([]);
@@ -683,21 +706,14 @@
 		center();
 	});
 
-	// Marcas das lacunas sobre a onda de progresso.
-	let waveBase: SVGPathElement | undefined = $state();
-	let marks = $state<{ line: number; x: number; y: number }[]>([]);
-	$effect(() => {
-		if (!waveBase || !session || duration <= 0) {
-			marks = [];
-			return;
-		}
-		const len = waveBase.getTotalLength();
-		marks = session.gaps.map((g) => {
-			const p = waveBase!.getPointAtLength(
-				Math.min(1, session!.lines[g.line].start / duration) * len
-			);
-			return { line: g.line, x: p.x, y: p.y };
-		});
+	// Marcas das lacunas sobre a trilha de progresso (em % da duração do vídeo).
+	const marks = $derived.by(() => {
+		if (!session || duration <= 0) return [];
+		const lines = session.lines;
+		return session.gaps.map((g) => ({
+			line: g.line,
+			pct: Math.max(0, Math.min(1, (lines[g.line].start + offset) / duration)) * 100
+		}));
 	});
 
 	const clock = (s: number) =>
@@ -710,7 +726,6 @@
 		return 'dim';
 	}
 	const shownOptions = $derived(answerable?.options ?? feedback?.options ?? []);
-	const OPTION_COLORS = ['#7FA886', '#F07C7C', '#E0A458', '#6C8EBF'];
 
 	const gameOverLine = $derived(
 		phase === 'gameover' && game && session ? (session.lines[game.gameOverLine]?.text ?? '') : ''
@@ -721,157 +736,173 @@
 	<title>{song.title} · Música · Linguetta</title>
 </svelte:head>
 
-<svelte:window onkeydown={onKeydown} onkeyup={onKeyup} onresize={center} />
+<svelte:window
+	onkeydown={onKeydown}
+	onkeyup={onKeyup}
+	onresize={center}
+	onpointerdown={onPointerdown}
+/>
 
 <div class="app" data-fase={phase}>
 	<header class="topo">
-		<a class="x" href={resolve('/musica')} aria-label="Sair da música">
-			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-		</a>
-		<div class="faixa">
-			<img
-				class="capa-mini"
-				src={`https://i.ytimg.com/vi/${song.youtubeId}/default.jpg`}
-				alt=""
-				width="44"
-				height="44"
-			/>
-			<div class="faixa-txt">
+		<div class="t-esq">
+			<a class="x" href={resolve('/musica')} aria-label="Sair da música">
+				<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+			</a>
+			<div class="faixa">
 				<b>{song.title}</b>
-				<small
-					><span class="tg" class:it={lang === 'it'}>{lang.toUpperCase()}</span>{song.artist}</small
-				>
+				<span>{song.artist} · {langName}</span>
 			</div>
 		</div>
+
 		<div class="prog">
-			<span class="tempo">{clock(clockSeconds)}</span>
-			<svg
-				class="onda"
-				viewBox="0 0 300 24"
-				preserveAspectRatio="none"
-				role="img"
-				aria-label="Progresso da música"
-			>
-				<path
-					class="fundo"
-					bind:this={waveBase}
-					d="M6 14 Q 43 4 80 13 T 155 13 T 230 11 T 294 10"
-					pathLength="100"
-				/>
-				<path
-					class="cheia"
-					bind:this={waveFill}
-					d="M6 14 Q 43 4 80 13 T 155 13 T 230 11 T 294 10"
-					pathLength="100"
-				/>
+			<div class="trilha" role="img" aria-label="Progresso da música">
+				<div class="fill" bind:this={progFill}></div>
 				{#each marks as m (m.line)}
 					{@const r = resultByLine.get(m.line)}
-					<circle class="marca" class:ok={r?.ok} class:err={r && !r.ok} cx={m.x} cy={m.y} r="2.6" />
+					<span
+						class="gp"
+						class:ok={r?.ok}
+						class:err={r && !r.ok}
+						class:cur={!r && answerable?.line === m.line}
+						style:left="{m.pct}%"
+					></span>
 				{/each}
-			</svg>
-			<span class="tempo">{duration > 0 ? clock(duration) : '–:––'}</span>
+			</div>
+			<div class="tempos">
+				<span>{clock(clockSeconds)}</span><span>{duration > 0 ? clock(duration) : '–:––'}</span>
+			</div>
 		</div>
-		<div class="pontos" aria-label="Pontos" data-testid="pontos">
-			<span>{'0'.repeat(Math.max(0, 4 - String(score).length))}</span>{score}
-		</div>
-		<div class="combo" title="Combo: acerte de primeira para subir. Errar só zera o combo.">
-			<svg viewBox="0 0 46 46" aria-hidden="true">
-				<circle cx="23" cy="23" r="19" stroke="#ffffff1c" />
-				<circle
-					cx="23"
-					cy="23"
-					r="19"
-					stroke="#B5DDAA"
-					pathLength="100"
-					stroke-dasharray="{((combo - 1) / 3) * 100} 100"
-				/>
-			</svg>
-			<span data-testid="combo">×{combo}</span>
-		</div>
-		<div class="banco-ct" aria-live="polite">
-			<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"
-				><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" /><path
-					d="M5 17a3 3 0 0 1 3-3h11"
-				/></svg
+
+		<div class="t-dir">
+			<button
+				type="button"
+				class="chip-rev"
+				bind:this={revChip}
+				hidden={wrongGaps.length === 0}
+				aria-expanded={revOpen}
+				aria-controls="pop-rev"
+				onclick={() => (revOpen = !revOpen)}
 			>
-			<div><small>Seu banco</small><b data-testid="banco">{bankTotal}</b></div>
+				<svg class="ic sm" viewBox="0 0 24 24" aria-hidden="true"
+					><path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2" /></svg
+				>
+				<span data-testid="rev-n">{wrongGaps.length}</span><span class="lbl-l">para revisar</span>
+			</button>
+			<div class="placar" title="Combo: acerte de primeira para subir. Errar só zera o combo.">
+				<b aria-label="Pontos" data-testid="pontos">{score.toLocaleString('pt-BR')}</b>
+				<span class="combo" class:ativo={combo > 1} data-testid="combo">×{combo}</span>
+			</div>
+		</div>
+
+		<div class="pop" id="pop-rev" bind:this={revPop} hidden={!revOpen}>
+			<h3>Para revisar</h3>
+			<p>Errou? A palavra fica aqui. Você salva no banco no fim da música.</p>
+			<ul>
+				{#each [...wrongGaps].reverse() as gap (gap.line)}
+					<li><b {lang}>{gap.key}</b><span>{bank.get(gap.key)?.sense ?? ''}</span></li>
+				{/each}
+			</ul>
+			<p class="banco-ct" aria-live="polite">
+				Seu banco: <b data-testid="banco">{bankTotal}</b>
+				{bankTotal === 1 ? 'palavra' : 'palavras'}
+			</p>
 		</div>
 	</header>
 
 	<main class="palco">
-		<section class="jogo">
-			<div class="letra" bind:this={lettersBox}>
-				{#if started}
-					<div class="estado" class:espera={phase === 'waiting'} role="status" data-testid="estado">
-						<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
-						<span>{estado}</span>
-					</div>
-				{/if}
-				{#if wrongGaps.length > 0}
-					<span class="rev-pill">Para revisar · {wrongGaps.length}</span>
-				{/if}
-				<div class="letra-masc">
-					<div class="rolo" style:transform="translateY({rollY}px)">
-						{#if session}
-							{#each session.lines as line, i (line.index)}
-								{@const gap = gapByLine.get(i)}
-								{@const result = resultByLine.get(i)}
-								<div
-									class="lin"
-									data-line={i}
-									class:atual={i === shownLine}
-									class:passou={i < shownLine}
-									class:alvo-sinc={syncing && i === syncTarget}
-									bind:this={lineEls[i]}
-								>
-									{#if syncing}
-										<p class="txt" {lang}>
-											<button
-												type="button"
-												class="lin-alvo"
-												title="Marcar esta linha"
-												onclick={() => (syncTarget = i)}>{line.text}</button
-											>
-										</p>
-									{:else}
-										<p class="txt" {lang}>
-											{#each line.tokens as token, t (t)}
-												{#if token.key === null}{token.text}{:else if gap && gap.token === t && !result}<span
-														class="gap"
-														class:alvo={answerable?.line === i}
-														role="img"
-														aria-label="lacuna"
-													></span>{:else}<button
-														type="button"
-														class="w"
-														class:nobanco={bank.has(token.key)}
-														class:salva={savedNow.has(token.key)}
-														class:ok={result?.ok && gap?.token === t}
-														class:err={result && !result.ok && gap?.token === t}
-														onclick={(e) => openCard(i, t, e.currentTarget)}>{token.text}</button
-													>{/if}
-											{/each}
+		<div class="video">
+			<div class="video-host" bind:this={host}></div>
+		</div>
+		<div class="letra" bind:this={lettersBox}>
+			<div class="letra-masc">
+				<div class="rolo" style:transform="translateY({rollY}px)">
+					{#if session}
+						{#each session.lines as line, i (line.index)}
+							{@const gap = gapByLine.get(i)}
+							{@const result = resultByLine.get(i)}
+							<div
+								class="lin"
+								data-line={i}
+								class:atual={i === shownLine}
+								class:passou={i < shownLine}
+								class:alvo-sinc={syncing && i === syncTarget}
+								bind:this={lineEls[i]}
+							>
+								{#if syncing}
+									<p class="txt" {lang}>
+										<button
+											type="button"
+											class="lin-alvo"
+											title="Marcar esta linha"
+											onclick={() => (syncTarget = i)}>{line.text}</button
+										>
+									</p>
+								{:else}
+									<p class="txt" {lang}>
+										{#each line.tokens as token, t (t)}
+											{#if token.key === null}{token.text}{:else if gap && gap.token === t && !result}<span
+													class="gap"
+													class:alvo={answerable?.line === i}
+													role="img"
+													aria-label="lacuna"
+												></span>{:else}<button
+													type="button"
+													class="w"
+													class:nobanco={bank.has(token.key)}
+													class:salva={savedNow.has(token.key)}
+													class:ok={result?.ok && gap?.token === t}
+													class:err={result && !result.ok && gap?.token === t}
+													onclick={(e) => openCard(i, t, e.currentTarget)}>{token.text}</button
+												>{/if}
+										{/each}
+									</p>
+								{/if}
+								{#if showPt && !syncing && i === activeLine}
+									{@const known = line.tokens.filter(
+										(tk) => tk.key !== null && bank.get(tk.key)?.sense
+									)}
+									{#if known.length > 0}
+										<p class="tr">
+											{#each known as tk, n (n)}{n > 0 ? ' · ' : ''}{tk.text} = {bank.get(tk.key!)
+													?.sense}{/each}
 										</p>
 									{/if}
-									{#if showPt && !syncing && i === activeLine}
-										{@const known = line.tokens.filter(
-											(tk) => tk.key !== null && bank.get(tk.key)?.sense
-										)}
-										{#if known.length > 0}
-											<p class="tr">
-												{#each known as tk, n (n)}{n > 0 ? ' · ' : ''}{tk.text} = {bank.get(tk.key!)
-														?.sense}{/each}
-											</p>
-										{/if}
-									{/if}
-								</div>
-							{/each}
-						{/if}
-					</div>
+								{/if}
+							</div>
+						{/each}
+					{/if}
 				</div>
 			</div>
+		</div>
+	</main>
 
-			{#if syncing && session}
+	<section class="resp" class:sinc-on={syncing}>
+		<div class="status">
+			{#if started}
+				<span
+					class="estado"
+					class:espera={phase === 'waiting' && !syncing}
+					class:oculto={estadoOculto}
+					role="status"
+					data-testid="estado"
+				>
+					{#if phase === 'playing' && !syncing}<span class="eq" aria-hidden="true"
+							><i></i><i></i><i></i></span
+						>{/if}{estado}
+				</span>
+			{/if}
+			{#if phase === 'waiting' && waitMs !== null && !syncing}
+				<span class="cd" data-testid="contador">
+					<span class="bar"><i style:transform="scaleX({waitMs / 10000})"></i></span>
+					{waitSeconds} s
+				</span>
+			{/if}
+			<span class="aviso {noticeTone}" class:so={estadoOculto} aria-live="polite">{notice}</span>
+		</div>
+
+		{#if syncing && session}
+			<div class="sinc-box">
 				<Sincronia
 					lines={session.lines}
 					{offset}
@@ -896,136 +927,122 @@
 					oncancel={() => closeSync(false)}
 					onconclude={() => closeSync(true)}
 				/>
-			{:else}
-				<div class="ctrl">
-					<button class="cb" type="button" onclick={repeatLine} title="Repetir a linha (R)">
-						<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"
-							><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg
-						>
-						<span class="lbl-l">Repetir</span><kbd>R</kbd>
+			</div>
+		{:else}
+			<div class="ops" role="group" aria-label="Escolha a palavra que falta">
+				{#each shownOptions.length > 0 ? shownOptions : ['', '', '', ''] as option, i (i)}
+					{@const state = option ? optionState(option) : ''}
+					<button
+						type="button"
+						class="op"
+						class:vazia={!option}
+						class:certa={state === 'ok'}
+						class:errou={state === 'err'}
+						class:apaga={state === 'dim'}
+						disabled={!option || !answerable}
+						aria-keyshortcuts={String(i + 1)}
+						onclick={() => pick(option)}
+					>
+						{#if option}<kbd class="k">{i + 1}</kbd><span {lang}>{option}</span>{/if}
 					</button>
-					<button
-						class="cb"
-						class:on={slow}
-						type="button"
-						onclick={toggleSpeed}
-						aria-pressed={slow}
-						title="Velocidade (V)">{slow ? '0,75×' : '1×'}</button
-					>
-					<button
-						class="cb"
-						class:on={showPt}
-						type="button"
-						onclick={() => (showPt = !showPt)}
-						aria-pressed={showPt}
-						title="Tradução das palavras do seu banco (T)">PT</button
-					>
-					<button
-						class="cb"
-						type="button"
-						onclick={togglePause}
-						aria-label={phase === 'paused' ? 'Continuar' : 'Pausar'}
-						title="Pausar (espaço)"
-					>
-						<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
-							{#if phase === 'paused'}<path d="M7 4l13 8-13 8z" />{:else}<path
-									d="M8 5v14M16 5v14"
-								/>{/if}
-						</svg>
-					</button>
-					<span class="esp"></span>
-					<div
-						class="sync"
-						role="group"
-						aria-label="Sincronia da letra"
-						title="Se a letra aparece cedo ou tarde demais"
-					>
-						<button
-							class="cb"
-							type="button"
-							onclick={() => nudge(-0.1)}
-							aria-label="Letra mais cedo">−</button
-						>
-						<button
-							class="cb sync-v"
-							type="button"
-							onclick={openSync}
-							title="Ajustar a sincronia (S)"
-							data-testid="sincronia"
-							><span class="lbl-l">Sincronia</span> <b>{formatOffset(offset)}</b></button
-						>
-						<button
-							class="cb"
-							type="button"
-							onclick={() => nudge(0.1)}
-							aria-label="Letra mais tarde">+</button
-						>
-					</div>
-				</div>
+				{/each}
+			</div>
+		{/if}
+	</section>
 
-				<div class="resp">
-					<div class="resp-cab">
-						<span class="info">
-							{#if totalGaps > 0}Lacuna {Math.max(1, gapNumber)} de {totalGaps}{:else}Sem lacunas{/if}
-						</span>
-						{#if phase === 'waiting' && waitMs !== null}
-							<div class="espera-bar" data-testid="contador">
-								<div class="trilho"><i style:transform="scaleX({waitMs / 10000})"></i></div>
-								<span>{waitSeconds}s</span>
-							</div>
-						{/if}
-						<span class="aviso" class:err={notice.startsWith('Era')} aria-live="polite"
-							>{notice}</span
+	<footer class="baixo">
+		<div class="tools">
+			{#if !syncing}
+				<button
+					class="tool"
+					type="button"
+					onclick={togglePause}
+					aria-label={phase === 'paused' ? 'Continuar' : 'Pausar'}
+					title={phase === 'paused' ? 'Continuar (espaço)' : 'Pausar (espaço)'}
+				>
+					<svg class="ic sm" viewBox="0 0 24 24" aria-hidden="true">
+						{#if phase === 'paused'}<path d="M8 5v14l11-7z" />{:else}<path
+								d="M8 5v14M16 5v14"
+							/>{/if}
+					</svg>
+					<span class="lbl">{phase === 'paused' ? 'Continuar' : 'Pausar'}</span>
+					<kbd aria-hidden="true">␣</kbd>
+				</button>
+				<button class="tool" type="button" onclick={repeatLine} title="Repetir a linha (R)">
+					<svg class="ic sm" viewBox="0 0 24 24" aria-hidden="true"
+						><path d="M4 12a8 8 0 1 0 3-6.2" /><path d="M4 4v4h4" /></svg
+					>
+					<span class="lbl">Repetir</span><kbd aria-hidden="true">R</kbd>
+				</button>
+				<button
+					class="tool"
+					class:on={showPt}
+					type="button"
+					onclick={() => (showPt = !showPt)}
+					aria-pressed={showPt}
+					title="Tradução das palavras do seu banco (T)"
+				>
+					<svg class="ic sm" viewBox="0 0 24 24" aria-hidden="true"
+						><path
+							d="M4 6h10M9 4v2M6 6c1 4 4 7 7 8M12 6c-1 4-4 7-7 8M14 20l4-9 4 9M15.5 17h5"
+						/></svg
+					>
+					<span class="lbl">Tradução</span><kbd aria-hidden="true">T</kbd>
+				</button>
+			{/if}
+		</div>
+
+		<div class="lacunas">
+			{#if totalGaps > 0}Lacuna <b>{Math.max(1, gapNumber)}</b> de {totalGaps}{:else}Sem lacunas{/if}
+		</div>
+
+		<div class="tools dir">
+			{#if !syncing}
+				<button
+					class="tool"
+					class:on={slow}
+					type="button"
+					onclick={toggleSpeed}
+					aria-pressed={slow}
+					title="Velocidade (V)"
+				>
+					{slow ? '0,75×' : '1×'}<kbd aria-hidden="true">V</kbd>
+				</button>
+				<div
+					class="sync"
+					role="group"
+					aria-label="Sincronia da letra"
+					title="Se a letra aparece cedo ou tarde demais"
+				>
+					<button
+						class="tool nudge"
+						type="button"
+						onclick={() => nudge(-0.1)}
+						aria-label="Letra mais cedo">−</button
+					>
+					<button
+						class="tool"
+						type="button"
+						onclick={openSync}
+						title="Ajustar a sincronia (S)"
+						data-testid="sincronia"
+					>
+						<svg class="ic sm" viewBox="0 0 24 24" aria-hidden="true"
+							><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></svg
 						>
-					</div>
-					<div class="ops" role="group" aria-label="Escolha a palavra que falta">
-						{#each shownOptions.length > 0 ? shownOptions : ['', '', '', ''] as option, i (i)}
-							{@const state = option ? optionState(option) : ''}
-							<button
-								type="button"
-								class="op"
-								class:vazia={!option}
-								class:certa={state === 'ok'}
-								class:errou={state === 'err'}
-								class:apaga={state === 'dim'}
-								style:--c={OPTION_COLORS[i]}
-								disabled={!option || !answerable}
-								aria-keyshortcuts={String(i + 1)}
-								onclick={() => pick(option)}
-							>
-								{#if option}<span class="k">{i + 1}</span>{option}{:else}·{/if}
-							</button>
-						{/each}
-					</div>
+						<span class="lbl">Sincronia</span>
+						<b>{formatOffset(offset)}</b>
+					</button>
+					<button
+						class="tool nudge"
+						type="button"
+						onclick={() => nudge(0.1)}
+						aria-label="Letra mais tarde">+</button
+					>
 				</div>
 			{/if}
-		</section>
-
-		<aside class="lado">
-			<div class="video">
-				<div class="video-host" bind:this={host}></div>
-			</div>
-			<div class="rev">
-				<h3>Para revisar <span data-testid="rev-n">{wrongGaps.length}</span></h3>
-				<p class="sub">Errou? A palavra fica aqui. Sem pontos perdidos.</p>
-				<ul>
-					{#each [...wrongGaps].reverse() as gap (gap.line)}
-						<li>
-							<b>{gap.key}</b>
-							<em>{bank.get(gap.key)?.sense ?? ''}</em>
-							<span class="tag">errou</span>
-						</li>
-					{/each}
-				</ul>
-				{#if wrongGaps.length === 0}<p class="vazio">Nada por aqui ainda.</p>{/if}
-			</div>
-			<div class="atalhos">
-				<kbd>1</kbd>–<kbd>4</kbd> responde · <kbd>R</kbd> repete a linha · <kbd>V</kbd>
-				velocidade<br />
-				<kbd>T</kbd> tradução · <kbd>espaço</kbd> pausa · toque numa palavra
-			</div>
-		</aside>
-	</main>
+		</div>
+	</footer>
 </div>
 
 {#if card && cardToken && session}
@@ -1092,742 +1109,298 @@
 {/if}
 
 <style>
+	/* Mesmos tokens do app (tokens.css): segue o tema claro/escuro. */
 	.app {
-		--salvia-cl: #b5ddaa;
-		--coral-esc: var(--coral-escuro);
 		position: fixed;
 		inset: 0;
 		display: grid;
-		grid-template-rows: auto 1fr;
-		background: var(--verde-escuro);
-		color: var(--creme);
+		grid-template-rows: auto minmax(0, 1fr) auto auto;
+		background: var(--page);
+		color: var(--ink);
 		overflow: hidden;
 	}
 
 	.ic {
-		width: 20px;
-		height: 20px;
+		width: 19px;
+		height: 19px;
 		fill: none;
 		stroke: currentColor;
-		stroke-width: 2.2;
+		stroke-width: 1.6;
 		stroke-linecap: round;
 		stroke-linejoin: round;
 		flex: none;
 	}
 
+	.ic.sm {
+		width: 16px;
+		height: 16px;
+	}
+
 	/* ===== topo ===== */
 	.topo {
-		display: flex;
-		align-items: center;
-		gap: 16px;
-		padding: 12px 22px;
-		background: var(--verde);
 		position: relative;
 		z-index: 5;
-	}
-
-	.x {
-		width: 40px;
-		height: 40px;
-		border-radius: 12px;
 		display: grid;
-		place-items: center;
-		color: var(--verde-texto);
-		flex: none;
+		grid-template-columns: 1fr minmax(0, 560px) 1fr;
+		align-items: center;
+		gap: 24px;
+		padding: 14px 22px;
 	}
 
-	.x:hover {
-		background: #ffffff12;
-		color: var(--creme);
-	}
-
-	.faixa {
+	.t-esq {
 		display: flex;
 		align-items: center;
 		gap: 12px;
 		min-width: 0;
-		flex: 0 1 auto;
 	}
 
-	.capa-mini {
-		width: 44px;
-		height: 44px;
-		border-radius: 11px;
+	.x {
+		width: 38px;
+		height: 38px;
+		border-radius: var(--r-m);
+		display: grid;
+		place-items: center;
+		color: var(--ink-2);
 		flex: none;
-		object-fit: cover;
-		background: var(--verde-medio);
+		transition:
+			background-color 0.15s,
+			color 0.15s;
 	}
 
-	.faixa-txt {
+	.x:hover {
+		background: var(--hover);
+		color: var(--ink);
+	}
+
+	.faixa {
 		min-width: 0;
 	}
 
-	.faixa-txt b {
+	.faixa b {
 		display: block;
-		font-size: 16px;
+		font: 600 16.5px/1.3 var(--f-head);
+		letter-spacing: -0.01em;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		max-width: 26ch;
 	}
 
-	.faixa-txt small {
+	.faixa span {
+		display: block;
+		font-size: 14px;
+		color: var(--ink-3);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.trilha {
+		position: relative;
+		height: 4px;
+		border-radius: 99px;
+		background: var(--prog-track);
+	}
+
+	.trilha .fill {
+		position: absolute;
+		inset: 0 auto 0 0;
+		width: 0;
+		border-radius: inherit;
+		background: var(--prog);
+	}
+
+	.gp {
+		position: absolute;
+		top: 50%;
+		width: 8px;
+		height: 8px;
+		margin: -4px 0 0 -4px;
+		border-radius: 50%;
+		background: var(--page);
+		box-shadow: inset 0 0 0 2px var(--line-2);
+		transition:
+			background-color 0.2s,
+			box-shadow 0.2s;
+	}
+
+	.gp.ok {
+		background: var(--ok-ink);
+		box-shadow: none;
+	}
+
+	.gp.err {
+		background: var(--terra-ink);
+		box-shadow: none;
+	}
+
+	.gp.cur {
+		box-shadow: inset 0 0 0 2px var(--terra-ink);
+	}
+
+	.tempos {
+		display: flex;
+		justify-content: space-between;
+		margin-top: 7px;
+		font-size: 12.5px;
+		color: var(--ink-3);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.t-dir {
+		display: flex;
+		justify-content: flex-end;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.chip-rev {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		height: 38px;
+		padding: 0 13px;
+		border: 0;
+		border-radius: 99px;
+		background: var(--terra-soft);
+		color: var(--terra-ink);
+		font-size: 14.5px;
+		font-weight: 500;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.chip-rev[hidden],
+	.pop[hidden] {
+		display: none;
+	}
+
+	.placar {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		color: var(--verde-texto);
-		font-size: 13px;
-		font-weight: 650;
+		gap: 12px;
+		height: 38px;
+		padding: 0 6px 0 14px;
+		border-radius: 99px;
+		background: var(--panel);
+		box-shadow: var(--sh-card);
 		white-space: nowrap;
 	}
 
-	.tg {
-		font-size: 11px;
-		font-weight: 850;
-		letter-spacing: 0.05em;
-		border-radius: 6px;
-		padding: 1px 6px;
-		background: var(--salvia-claro);
-		color: var(--verde);
-	}
-
-	.tg.it {
-		background: #f6e2c2;
-		color: #7a4b12;
-	}
-
-	.prog {
-		flex: 1;
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		min-width: 120px;
-	}
-
-	.tempo {
-		font:
-			700 13px/1 ui-monospace,
-			SFMono-Regular,
-			Menlo,
-			monospace;
-		color: var(--verde-texto);
-		white-space: nowrap;
-	}
-
-	.onda {
-		flex: 1;
-		height: 24px;
-		min-width: 60px;
-		overflow: visible;
-	}
-
-	.onda path {
-		fill: none;
-		stroke-linecap: round;
-		stroke-width: 7;
-	}
-
-	.onda .fundo {
-		stroke: #ffffff1c;
-	}
-
-	.onda .cheia {
-		stroke: var(--salvia);
-		stroke-dasharray: 100 200;
-		stroke-dashoffset: 100;
-	}
-
-	.onda .marca {
-		fill: #ffffff40;
-	}
-
-	.onda .marca.ok {
-		fill: var(--salvia-cl);
-	}
-
-	.onda .marca.err {
-		fill: var(--coral);
-	}
-
-	.pontos {
-		font:
-			800 20px/1 ui-monospace,
-			SFMono-Regular,
-			Menlo,
-			monospace;
-		letter-spacing: 0.03em;
-	}
-
-	.pontos span {
-		color: #ffffff40;
+	.placar b {
+		font: 600 17px/1 var(--f-head);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.combo {
-		position: relative;
-		width: 46px;
-		height: 46px;
-		display: grid;
-		place-items: center;
-		font-weight: 900;
-		font-size: 15px;
-		flex: none;
+		font: 600 13.5px/1 var(--f-head);
+		padding: 6px 9px;
+		border-radius: 99px;
+		background: var(--tile);
+		color: var(--ink-3);
+		transition:
+			background-color 0.2s,
+			color 0.2s;
 	}
 
-	.combo svg {
+	.combo.ativo {
+		background: var(--ok-soft);
+		color: var(--ok-ink);
+	}
+
+	.pop {
 		position: absolute;
-		inset: 0;
-		transform: rotate(-90deg);
+		z-index: 10;
+		top: 64px;
+		right: 22px;
+		width: 300px;
+		background: var(--raise-2);
+		border-radius: var(--r-l);
+		box-shadow: var(--sh-pop);
+		padding: 16px;
+		animation: abre 0.2s var(--ease);
 	}
 
-	.combo circle {
-		fill: none;
-		stroke-width: 4;
-		stroke-linecap: round;
+	@keyframes abre {
+		from {
+			opacity: 0;
+			transform: translateY(-4px);
+		}
 	}
 
-	.combo circle:last-child {
-		transition: stroke-dasharray 0.4s;
+	.pop h3 {
+		margin: 0 0 2px;
+		font: 600 16px var(--f-head);
 	}
 
-	.banco-ct {
+	.pop p {
+		margin: 0 0 12px;
+		font-size: 14px;
+		color: var(--ink-3);
+	}
+
+	.pop ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
 		display: flex;
-		align-items: center;
+		flex-direction: column;
+		gap: 6px;
+		max-height: 260px;
+		overflow: auto;
+	}
+
+	.pop li {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
 		gap: 10px;
-		background: var(--verde-escuro);
-		border-radius: 14px;
-		padding: 6px 14px 6px 12px;
-		flex: none;
+		padding: 9px 12px;
+		border-radius: var(--r-m);
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
 	}
 
-	.banco-ct .ic {
-		color: var(--salvia);
+	.pop li b {
+		font: 600 16px var(--f-head);
 	}
 
-	.banco-ct small {
-		display: block;
-		font-size: 11px;
-		font-weight: 800;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: #9db8a6;
-		line-height: 1.1;
+	.pop li span {
+		font-size: 14px;
+		color: var(--ink-3);
 	}
 
-	.banco-ct b {
-		display: block;
-		font-size: 19px;
-		line-height: 1.1;
+	.pop .banco-ct {
+		margin: 12px 0 0;
+	}
+
+	.pop .banco-ct b {
+		color: var(--ink);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
 	}
 
 	/* ===== palco ===== */
 	.palco {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) 320px;
-		gap: 20px;
-		padding: 18px 22px 20px;
-		min-height: 0;
-		max-width: 1440px;
-		width: 100%;
-		margin: 0 auto;
-	}
-
-	.jogo {
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-		min-height: 0;
-		min-width: 0;
-	}
-
-	.letra {
 		position: relative;
-		flex: 1;
 		min-height: 0;
 		overflow: hidden;
-		border-radius: 24px;
-		background: var(--verde);
-	}
-
-	.letra-masc {
-		position: absolute;
-		inset: 0;
-		-webkit-mask: linear-gradient(transparent, #000 24%, #000 82%, transparent);
-		mask: linear-gradient(transparent, #000 24%, #000 82%, transparent);
-	}
-
-	.rolo {
-		position: absolute;
-		left: 0;
-		right: 0;
-		top: 0;
-		padding: 0 28px;
-		transition: transform 0.55s cubic-bezier(0.3, 1, 0.4, 1);
-	}
-
-	.lin {
-		text-align: center;
-		padding: 10px 0;
-	}
-
-	.txt {
-		margin: 0;
-		font-size: 22px;
-		font-weight: 780;
-		color: #ffffff4d;
-		transition:
-			color 0.3s,
-			font-size 0.3s;
-		line-height: 1.35;
-	}
-
-	.lin.passou .txt {
-		color: #ffffff8c;
-	}
-
-	.lin.atual .txt {
-		color: var(--creme);
-		font-size: 31px;
-	}
-
-	.tr {
-		margin: 2px 0 0;
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--verde-texto);
-	}
-
-	.w {
-		border: 0;
-		background: none;
-		padding: 0 1px;
-		margin: 0;
-		font: inherit;
-		color: inherit;
-		border-radius: 6px;
-		transition:
-			color 0.15s,
-			background 0.15s;
-	}
-
-	.w:hover {
-		background: #ffffff14;
-	}
-
-	.w.nobanco {
-		text-decoration: underline dotted 2px var(--ouro);
-		text-underline-offset: 5px;
-	}
-
-	.w.salva {
-		text-decoration: underline solid 2.5px var(--ouro);
-		text-underline-offset: 5px;
-	}
-
-	.gap {
-		display: inline-block;
-		min-width: 3.6em;
-		border-bottom: 3px dashed currentColor;
-		line-height: 1.05;
-		opacity: 0.75;
-		vertical-align: baseline;
-	}
-
-	.gap::before {
-		content: '\00a0';
-	}
-
-	.gap.alvo {
-		opacity: 1;
-		color: var(--coral);
-		border-bottom-style: solid;
-		background: #f07c7c24;
-		border-radius: 8px 8px 2px 2px;
-		animation: pisca 1.2s ease-in-out infinite;
-	}
-
-	@keyframes pisca {
-		50% {
-			background: #f07c7c0d;
-			border-color: #f07c7c80;
-		}
-	}
-
-	.w.ok,
-	.w.err {
-		border-radius: 8px;
-		padding: 0 6px;
-		animation: pega 0.4s;
-	}
-
-	.lin .txt .w.ok {
-		background: #b5ddaa2e;
-		color: var(--salvia-cl);
-	}
-
-	.lin .txt .w.err {
-		background: #f07c7c33;
-		color: #f7b0ae;
-	}
-
-	@keyframes pega {
-		0% {
-			transform: scale(0.5);
-		}
-		60% {
-			transform: scale(1.12);
-		}
-	}
-
-	.estado {
-		position: absolute;
-		left: 50%;
-		top: 14px;
-		translate: -50% 0;
-		z-index: 2;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		background: var(--verde-escuro);
-		border-radius: 99px;
-		padding: 7px 14px 7px 10px;
-		font-size: 14px;
-		font-weight: 800;
-		color: var(--verde-texto);
-		white-space: nowrap;
-	}
-
-	.estado.espera {
-		color: var(--creme);
-		background: #0f4a3b;
-		box-shadow: 0 0 0 1.5px #ffffff22;
-	}
-
-	.eq {
-		display: flex;
-		gap: 3px;
-		align-items: flex-end;
-		height: 14px;
-	}
-
-	.eq i {
-		width: 3px;
-		height: 4px;
-		background: var(--salvia);
-		border-radius: 2px;
-	}
-
-	.app[data-fase='playing'] .eq i {
-		animation: eq 0.9s ease-in-out infinite alternate;
-	}
-
-	.eq i:nth-child(2) {
-		animation-delay: -0.3s;
-	}
-
-	.eq i:nth-child(3) {
-		animation-delay: -0.6s;
-	}
-
-	@keyframes eq {
-		from {
-			height: 4px;
-		}
-		to {
-			height: 14px;
-		}
-	}
-
-	.rev-pill {
-		display: none;
-	}
-
-	/* controles */
-	.ctrl {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.cb {
-		border: 0;
-		background: var(--verde);
-		color: inherit;
-		border-radius: 12px;
-		height: 42px;
-		min-width: 42px;
-		padding: 0 12px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 7px;
-		font-weight: 800;
-		font-size: 14px;
-		white-space: nowrap;
-	}
-
-	.cb:hover {
-		background: var(--verde-medio);
-	}
-
-	.cb.on {
-		background: var(--creme);
-		color: var(--verde);
-	}
-
-	.cb kbd {
-		font: 700 11px/1 var(--fonte);
-		border: 1px solid #ffffff38;
-		border-radius: 5px;
-		padding: 2px 5px;
-		color: #9db8a6;
-	}
-
-	.esp {
-		flex: 1;
-	}
-
-	.sync {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-	}
-
-	.sync .cb {
-		min-width: 36px;
-		padding: 0;
-		font-size: 18px;
-	}
-
-	.sync .cb.sync-v {
-		min-width: 0;
-		padding: 0 12px;
-		font-size: 13px;
-		font-weight: 750;
-		color: var(--verde-texto);
-	}
-
-	.sync-v b {
-		font:
-			700 12px/1 ui-monospace,
-			monospace;
-		color: var(--creme);
-	}
-
-	.lin-alvo {
-		border: 0;
-		background: none;
-		padding: 0 6px;
-		margin: 0;
-		font: inherit;
-		color: inherit;
-		border-radius: 8px;
-	}
-
-	.lin-alvo:hover {
-		background: #ffffff14;
-	}
-
-	.lin.alvo-sinc .txt {
-		color: var(--ouro);
-	}
-
-	/* opções */
-	.resp {
-		background: var(--verde);
-		border-radius: 24px;
-		padding: 14px 16px 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-
-	.resp-cab {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		min-height: 26px;
-		font-size: 14px;
-		font-weight: 700;
-		color: var(--verde-texto);
-	}
-
-	.info {
-		white-space: nowrap;
-	}
-
-	.espera-bar {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		flex: 1;
-		max-width: 220px;
-	}
-
-	.trilho {
-		flex: 1;
-		height: 6px;
-		border-radius: 99px;
-		background: #ffffff1a;
-		overflow: hidden;
-	}
-
-	.trilho i {
-		display: block;
-		height: 100%;
-		width: 100%;
-		background: var(--ouro);
-		border-radius: inherit;
-		transform-origin: 0 50%;
-	}
-
-	.espera-bar span {
-		font:
-			800 12px/1 ui-monospace,
-			monospace;
-		color: var(--ouro);
-		min-width: 2.4em;
-	}
-
-	.aviso {
-		flex: 1;
-		min-width: 0;
-		text-align: right;
-		font-weight: 800;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		color: var(--salvia-cl);
-	}
-
-	.aviso.err {
-		color: #f7b0ae;
-	}
-
-	.ops {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 12px;
-	}
-
-	.op {
-		position: relative;
-		border: 0;
-		background: var(--creme);
-		color: var(--verde-escuro);
-		border-radius: 16px;
-		padding: 15px 14px 15px 54px;
-		min-height: 60px;
-		font-weight: 850;
-		font-size: 20px;
-		text-align: left;
-		box-shadow: 0 5px 0 var(--c);
-		transition:
-			transform 0.08s,
-			background 0.2s,
-			opacity 0.2s;
-	}
-
-	.op .k {
-		position: absolute;
-		left: 14px;
-		top: 50%;
-		translate: 0 -50%;
-		width: 28px;
-		height: 28px;
-		border-radius: 8px;
-		background: var(--c);
-		color: var(--verde-escuro);
-		display: grid;
-		place-items: center;
-		font-size: 14px;
-	}
-
-	.op:active:not(:disabled) {
-		transform: translateY(4px);
-		box-shadow: 0 1px 0 var(--c);
-	}
-
-	.op:disabled {
-		cursor: default;
-	}
-
-	.op.vazia {
-		background: #ffffff08;
-		box-shadow: none;
-		color: transparent;
-		border: 2px dashed #ffffff1c;
-	}
-
-	.op.apaga {
-		opacity: 0.35;
-	}
-
-	.op.errou {
-		background: var(--coral-claro);
-		animation: nao 0.35s;
-		opacity: 1;
-	}
-
-	.op.certa {
-		background: var(--salvia-cl);
-		opacity: 1;
-		box-shadow: 0 5px 0 #5f8f6b;
-	}
-
-	.op.certa .k,
-	.op.errou .k {
-		font-size: 0;
-		color: #fff;
-	}
-
-	.op.certa .k {
-		background: #4e7f5b;
-	}
-
-	.op.errou .k {
-		background: var(--coral-esc);
-	}
-
-	.op.certa .k::after {
-		content: '✓';
-		font-size: 16px;
-	}
-
-	.op.errou .k::after {
-		content: '✕';
-		font-size: 15px;
-	}
-
-	@keyframes nao {
-		25%,
-		75% {
-			transform: translateX(-5px);
-		}
-		50% {
-			transform: translateX(5px);
-		}
-	}
-
-	/* lado */
-	.lado {
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-		min-height: 0;
 	}
 
 	.video {
-		background: var(--verde);
-		border-radius: 24px;
-		padding: 12px;
+		position: absolute;
+		z-index: 3;
+		top: 8px;
+		right: 22px;
+		width: 248px;
 	}
 
 	.video-host {
 		position: relative;
 		aspect-ratio: 16 / 9;
-		border-radius: 14px;
+		border-radius: 10px;
 		overflow: hidden;
 		background: #000;
+		box-shadow: var(--sh-lift);
 	}
 
 	/* A pessoa não mexe no vídeo: quem manda é o jogo. */
@@ -1840,124 +1413,522 @@
 		pointer-events: none;
 	}
 
-	.rev {
-		background: var(--verde);
-		border-radius: 24px;
-		padding: 16px;
-		flex: 1;
-		min-height: 0;
-		display: flex;
-		flex-direction: column;
+	.letra {
+		position: absolute;
+		inset: 0;
 	}
 
-	.rev h3 {
+	.letra-masc {
+		position: absolute;
+		inset: 0;
+		-webkit-mask: linear-gradient(transparent, #000 22%, #000 80%, transparent);
+		mask: linear-gradient(transparent, #000 22%, #000 80%, transparent);
+	}
+
+	.rolo {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		width: min(860px, 100% - 48px);
+		margin: 0 auto;
+		transition: transform 0.55s var(--ease);
+	}
+
+	.lin {
+		text-align: center;
+		padding: 6px 0;
+	}
+
+	.lin.atual {
+		padding: 14px 0 4px;
+	}
+
+	.txt {
 		margin: 0;
-		font-size: 16px;
-		display: flex;
-		align-items: center;
-		gap: 8px;
+		font: 600 22px/1.4 var(--f-head);
+		letter-spacing: -0.01em;
+		color: var(--ink-3);
+		opacity: 0.45;
+		transition:
+			color 0.3s,
+			opacity 0.3s,
+			font-size 0.3s;
 	}
 
-	.rev h3 span {
-		margin-left: auto;
-		font-size: 13px;
-		color: #9db8a6;
+	.lin.passou .txt {
+		color: var(--ink-2);
+		opacity: 0.7;
 	}
 
-	.rev .sub {
-		font-size: 13px;
-		color: var(--verde-texto);
-		margin: 4px 0 12px;
+	.lin.atual .txt {
+		color: var(--ink);
+		opacity: 1;
+		font-size: 40px;
+		letter-spacing: -0.025em;
 	}
 
-	.rev ul {
-		list-style: none;
+	.tr {
+		margin: 2px 0 10px;
+		font-size: 17px;
+		color: var(--ink-3);
+	}
+
+	.w {
+		border: 0;
+		background: none;
+		padding: 0 1px;
 		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		overflow: auto;
-		min-height: 0;
+		font: inherit;
+		color: inherit;
+		border-radius: var(--r-s);
+		transition:
+			color 0.15s,
+			background-color 0.15s;
 	}
 
-	.rev li {
-		display: grid;
-		grid-template-columns: 1fr auto;
-		gap: 0 10px;
-		background: #ffffff0d;
-		border-radius: 12px;
-		padding: 8px 12px;
-		align-items: center;
-		animation: chega 0.55s;
+	.w:hover {
+		background: var(--hover);
 	}
 
-	@keyframes chega {
-		0% {
-			background: #f07c7c55;
-			transform: scale(0.94);
+	.w.nobanco {
+		text-decoration: underline dotted 2px var(--gold-ink);
+		text-underline-offset: 7px;
+	}
+
+	.w.salva {
+		text-decoration: underline solid 2px var(--gold-ink);
+		text-underline-offset: 7px;
+	}
+
+	/* lacuna que ainda vai chegar */
+	.gap {
+		display: inline-block;
+		min-width: 3em;
+		border-bottom: 2px dashed currentColor;
+		line-height: 1.05;
+		vertical-align: baseline;
+	}
+
+	.gap::before {
+		content: '\00a0';
+	}
+
+	/* lacuna aberta agora */
+	.gap.alvo {
+		min-width: 3.4em;
+		color: var(--terra-ink);
+		border-bottom: 2.5px solid var(--terra-ink);
+		border-radius: var(--r-s) var(--r-s) 0 0;
+		animation: pisca 1.6s ease-in-out infinite;
+	}
+
+	@keyframes pisca {
+		50% {
+			background: var(--terra-soft);
 		}
 	}
 
-	.rev li b {
-		font-size: 16px;
+	.w.ok,
+	.w.err {
+		padding: 0 8px;
+		animation: pega 0.35s var(--ease);
 	}
 
-	.rev li em {
-		font-style: normal;
-		font-size: 13px;
-		color: var(--verde-texto);
+	.lin .txt .w.ok {
+		background: var(--ok-soft);
+		color: var(--ok-ink);
 	}
 
-	.rev li .tag {
-		grid-row: 1 / 3;
-		grid-column: 2;
-		font-size: 11px;
-		font-weight: 800;
-		border-radius: 6px;
-		padding: 2px 7px;
-		background: #f07c7c2e;
-		color: #f7b0ae;
+	.lin .txt .w.err {
+		background: var(--sel);
+		color: var(--ink);
+		box-shadow: inset 0 -2px 0 var(--terra-ink);
 	}
 
-	.rev .vazio {
-		border: 1.5px dashed #ffffff26;
-		border-radius: 14px;
-		padding: 14px;
-		font-size: 14px;
-		color: var(--verde-texto);
-		font-weight: 600;
-		text-align: center;
+	@keyframes pega {
+		0% {
+			transform: scale(0.8);
+		}
+		60% {
+			transform: scale(1.05);
+		}
+	}
+
+	.lin-alvo {
+		border: 0;
+		background: none;
+		padding: 0 6px;
 		margin: 0;
-	}
-
-	.atalhos {
-		font-size: 12px;
-		color: #9db8a6;
-		line-height: 1.9;
-	}
-
-	.atalhos kbd {
 		font: inherit;
-		font-weight: 700;
-		border: 1px solid #ffffff30;
-		border-radius: 5px;
-		padding: 0 5px;
-		color: var(--verde-texto);
+		color: inherit;
+		border-radius: var(--r-m);
+	}
+
+	.lin-alvo:hover {
+		background: var(--hover);
+	}
+
+	.lin.alvo-sinc .txt {
+		color: var(--gold-ink);
+		opacity: 1;
+	}
+
+	/* ===== respostas ===== */
+	.resp {
+		padding: 0 22px 18px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 14px;
+	}
+
+	.status {
+		min-height: 28px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-wrap: wrap;
+		gap: 4px 10px;
+		font-size: 15px;
+		color: var(--ink-3);
+		text-align: center;
+	}
+
+	.estado {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.estado.oculto {
+		display: none;
+	}
+
+	.estado.espera {
+		color: var(--gold-ink);
+		font-weight: 500;
+	}
+
+	.eq {
+		display: flex;
+		gap: 2px;
+		align-items: flex-end;
+		height: 12px;
+	}
+
+	.eq i {
+		width: 3px;
+		height: 3px;
+		background: var(--ok-ink);
+		border-radius: 1px;
+		animation: eq 0.9s ease-in-out infinite alternate;
+	}
+
+	.eq i:nth-child(2) {
+		animation-delay: -0.3s;
+	}
+
+	.eq i:nth-child(3) {
+		animation-delay: -0.6s;
+	}
+
+	@keyframes eq {
+		to {
+			height: 12px;
+		}
+	}
+
+	.cd {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		color: var(--gold-ink);
+		font-weight: 500;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.cd .bar {
+		width: 140px;
+		height: 4px;
+		border-radius: 99px;
+		background: var(--prog-track);
+		overflow: hidden;
+	}
+
+	.cd .bar i {
+		display: block;
+		height: 100%;
+		width: 100%;
+		background: var(--gold-ink);
+		transform-origin: 0 50%;
+	}
+
+	.aviso {
+		font-weight: 500;
+		color: var(--ink-2);
+	}
+
+	.aviso:empty {
+		display: none;
+	}
+
+	/* ao lado do estado, separado por um ponto */
+	.aviso:not(.so)::before {
+		content: '·';
+		margin-right: 10px;
+		color: var(--ink-3);
+	}
+
+	.aviso.ok {
+		color: var(--ok-ink);
+	}
+
+	.aviso.err {
+		color: var(--terra-ink);
+	}
+
+	.sinc-box {
+		width: min(860px, 100%);
+	}
+
+	.ops {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 10px;
+		width: min(860px, 100%);
+	}
+
+	.op {
+		position: relative;
+		min-height: 64px;
+		padding: 12px 34px;
+		border: 0;
+		border-radius: var(--r-l);
+		background: var(--raise);
+		box-shadow: var(--sh-card);
+		font: 600 20px/1.2 var(--f-head);
+		letter-spacing: -0.01em;
+		color: var(--ink);
+		overflow-wrap: anywhere;
+		transition:
+			box-shadow 0.15s,
+			transform 0.08s,
+			background-color 0.2s,
+			opacity 0.2s;
+	}
+
+	:global(.tema-escuro) .op {
+		background: var(--raise-2);
+	}
+
+	.op:hover:not(:disabled) {
+		box-shadow: var(--sh-lift);
+	}
+
+	.op:active:not(:disabled) {
+		transform: scale(0.985);
+	}
+
+	.op:disabled {
+		cursor: default;
+	}
+
+	.op .k {
+		position: absolute;
+		left: 10px;
+		top: 10px;
+		min-width: 20px;
+		height: 20px;
+		font-size: 11.5px;
+	}
+
+	.op.vazia {
+		background: none;
+		box-shadow: inset 0 0 0 1.5px var(--line);
+	}
+
+	:global(.tema-escuro) .op.vazia {
+		background: none;
+	}
+
+	.op.apaga {
+		opacity: 0.35;
+	}
+
+	.op.certa {
+		background: var(--ok-soft);
+		color: var(--ok-ink);
+		box-shadow: inset 0 0 0 1.5px var(--ok-ink);
+	}
+
+	.op.errou {
+		background: var(--terra-soft);
+		color: var(--terra-ink);
+		box-shadow: inset 0 0 0 1.5px var(--terra-ink);
+		animation: nao 0.35s;
+	}
+
+	/* ✓ / ✕ no lugar do número */
+	.op.certa .k,
+	.op.errou .k {
+		font-size: 0;
+		box-shadow: none;
+		color: var(--page);
+	}
+
+	.op.certa .k {
+		background: var(--ok-ink);
+	}
+
+	.op.errou .k {
+		background: var(--terra-ink);
+	}
+
+	.op.certa .k::after,
+	.op.errou .k::after {
+		content: '';
+		width: 13px;
+		height: 13px;
+		background: currentColor;
+		-webkit-mask: var(--glifo) center / contain no-repeat;
+		mask: var(--glifo) center / contain no-repeat;
+	}
+
+	.op.certa .k::after {
+		--glifo: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+	}
+
+	.op.errou .k::after {
+		--glifo: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M6.5 6.5l11 11M17.5 6.5l-11 11'/%3E%3C/svg%3E");
+	}
+
+	@keyframes nao {
+		25%,
+		75% {
+			transform: translateX(-4px);
+		}
+		50% {
+			transform: translateX(4px);
+		}
+	}
+
+	/* ===== barra de baixo ===== */
+	.baixo {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		align-items: center;
+		gap: 12px;
+		min-height: 62px;
+		padding: 10px 22px 16px;
+		border-top: 1px solid var(--line);
+	}
+
+	.tools {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	.tools.dir {
+		justify-content: flex-end;
+	}
+
+	.tool {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		height: 36px;
+		min-width: 36px;
+		padding: 0 11px;
+		border: 0;
+		border-radius: var(--r-m);
+		background: none;
+		color: var(--ink-2);
+		font-size: 14.5px;
+		font-weight: 500;
+		white-space: nowrap;
+		transition:
+			background-color 0.15s,
+			color 0.15s;
+	}
+
+	.tool:hover {
+		background: var(--hover);
+		color: var(--ink);
+	}
+
+	.tool.on {
+		background: var(--sel);
+		color: var(--ink);
+		box-shadow: inset 0 0 0 1px var(--line-2);
+	}
+
+	.tool kbd {
+		min-width: 20px;
+		height: 20px;
+		font-size: 11.5px;
+	}
+
+	.tool b {
+		font: 600 14px/1 var(--f-body);
+		font-variant-numeric: tabular-nums;
+		color: var(--ink);
+	}
+
+	.sync {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		margin-left: 4px;
+	}
+
+	.tool.nudge {
+		min-width: 32px;
+		padding: 0;
+		font-size: 18px;
+	}
+
+	.lacunas {
+		font-size: 14.5px;
+		color: var(--ink-3);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.lacunas b {
+		color: var(--ink);
+		font-weight: 600;
 	}
 
 	/* ===== responsivo ===== */
 	@media (max-width: 1100px) {
-		.palco {
-			grid-template-columns: minmax(0, 1fr) 270px;
+		.topo {
+			grid-template-columns: 1fr minmax(0, 360px) 1fr;
+			gap: 16px;
+		}
+
+		.lbl-l {
+			display: none;
+		}
+
+		.video {
+			width: 200px;
 		}
 	}
 
 	@media (max-width: 860px) {
 		.topo {
-			flex-wrap: wrap;
+			grid-template-columns: minmax(0, 1fr) auto;
 			gap: 8px 10px;
 			padding: 8px 12px 10px;
+		}
+
+		.prog {
+			grid-column: 1 / -1;
+			order: 3;
 		}
 
 		.x {
@@ -1966,183 +1937,156 @@
 			margin-left: -6px;
 		}
 
-		.faixa {
-			flex: 1;
+		.faixa b {
+			font-size: 15.5px;
 		}
 
-		.capa-mini {
-			width: 36px;
-			height: 36px;
-			border-radius: 9px;
-		}
-
-		.faixa-txt b {
-			font-size: 15px;
-		}
-
-		.faixa-txt small {
-			font-size: 12px;
-		}
-
-		.pontos {
-			display: none;
-		}
-
-		.combo {
-			width: 40px;
-			height: 40px;
+		.faixa span {
 			font-size: 13px;
 		}
 
-		.banco-ct {
-			padding: 5px 10px;
+		.chip-rev,
+		.placar {
+			height: 34px;
 		}
 
-		.banco-ct .ic {
-			display: none;
+		.chip-rev {
+			padding: 0 11px;
 		}
 
-		.banco-ct b {
-			font-size: 16px;
-		}
-
-		.prog {
-			order: 9;
-			flex-basis: 100%;
+		.placar {
 			gap: 8px;
+			padding: 0 5px 0 11px;
 		}
 
-		.onda {
-			height: 18px;
+		.placar b {
+			font-size: 15.5px;
 		}
 
-		.onda path {
-			stroke-width: 6;
+		.pop {
+			top: 54px;
+			right: 12px;
+			width: min(300px, 100vw - 24px);
 		}
 
 		.palco {
-			grid-template-columns: 1fr;
-			grid-template-rows: auto minmax(0, 1fr);
-			padding: 10px 12px 0;
-			gap: 10px;
-		}
-
-		.lado {
-			order: -1;
-		}
-
-		.rev,
-		.atalhos {
-			display: none;
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+			padding: 4px 12px 0;
 		}
 
 		.video {
-			padding: 0;
-			background: none;
-			border-radius: 14px;
-		}
-
-		.video-host {
-			width: min(100%, 320px);
+			position: static;
+			width: 100%;
+			max-width: 480px;
 			margin: 0 auto;
-		}
-
-		.jogo {
-			gap: 10px;
+			flex: none;
 		}
 
 		.letra {
-			border-radius: 20px;
+			position: relative;
+			inset: auto;
+			flex: 1;
+			min-height: 0;
 		}
 
 		.rolo {
-			padding: 0 14px;
+			width: 100%;
 		}
 
 		.lin {
-			padding: 7px 0;
+			padding: 5px 0;
+		}
+
+		.lin.atual {
+			padding: 8px 0 2px;
 		}
 
 		.txt {
-			font-size: 17px;
+			font-size: 18px;
 		}
 
 		.lin.atual .txt {
-			font-size: 22px;
+			font-size: 26px;
 		}
 
 		.tr {
-			font-size: 12.5px;
-		}
-
-		.estado {
-			top: 10px;
-			font-size: 12.5px;
-			padding: 5px 12px 5px 9px;
-		}
-
-		.rev-pill {
-			display: inline-flex;
-			position: absolute;
-			right: 10px;
-			bottom: 10px;
-			z-index: 2;
-			background: var(--verde-escuro);
-			border-radius: 99px;
-			padding: 4px 10px;
-			font-size: 12px;
-			font-weight: 800;
-			color: #f7b0ae;
-		}
-
-		.ctrl {
-			gap: 6px;
-		}
-
-		.cb {
-			height: 40px;
-			min-width: 40px;
-			padding: 0 10px;
-			font-size: 13px;
-		}
-
-		.cb kbd,
-		.lbl-l {
-			display: none;
+			font-size: 14.5px;
 		}
 
 		.resp {
-			margin: 0 -12px;
-			border-radius: 22px 22px 0 0;
-			padding: 12px 12px calc(14px + env(safe-area-inset-bottom));
+			padding: 0 12px 10px;
+			gap: 8px;
 		}
 
-		.resp-cab {
-			font-size: 13px;
+		.status {
+			font-size: 14px;
+			min-height: 24px;
+		}
+
+		.cd .bar {
+			width: 90px;
 		}
 
 		.ops {
-			gap: 10px;
+			grid-template-columns: 1fr 1fr;
+			gap: 8px;
 		}
 
 		.op {
-			min-height: 62px;
-			font-size: 19px;
-			padding: 12px 10px 12px 46px;
-			border-radius: 15px;
+			min-height: 54px;
+			font-size: 18px;
+			padding: 10px 30px;
 		}
 
 		.op .k {
-			left: 11px;
-			width: 26px;
-			height: 26px;
-			font-size: 13px;
+			left: 8px;
+			top: 8px;
+		}
+
+		.baixo {
+			gap: 6px;
+			min-height: 0;
+			padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
+		}
+
+		.tools {
+			gap: 0;
+		}
+
+		.tool {
+			padding: 0 9px;
+		}
+
+		.tool .lbl,
+		.tool kbd {
+			display: none;
+		}
+
+		.lacunas {
+			font-size: 13.5px;
+		}
+	}
+
+	@media (max-width: 520px) {
+		.tool.nudge {
+			display: none;
+		}
+
+		.sync {
+			margin-left: 0;
 		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.rolo {
 			transition: none;
+		}
+
+		.gap.alvo,
+		.eq i {
+			animation: none;
 		}
 	}
 </style>

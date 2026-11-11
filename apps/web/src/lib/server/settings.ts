@@ -8,6 +8,7 @@ import {
 	type Language,
 	type UiLanguage
 } from '#lib/languages.ts';
+import { clockFrom, DEFAULT_RETENTION, type DayClock } from '#lib/review.ts';
 
 export interface Settings {
 	uiLanguage: UiLanguage;
@@ -17,6 +18,35 @@ export interface Settings {
 	studyLanguages: Language[];
 	/** Áudio da mídia toca sozinho na revisão (ADR 0003). */
 	autoplayAudio: boolean;
+	/** Fuso e hora em que o dia de estudo vira. */
+	clock: DayClock;
+	/** false até a pessoa (ou o navegador, na primeira visita) gravar um fuso. */
+	timeZoneSet: boolean;
+	/** Retenção desejada do FSRS. */
+	retention: number;
+}
+
+/** Só o relógio e a retenção, para quem não precisa dos idiomas. */
+export async function loadReviewSettings(
+	supabase: SupabaseClient<Database>,
+	userId: string
+): Promise<Pick<Settings, 'clock' | 'retention' | 'timeZoneSet'>> {
+	const { data } = await supabase
+		.from('user_settings')
+		.select('time_zone, day_start_hour, desired_retention')
+		.eq('user_id', userId)
+		.maybeSingle();
+	return reviewSettingsFrom(data);
+}
+
+function reviewSettingsFrom(
+	data: { time_zone: string | null; day_start_hour: number; desired_retention: number } | null
+) {
+	return {
+		clock: clockFrom(data?.time_zone, data?.day_start_hour),
+		timeZoneSet: !!data?.time_zone,
+		retention: data?.desired_retention ?? DEFAULT_RETENTION
+	};
 }
 
 /**
@@ -31,7 +61,9 @@ export async function loadSettings(
 ): Promise<Settings> {
 	const { data } = await supabase
 		.from('user_settings')
-		.select('ui_language, native_language, study_languages, autoplay_audio')
+		.select(
+			'ui_language, native_language, study_languages, autoplay_audio, time_zone, day_start_hour, desired_retention'
+		)
 		.eq('user_id', userId)
 		.maybeSingle();
 	let uiLanguage = parseUiLanguage(data?.ui_language) ?? 'pt';
@@ -54,6 +86,7 @@ export async function loadSettings(
 		uiLanguage,
 		nativeLanguage,
 		studyLanguages: studyLanguages.filter((l) => l !== nativeLanguage),
-		autoplayAudio: data?.autoplay_audio ?? false
+		autoplayAudio: data?.autoplay_audio ?? false,
+		...reviewSettingsFrom(data)
 	};
 }

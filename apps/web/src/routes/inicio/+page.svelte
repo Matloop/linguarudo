@@ -20,6 +20,7 @@
 	} as const;
 
 	const uiLanguage = $derived(data.shell?.uiLanguage ?? 'pt');
+	const timeZone = $derived(data.shell?.clock.timeZone);
 	const language = $derived(data.shell?.active ?? null);
 	const langName = $derived(language ? languageInline(language, uiLanguage) : '');
 	const summary = $derived(
@@ -111,7 +112,7 @@
 	</div>
 {:else}
 	<div class="h1-wrap">
-		<div class="h1-top"><span>{formatToday(now)}</span></div>
+		<div class="h1-top"><span>{formatToday(now, timeZone)}</span></div>
 		<div class="h1-hero">
 			<div>
 				{#if toReview > 0}
@@ -172,7 +173,8 @@
 					{#if data.lastItem}<span
 							>A última foi “{data.lastItem.lemma}”, {formatAgo(
 								new Date(data.lastItem.at),
-								now
+								now,
+								timeZone
 							)}</span
 						>{/if}
 				</span>
@@ -221,7 +223,7 @@
 	}
 	.welcome h1 {
 		margin: 0;
-		font: 600 26px/1.2 var(--f-head);
+		font: 600 28px/1.2 var(--f-head);
 		letter-spacing: -0.02em;
 	}
 	.how {
@@ -238,13 +240,13 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 2px;
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 	}
 	.how b {
 		color: var(--ink);
 		font-weight: 500;
-		font-size: 13.5px;
+		font-size: 15px;
 		margin-top: 10px;
 	}
 
@@ -258,7 +260,7 @@
 		justify-content: space-between;
 		align-items: center;
 		color: var(--ink-3);
-		font-size: 13px;
+		font-size: 14.5px;
 	}
 	.h1-hero {
 		flex: 1;
@@ -281,7 +283,7 @@
 	}
 	.sub {
 		margin: 22px 0 32px;
-		font-size: 16px;
+		font-size: 17.5px;
 		color: var(--ink-2);
 		max-width: 440px;
 		text-wrap: pretty;
@@ -292,7 +294,7 @@
 		gap: 16px;
 	}
 	.h1-cta .hint {
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 		display: flex;
 		align-items: center;
@@ -327,7 +329,7 @@
 		}
 	}
 	.fc b {
-		font: 600 24px/1.1 var(--f-head);
+		font: 600 26px/1.1 var(--f-head);
 		letter-spacing: -0.02em;
 		overflow-wrap: anywhere;
 	}
@@ -335,14 +337,14 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		font-size: 12px;
+		font-size: 13.5px;
 		color: var(--ink-3);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.fc .ipa {
-		font-size: 13px;
+		font-size: 14.5px;
 		color: var(--ink-3);
 		margin-top: 4px;
 	}
@@ -407,13 +409,13 @@
 	.qt b {
 		display: block;
 		font-weight: 500;
-		font-size: 13.5px;
+		font-size: 15px;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.qt span {
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 		white-space: nowrap;
 		overflow: hidden;
@@ -443,13 +445,13 @@
 			padding: 24px 0 28px;
 		}
 		.big {
-			font-size: 46px;
+			font-size: 49.5px;
 		}
 		.big.calm {
-			font-size: 40px;
+			font-size: 43px;
 		}
 		.sub {
-			font-size: 15px;
+			font-size: 16.5px;
 			margin: 16px 0 26px;
 		}
 		.h1-cta {

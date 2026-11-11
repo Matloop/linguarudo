@@ -6,10 +6,7 @@
 import { DefaultScheduler } from 'ts-fsrs';
 import type { FichaFlashcardKind } from '#lib/fichas.ts';
 import type { FlashcardKind } from '#lib/items.ts';
-import { formatInterval, type Grade } from '#lib/review.ts';
-
-/** Retenção desejada fixa no MVP. */
-export const DESIRED_RETENTION = 0.9;
+import { DEFAULT_RETENTION, formatInterval, type Grade } from '#lib/review.ts';
 
 /** Colunas de agendamento da tabela cards (snake_case, como vêm do banco). */
 export interface FlashcardFields {
@@ -50,12 +47,18 @@ const DAY_MS = 86_400_000;
 
 // FSRS-7 (padrão do ts-fsrs 6) com passos de aprendizado e fuzz. O fuzz usa
 // cardId + reps como semente, então a prévia e a nota dão o mesmo intervalo.
-let schedulerPromise: ReturnType<typeof createScheduler> | undefined;
-function createScheduler() {
-	return DefaultScheduler({ desiredRetention: DESIRED_RETENTION, enableFuzz: true });
+// A retenção desejada é da conta (user_settings.desired_retention): um agendador por valor.
+const schedulers = new Map<number, ReturnType<typeof createScheduler>>();
+function createScheduler(desiredRetention: number) {
+	return DefaultScheduler({ desiredRetention, enableFuzz: true });
 }
-function scheduler() {
-	return (schedulerPromise ??= createScheduler());
+function scheduler(retention: number) {
+	let s = schedulers.get(retention);
+	if (!s) {
+		s = createScheduler(retention);
+		schedulers.set(retention, s);
+	}
+	return s;
 }
 
 type Scheduler = Awaited<ReturnType<typeof createScheduler>>;
@@ -95,8 +98,13 @@ function fromFsrs(card: FsrsCard): FlashcardFields {
 }
 
 /** Aplica uma nota ao flashcard, no instante dado. */
-export async function applyRating(row: FlashcardRow, grade: Grade, now: Date) {
-	const s = await scheduler();
+export async function applyRating(
+	row: FlashcardRow,
+	grade: Grade,
+	now: Date,
+	retention = DEFAULT_RETENTION
+) {
+	const s = await scheduler(retention);
 	const result = s.review({ card: toFsrs(row), grade, now });
 	return { next: fromFsrs(result.card) };
 }
@@ -127,19 +135,55 @@ function intervalDays(next: FlashcardFields, reviewedAt: string): number {
  * Reconstrói o flashcard aplicando o log em ordem de reviewed_at (empate: ordem recebida).
  * maxIntervalDays é o maior intervalo que alguma revisão deu (para o Produzir).
  */
-export async function replay(seed: FlashcardSeed, logs: readonly LogEntry[]) {
+export async function replay(
+	seed: FlashcardSeed,
+	logs: readonly LogEntry[],
+	retention = DEFAULT_RETENTION
+) {
+	const { card, steps } = await replaySteps(seed, logs, retention);
+	const maxIntervalDays = Math.max(0, ...steps.map((s) => s.intervalMs / DAY_MS));
+	return { card, maxIntervalDays };
+}
+
+/** O que cada revisão do log fez com o flashcard (o revlog do Anki). */
+export interface ReplayStep<L extends LogEntry = LogEntry> {
+	log: L;
+	stateBefore: number;
+	lastIntervalDays: number;
+	intervalDays: number;
+	/** Do momento da revisão até o próximo vencimento. */
+	intervalMs: number;
+}
+
+/** Reaplica o log e devolve cada passo, em ordem de reviewed_at (empate: ordem recebida). */
+export async function replaySteps<L extends LogEntry>(
+	seed: FlashcardSeed,
+	logs: readonly L[],
+	retention = DEFAULT_RETENTION
+) {
 	const ordered = logs
 		.map((log, i) => ({ log, i }))
 		.sort((a, b) => Date.parse(a.log.reviewed_at) - Date.parse(b.log.reviewed_at) || a.i - b.i);
 	const { id, ...empty } = emptyFlashcard(seed);
 	let card: FlashcardFields = empty;
-	let maxIntervalDays = 0;
+	const steps: ReplayStep<L>[] = [];
 	for (const { log } of ordered) {
-		const { next } = await applyRating({ id, ...card }, log.rating, new Date(log.reviewed_at));
-		maxIntervalDays = Math.max(maxIntervalDays, intervalDays(next, log.reviewed_at));
+		const { next } = await applyRating(
+			{ id, ...card },
+			log.rating,
+			new Date(log.reviewed_at),
+			retention
+		);
+		steps.push({
+			log,
+			stateBefore: card.state,
+			lastIntervalDays: card.scheduled_days,
+			intervalDays: next.scheduled_days,
+			intervalMs: Date.parse(next.due_at) - Date.parse(log.reviewed_at)
+		});
 		card = next;
 	}
-	return { card, maxIntervalDays };
+	return { card, steps };
 }
 
 /**
@@ -150,15 +194,16 @@ export async function replay(seed: FlashcardSeed, logs: readonly LogEntry[]) {
 export async function scheduleReview(
 	row: FlashcardRow & FlashcardSeed,
 	logs: readonly LogEntry[],
-	review: LogEntry
+	review: LogEntry,
+	retention = DEFAULT_RETENTION
 ) {
 	const inOrder =
 		!row.last_review_at || Date.parse(review.reviewed_at) >= Date.parse(row.last_review_at);
 	if (inOrder) {
-		const { next } = await applyRating(row, review.rating, new Date(review.reviewed_at));
+		const { next } = await applyRating(row, review.rating, new Date(review.reviewed_at), retention);
 		return { next, intervalDays: intervalDays(next, review.reviewed_at), replayed: false };
 	}
-	const { card, maxIntervalDays } = await replay(row, [...logs, review]);
+	const { card, maxIntervalDays } = await replay(row, [...logs, review], retention);
 	return { next: card, intervalDays: maxIntervalDays, replayed: true };
 }
 
@@ -174,9 +219,10 @@ export function unlocksProduce(r: {
 /** Rótulos em PT do próximo intervalo de cada botão. */
 export async function previewIntervals(
 	row: FlashcardRow,
-	now: Date
+	now: Date,
+	retention = DEFAULT_RETENTION
 ): Promise<Record<Grade, string>> {
-	const s = await scheduler();
+	const s = await scheduler(retention);
 	const labels = {} as Record<Grade, string>;
 	for (const { grade, card } of s.preview({ card: toFsrs(row), now })) {
 		labels[grade as Grade] = formatInterval(card.dueAt.getTime() - now.getTime());

@@ -88,7 +88,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 			.from('api_tokens')
 			.select('id', { count: 'exact', head: true })
 			.eq('user_id', user.id),
-		nextDueText(locals.supabase, user.id, language, now).catch(() => null)
+		nextDueText(locals.supabase, user.id, language, now, shell.clock).catch(() => null)
 	]);
 
 	const fanRow = (due.data ?? fresh.data) as FanRow | null;

@@ -4,7 +4,7 @@
 	import '@fontsource-variable/inter';
 	import '#lib/styles/tokens.css';
 	import '#lib/styles/ui.css';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { SIDEBAR_COOKIE, cookieString, nextTheme, type Theme } from '#lib/prefs.ts';
 	import { isTypingTarget, shortcutFor, type Screen } from '#lib/shortcuts.ts';
@@ -64,6 +64,25 @@
 		e.preventDefault();
 		openSave();
 	}
+
+	// Conta sem fuso: grava o do navegador uma vez (o perfil troca depois).
+	let zoneSent = false;
+	$effect(() => {
+		if (!shell || shell.timeZoneSet || zoneSent) return;
+		const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		if (!zone) return;
+		zoneSent = true;
+		const body = new FormData();
+		body.set('fuso', zone);
+		body.set('so_se_vazio', '1');
+		fetch('/perfil?/fuso', {
+			method: 'POST',
+			body,
+			headers: { 'x-sveltekit-action': 'true' }
+		})
+			.then(() => invalidateAll())
+			.catch(() => {});
+	});
 
 	// Sem JS o link ?guardar abre o diálogo pelo servidor; com JS, limpa a URL.
 	$effect(() => {
@@ -177,6 +196,12 @@
 				>
 				<a
 					class="nav-item"
+					href={resolve('/estatisticas')}
+					aria-current={current('/estatisticas')}
+					title="Estatísticas"><Icon name="chart" /><span class="lb">Estatísticas</span></a
+				>
+				<a
+					class="nav-item"
 					href={resolve('/musica')}
 					aria-current={current('/musica')}
 					title="Música"><Icon name="music" /><span class="lb">Música</span></a
@@ -279,7 +304,7 @@
 <style>
 	.app {
 		display: grid;
-		grid-template-columns: 236px minmax(0, 1fr);
+		grid-template-columns: 252px minmax(0, 1fr);
 		height: 100vh;
 		height: 100dvh;
 		transition: grid-template-columns 0.3s var(--ease);
@@ -366,7 +391,7 @@
 		opacity: 1;
 	}
 	.wordmark {
-		font: 600 17px/1 var(--f-head);
+		font: 600 18.5px/1 var(--f-head);
 		letter-spacing: -0.012em;
 		translate: 0 -1px;
 		white-space: nowrap;
@@ -377,7 +402,7 @@
 		width: 100%;
 		justify-content: flex-start;
 		padding: 0 8px 0 11px;
-		height: 36px;
+		height: 40px;
 	}
 	.save-btn kbd {
 		margin-left: auto;
@@ -393,7 +418,7 @@
 		display: flex;
 		align-items: center;
 		gap: 11px;
-		height: 34px;
+		height: 38px;
 		padding: 0 10px;
 		border-radius: var(--r-m);
 		color: var(--ink-2);
@@ -416,18 +441,18 @@
 	.count {
 		margin-left: auto;
 		min-width: 20px;
-		height: 18px;
+		height: 20px;
 		padding: 0 6px;
 		border-radius: 4px;
 		display: grid;
 		place-items: center;
-		font: 600 11.5px/1 var(--f-body);
+		font: 600 13px/1 var(--f-body);
 		font-variant-numeric: tabular-nums;
 		color: var(--terra-ink);
 		background: var(--terra-soft);
 	}
 	.nav-label {
-		font-size: 11.5px;
+		font-size: 13px;
 		font-weight: 500;
 		color: var(--ink-3);
 		padding: 18px 10px 6px;
@@ -502,7 +527,7 @@
 		min-width: 16px;
 		height: 15px;
 		padding: 0 4px;
-		font-size: 10px;
+		font-size: 11.5px;
 	}
 	.mini .nav-label {
 		font-size: 0;
@@ -546,7 +571,7 @@
 	}
 	.view {
 		padding: 36px 48px 64px;
-		max-width: 1120px;
+		max-width: 1200px;
 		margin: 0 auto;
 		min-height: 100%;
 	}
@@ -635,7 +660,7 @@
 		.me-btn .avatar {
 			width: 28px;
 			height: 28px;
-			font-size: 12px;
+			font-size: 13.5px;
 		}
 		.panel {
 			margin: 0;
@@ -673,7 +698,7 @@
 			justify-content: center;
 			gap: 3px;
 			color: var(--ink-3);
-			font-size: 11px;
+			font-size: 12.5px;
 			font-weight: 500;
 			border-radius: var(--r-m);
 			position: relative;
@@ -697,7 +722,7 @@
 			min-width: 16px;
 			height: 15px;
 			padding: 0 4px;
-			font-size: 10px;
+			font-size: 11.5px;
 		}
 	}
 </style>

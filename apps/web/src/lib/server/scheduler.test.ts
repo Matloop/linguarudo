@@ -4,6 +4,7 @@ import {
 	applyRating,
 	previewIntervals,
 	replay,
+	replaySteps,
 	scheduleReview,
 	unlocksProduce,
 	type FlashcardRow
@@ -194,5 +195,30 @@ describe('unlocksProduce', () => {
 			now = new Date(r.next.due_at);
 		}
 		expect(unlocked).toBe(true);
+	});
+});
+
+describe('retenção desejada', () => {
+	test('retenção menor dá intervalos maiores para o mesmo histórico', async () => {
+		const seed = { id: newRow().id, created_at: '2026-10-01T12:00:00Z' };
+		const logs = [
+			{ rating: 3 as const, reviewed_at: '2026-10-01T12:00:00Z' },
+			{ rating: 3 as const, reviewed_at: '2026-10-05T12:00:00Z' },
+			{ rating: 3 as const, reviewed_at: '2026-10-20T12:00:00Z' }
+		];
+		const low = await replay(seed, logs, 0.8);
+		const high = await replay(seed, logs, 0.95);
+		expect(low.card.scheduled_days).toBeGreaterThan(high.card.scheduled_days);
+	});
+
+	test('replaySteps registra o estado e o intervalo de antes de cada revisão', async () => {
+		const seed = { id: newRow().id, created_at: '2026-10-01T12:00:00Z' };
+		const { steps } = await replaySteps(seed, [
+			{ rating: 3 as const, reviewed_at: '2026-10-01T12:00:00Z' },
+			{ rating: 3 as const, reviewed_at: '2026-10-10T12:00:00Z' }
+		]);
+		expect(steps[0].stateBefore).toBe(0);
+		expect(steps[0].lastIntervalDays).toBe(0);
+		expect(steps[1].lastIntervalDays).toBe(steps[0].intervalDays);
 	});
 });

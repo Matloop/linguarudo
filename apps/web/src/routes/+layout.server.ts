@@ -29,7 +29,8 @@ export const load: LayoutServerLoad = async ({ locals, depends, cookies, request
 		locals.supabase,
 		user.id,
 		settings.studyLanguages,
-		new Date()
+		new Date(),
+		settings.clock
 	).catch(() => null);
 
 	return {
@@ -42,7 +43,10 @@ export const load: LayoutServerLoad = async ({ locals, depends, cookies, request
 			studyLanguages: settings.studyLanguages,
 			autoplayAudio: settings.autoplayAudio,
 			active,
-			summary
+			summary,
+			clock: settings.clock,
+			timeZoneSet: settings.timeZoneSet,
+			retention: settings.retention
 		}
 	};
 };

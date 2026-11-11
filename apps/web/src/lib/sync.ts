@@ -420,6 +420,8 @@ export interface SnapshotItemRow {
 		at: string;
 	}[];
 	flashcard: FlashcardRowJson;
+	/** Última revisão do irmão (Produzir); o aparelho oculta o Reconhecer nesse dia. */
+	sibling_reviewed_at?: string | null;
 }
 
 function lineBytes(line: string): number {
@@ -486,7 +488,10 @@ export function itemLine(row: SnapshotItemRow): string {
 				forms: fs,
 				encounters: enc
 			}),
-			flashcard: flashcardState(row.flashcard)
+			flashcard: flashcardState(row.flashcard),
+			...compact({
+				siblingReviewedAt: row.sibling_reviewed_at ? iso(row.sibling_reviewed_at) : null
+			})
 		});
 	let line = build(encounters, forms);
 	for (let n = encounters.length - 1; n >= 0 && lineBytes(line) > SYNC_LIMITS.lineBytes; n--) {
@@ -506,6 +511,10 @@ export interface HeaderInput {
 	studyLanguages: Language[];
 	newFlashcardsPerDay: number;
 	timeZone: string;
+	/** Hora local em que o dia de estudo vira (0–23). */
+	dayStartHour: number;
+	/** Retenção desejada da conta; o resto do FSRS é fixo (FSRS_HEADER). */
+	desiredRetention: number;
 	dayStart: Date;
 	nextDayStart: Date;
 	newDoneToday: number;
@@ -559,14 +568,15 @@ export function headerLine(h: HeaderInput): string {
 			studyLanguages: h.studyLanguages,
 			newFlashcardsPerDay: h.newFlashcardsPerDay,
 			timeZone: h.timeZone,
-			utcOffsetMinutes: utcOffsetMinutes(h.timeZone, h.serverNow)
+			utcOffsetMinutes: utcOffsetMinutes(h.timeZone, h.serverNow),
+			dayStartHour: h.dayStartHour
 		},
 		today: {
 			dayStart: h.dayStart.toISOString(),
 			nextDayStart: h.nextDayStart.toISOString(),
 			newDoneToday: h.newDoneToday
 		},
-		fsrs: FSRS_HEADER
+		fsrs: { ...FSRS_HEADER, desiredRetention: h.desiredRetention }
 	});
 }
 

@@ -6,8 +6,56 @@ import type { FlashcardKind, Origin } from './items.ts';
 import { findWord } from '@linguetta/language';
 import type { Language } from './languages.ts';
 
-/** Fuso que define o "dia" dos limites de flashcards novos. Único ponto do código. */
+/** Fuso de quem ainda não escolheu o seu (user_settings.time_zone nulo). */
 export const REVIEW_TIME_ZONE = 'America/Sao_Paulo';
+
+/** Hora em que o dia de estudo vira, como no Anki: revisar à 1 h ainda conta como ontem. */
+export const DEFAULT_DAY_START_HOUR = 4;
+
+/**
+ * Relógio do dia de estudo: fuso e hora da virada. Define o limite de novos, o "vence
+ * hoje", os irmãos ocultos e os dias das estatísticas. O SQL faz a mesma conta em
+ * review_day_start.
+ */
+export interface DayClock {
+	timeZone: string;
+	startHour: number;
+}
+
+export const DEFAULT_CLOCK: DayClock = {
+	timeZone: REVIEW_TIME_ZONE,
+	startHour: DEFAULT_DAY_START_HOUR
+};
+
+/** Relógio a partir de user_settings; fuso inválido cai no padrão. */
+export function clockFrom(
+	timeZone: string | null | undefined,
+	startHour: number | null | undefined
+): DayClock {
+	const hour =
+		Number.isInteger(startHour) && startHour! >= 0 && startHour! <= 23
+			? startHour!
+			: DEFAULT_DAY_START_HOUR;
+	return {
+		timeZone: timeZone && isTimeZone(timeZone) ? timeZone : REVIEW_TIME_ZONE,
+		startHour: hour
+	};
+}
+
+/** O Intl conhece o fuso (nome IANA, como America/Sao_Paulo). */
+export function isTimeZone(timeZone: string): boolean {
+	try {
+		new Intl.DateTimeFormat('en-US', { timeZone });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Padrão de user_settings.desired_retention e os limites do check. */
+export const DEFAULT_RETENTION = 0.9;
+export const MIN_RETENTION = 0.7;
+export const MAX_RETENTION = 0.97;
 
 /** Padrão de user_settings.new_flashcards_per_day (veja a migration de revisão). */
 export const DEFAULT_NEW_PER_DAY = 10;
@@ -75,10 +123,27 @@ export function itemStrength(cards: readonly { state: number; stability: number 
 	return 3;
 }
 
+// ---------- Sanguessuga ----------
+
+/** Lapsos (errou um cartão já aprendido) a partir dos quais a palavra é teimosa. Igual ao Anki. */
+export const LEECH_LAPSES = 8;
+
+/** Item teimoso: algum cartão já passou dos lapsos da sanguessuga. */
+export function isLeech(cards: readonly { lapses: number }[]): boolean {
+	return cards.some((c) => c.lapses >= LEECH_LAPSES);
+}
+
+/** Avisa no 8º lapso e depois a cada 4, como o Anki (metade do limite). */
+export function leechAlert(lapses: number): boolean {
+	return lapses >= LEECH_LAPSES && (lapses - LEECH_LAPSES) % (LEECH_LAPSES / 2) === 0;
+}
+
 // ---------- Fila ----------
 
 export interface QueueFlashcard {
 	id: string;
+	/** Item dono; null em flashcard de ficha (fichas não ocultam irmãos). */
+	itemId: string | null;
 	state: number;
 	dueAt: string;
 	createdAt: string;
@@ -88,24 +153,51 @@ export interface QueueOptions {
 	now: Date;
 	newLimit: number;
 	newDoneToday: number;
+	/** Cartões revisados desde o início do dia (dayStart): ocultam os irmãos. */
+	reviewedToday?: readonly { id: string; itemId: string | null }[];
 }
 
 export function newRemaining(newLimit: number, newDoneToday: number): number {
 	return Math.max(0, newLimit - newDoneToday);
 }
 
+/** Aprendendo e reaprendendo têm passos em minutos: não esperam o irmão. */
+function isLearning(state: number): boolean {
+	return state === 1 || state === 3;
+}
+
 /**
  * Vencidos primeiro (mais atrasado antes), depois novos por ordem de criação, até o limite.
- * Quem chama já tirou os flashcards de itens conhecidos ou apagados.
+ * Irmãos ocultos: o Reconhecer e o Produzir do mesmo item não caem no mesmo dia. Um
+ * flashcard em revisão ou novo sai se o irmão foi revisado hoje, e só um deles entra por
+ * item. Fichas não ocultam. Quem chama já tirou os flashcards de itens conhecidos ou apagados.
  */
 export function buildQueue<T extends QueueFlashcard>(cards: T[], opts: QueueOptions): T[] {
 	const now = opts.now.getTime();
+	const buried = new Map<string, Set<string>>();
+	for (const r of opts.reviewedToday ?? []) {
+		if (!r.itemId) continue;
+		const ids = buried.get(r.itemId) ?? new Set<string>();
+		ids.add(r.id);
+		buried.set(r.itemId, ids);
+	}
+	const siblingDone = (c: T) =>
+		!!c.itemId && [...(buried.get(c.itemId) ?? [])].some((id) => id !== c.id);
+	const taken = new Set<string>();
+	const take = (c: T) => {
+		if (isLearning(c.state) || !c.itemId) return true;
+		if (siblingDone(c) || taken.has(c.itemId)) return false;
+		taken.add(c.itemId);
+		return true;
+	};
 	const due = cards
 		.filter((c) => c.state !== STATE_NEW && Date.parse(c.dueAt) <= now)
-		.sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt));
+		.sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt))
+		.filter(take);
 	const fresh = cards
 		.filter((c) => c.state === STATE_NEW)
 		.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+		.filter(take)
 		.slice(0, newRemaining(opts.newLimit, opts.newDoneToday));
 	return [...due, ...fresh];
 }
@@ -124,18 +216,23 @@ export function reviewCount(c: ReviewCounts): number {
 
 /** Quando aparece o próximo flashcard, para o estado vazio. */
 export function nextAvailableAt(
-	c: Omit<ReviewCounts, 'dueNow'> & { now: Date; nextDueAt: string | null }
+	c: Omit<ReviewCounts, 'dueNow'> & { now: Date; nextDueAt: string | null },
+	clock: DayClock = DEFAULT_CLOCK
 ): Date | null {
 	const options: Date[] = [];
 	if (c.nextDueAt) options.push(new Date(c.nextDueAt));
 	if (c.newAvailable > 0) {
-		options.push(newRemaining(c.newLimit, c.newDoneToday) > 0 ? c.now : nextDayStart(c.now));
+		options.push(newRemaining(c.newLimit, c.newDoneToday) > 0 ? c.now : nextDayStart(c.now, clock));
 	}
 	if (options.length === 0) return null;
 	return new Date(Math.min(...options.map((d) => d.getTime())));
 }
 
 // ---------- Datas ----------
+
+const MIN = 60_000;
+const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
 
 /** Diferença (ms) entre o relógio de parede do fuso e o UTC naquele instante. */
 function zoneOffsetMs(at: Date, timeZone: string): number {
@@ -161,21 +258,40 @@ function zoneOffsetMs(at: Date, timeZone: string): number {
 	return wall - Math.floor(at.getTime() / 1000) * 1000;
 }
 
-/** Meia-noite (no fuso) do dia que contém `now`. */
-export function dayStart(now: Date, timeZone = REVIEW_TIME_ZONE): Date {
-	const local = new Date(now.getTime() + zoneOffsetMs(now, timeZone));
-	const midnightWall = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
-	// Primeiro palpite com o offset de agora; corrige se a meia-noite tiver outro offset (horário de verão).
-	let guess = midnightWall - zoneOffsetMs(now, timeZone);
-	guess = midnightWall - zoneOffsetMs(new Date(guess), timeZone);
-	return new Date(guess);
+/** Instante em que o relógio de parede do fuso marca `wall` (ms de um Date.UTC). */
+function wallToInstant(wall: number, near: Date, timeZone: string): number {
+	// Primeiro palpite com o offset de perto; corrige se o instante tiver outro offset (horário de verão).
+	const guess = wall - zoneOffsetMs(near, timeZone);
+	return wall - zoneOffsetMs(new Date(guess), timeZone);
 }
 
-/** Meia-noite (no fuso) do dia seguinte. */
-export function nextDayStart(now: Date, timeZone = REVIEW_TIME_ZONE): Date {
-	const start = dayStart(now, timeZone);
-	// 26 h passa do dia mesmo com troca de horário; dayStart volta para a meia-noite.
-	return dayStart(new Date(start.getTime() + 26 * 3600_000), timeZone);
+/**
+ * Início do dia de estudo que contém `now`: o último instante em que o relógio do fuso
+ * marcou a hora da virada. Com a virada às 4 h, 1 h da manhã ainda é o dia anterior.
+ */
+export function dayStart(now: Date, clock: DayClock = DEFAULT_CLOCK): Date {
+	const local = new Date(now.getTime() + zoneOffsetMs(now, clock.timeZone));
+	const wall = Date.UTC(
+		local.getUTCFullYear(),
+		local.getUTCMonth(),
+		local.getUTCDate(),
+		clock.startHour
+	);
+	let start = wallToInstant(wall, now, clock.timeZone);
+	if (start > now.getTime()) start = wallToInstant(wall - DAY, now, clock.timeZone);
+	return new Date(start);
+}
+
+/** Início do próximo dia de estudo. */
+export function nextDayStart(now: Date, clock: DayClock = DEFAULT_CLOCK): Date {
+	const start = dayStart(now, clock);
+	// 26 h passa do dia mesmo com troca de horário; dayStart volta para a virada.
+	return dayStart(new Date(start.getTime() + 26 * HOUR), clock);
+}
+
+/** Relógio de calendário (virada à meia-noite) no mesmo fuso, para datas mostradas. */
+function calendar(timeZone: string): DayClock {
+	return { timeZone, startHour: 0 };
 }
 
 // ---------- Formatação ----------
@@ -189,9 +305,9 @@ export function formatWhen(at: Date, now: Date, timeZone = REVIEW_TIME_ZONE): st
 		minute: '2-digit',
 		hourCycle: 'h23'
 	}).format(at);
-	const day = dayStart(at, timeZone).getTime();
-	if (day === dayStart(now, timeZone).getTime()) return `hoje às ${time}`;
-	if (day === nextDayStart(now, timeZone).getTime()) return `amanhã às ${time}`;
+	const day = dayStart(at, calendar(timeZone)).getTime();
+	if (day === dayStart(now, calendar(timeZone)).getTime()) return `hoje às ${time}`;
+	if (day === nextDayStart(now, calendar(timeZone)).getTime()) return `amanhã às ${time}`;
 	const date = new Intl.DateTimeFormat('pt-BR', {
 		timeZone,
 		day: '2-digit',
@@ -200,13 +316,9 @@ export function formatWhen(at: Date, now: Date, timeZone = REVIEW_TIME_ZONE): st
 	return `${date} às ${time}`;
 }
 
-const MIN = 60_000;
-const HOUR = 60 * MIN;
-const DAY = 24 * HOUR;
-
-/** Dias de calendário (no fuso) entre hoje e o dia de `at`; negativo se já passou. */
-function calendarDaysFrom(at: Date, now: Date, timeZone: string): number {
-	return Math.round((dayStart(at, timeZone).getTime() - dayStart(now, timeZone).getTime()) / DAY);
+/** Dias (do relógio) entre hoje e o dia de `at`; negativo se já passou. */
+export function daysFrom(at: Date, now: Date, clock: DayClock): number {
+	return Math.round((dayStart(at, clock).getTime() - dayStart(now, clock).getTime()) / DAY);
 }
 
 function earliest(dueAts: readonly string[]): Date | null {
@@ -214,25 +326,25 @@ function earliest(dueAts: readonly string[]): Date | null {
 	return new Date(Math.min(...dueAts.map((d) => Date.parse(d))));
 }
 
-/** Algum flashcard do item vence até o fim de hoje (ou já venceu). */
+/** Algum flashcard do item vence até o fim do dia de estudo (ou já venceu). */
 export function isDueToday(
 	dueAts: readonly string[],
 	now: Date,
-	timeZone = REVIEW_TIME_ZONE
+	clock: DayClock = DEFAULT_CLOCK
 ): boolean {
 	const at = earliest(dueAts);
-	return at !== null && at.getTime() < nextDayStart(now, timeZone).getTime();
+	return at !== null && at.getTime() < nextDayStart(now, clock).getTime();
 }
 
 /** Próxima revisão do item: "hoje", "amanhã" ou "em N dias". */
 export function formatNextReview(
 	dueAts: readonly string[],
 	now: Date,
-	timeZone = REVIEW_TIME_ZONE
+	clock: DayClock = DEFAULT_CLOCK
 ): string {
 	const at = earliest(dueAts);
-	if (!at || isDueToday(dueAts, now, timeZone)) return 'hoje';
-	const days = calendarDaysFrom(at, now, timeZone);
+	if (!at || isDueToday(dueAts, now, clock)) return 'hoje';
+	const days = daysFrom(at, now, clock);
 	return days === 1 ? 'amanhã' : `em ${days} dias`;
 }
 
@@ -252,7 +364,7 @@ export function formatAgo(at: Date, now: Date, timeZone = REVIEW_TIME_ZONE): str
 	const ms = now.getTime() - at.getTime();
 	if (ms < MIN) return 'agora';
 	if (ms < HOUR) return `há ${Math.floor(ms / MIN)} min`;
-	const days = -calendarDaysFrom(at, now, timeZone);
+	const days = -daysFrom(at, now, calendar(timeZone));
 	if (days <= 0) return `há ${Math.floor(ms / HOUR)} h`;
 	if (days === 1) return 'ontem';
 	if (days < 7) return `há ${days} dias`;
@@ -346,6 +458,7 @@ export type ReviewItem = ItemReview | FichaReview;
 /** Flashcard de item (palavra ou expressão do banco). */
 export interface ItemReview extends ReviewBase {
 	source: 'item';
+	itemId: string;
 	/** Reconhecer: mostra o lema, pede o sentido. Produzir: mostra o sentido, pede o lema. */
 	kind: FlashcardKind;
 	lemma: string;

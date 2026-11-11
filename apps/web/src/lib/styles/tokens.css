@@ -19,29 +19,6 @@
 	--r-s: 6px;
 	--r-m: 8px;
 	--r-l: 12px;
-
-	/* Paleta antiga, remapeada para a nova. Ainda usada pela landing e pelo jogo
-	 * de música (que têm fundo próprio e não trocam de tema). */
-	--verde-escuro: #0b1a12;
-	--verde-medio: #1d3b2a;
-	--verde-texto: #c9d1c6;
-	--salvia-claro: #dfe6dc;
-	--creme-escuro: #ece4d5;
-	--papel: #fbf8f2;
-	--coral: #a8613f;
-	--coral-escuro: #8a4d30;
-	--coral-claro: #f1e2d7;
-	--ouro: #b88a4a;
-	--azul: #1a3626;
-	--tinta: #16231b;
-	--tinta-suave: #545c55;
-	--cinza: #7d8178;
-	--linha: #e4dccd;
-	--fonte: var(--f-body);
-	--fonte-livro: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
-	--raio: 12px;
-	--raio-p: 8px;
-	--sombra-botao: 0 3px 0;
 }
 
 :root,
@@ -59,8 +36,8 @@
 	--line: rgba(17, 38, 26, 0.08);
 	--line-2: rgba(17, 38, 26, 0.14);
 	--ink: #16231b;
-	--ink-2: #545c55;
-	--ink-3: #8a8d84;
+	--ink-2: #464e48;
+	--ink-3: #6e736b;
 	--primary: #1a3626;
 	--primary-hover: #11261a;
 	--on-primary: #f7f1e6;
@@ -87,6 +64,16 @@
 	--sh-lift: 0 0 0 1px rgba(17, 38, 26, 0.07), 0 4px 14px -8px rgba(17, 38, 26, 0.16);
 	--sh-pop: 0 0 0 1px rgba(17, 38, 26, 0.08), 0 12px 32px -14px rgba(17, 30, 22, 0.24);
 	--art-1: #ece6da;
+	/* Jogo de música: acerto, erro (terra) e palavra do banco (ouro). */
+	--ok-ink: #3f6b4c;
+	--ok-soft: rgba(138, 163, 146, 0.22);
+	--gold-ink: #8f6428;
+	--gold-soft: rgba(184, 138, 74, 0.14);
+	/* Integrações: de onde vieram as palavras (Stremio, música, à mão, e-reader). */
+	--src-tv: #1a3626;
+	--src-mu: #8aa392;
+	--src-mao: #c9b48e;
+	--src-er: #a8613f;
 }
 
 .tema-escuro {
@@ -105,8 +92,8 @@
 	--line: rgba(247, 241, 230, 0.08);
 	--line-2: rgba(247, 241, 230, 0.14);
 	--ink: #f3ede1;
-	--ink-2: #b9c0b6;
-	--ink-3: #87938a;
+	--ink-2: #d2d6cd;
+	--ink-3: #a5aea6;
 	--primary: #f3ede1;
 	--primary-hover: #ffffff;
 	--on-primary: #1f1a17;
@@ -133,6 +120,14 @@
 	--sh-lift: 0 0 0 1px rgba(247, 241, 230, 0.08), 0 8px 20px -12px rgba(0, 0, 0, 0.6);
 	--sh-pop: 0 0 0 1px rgba(247, 241, 230, 0.1), 0 16px 40px -16px rgba(0, 0, 0, 0.7);
 	--art-1: #2a2521;
+	--ok-ink: #a9c9b2;
+	--ok-soft: rgba(138, 163, 146, 0.18);
+	--gold-ink: #d9b57c;
+	--gold-soft: rgba(217, 181, 124, 0.13);
+	--src-tv: #e9e2d3;
+	--src-mu: #8aa392;
+	--src-mao: #b59f78;
+	--src-er: #d79b7b;
 }
 
 *,
@@ -150,7 +145,7 @@ body {
 	min-height: 100dvh;
 	background: var(--page);
 	color: var(--ink);
-	font: 400 14.5px/1.5 var(--f-body);
+	font: 400 16px/1.55 var(--f-body);
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 	font-feature-settings: 'cv11', 'ss01';

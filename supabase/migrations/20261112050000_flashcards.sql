@@ -161,21 +161,31 @@ create trigger fichas_sync_flashcards after insert or update of reverse, cloze_c
 -- ---------- Revisão ----------
 
 -- Flashcards revisáveis: o dono (item ou ficha) está ativo e não foi apagado.
-drop function public.review_counts(timestamptz);
-create function public.review_counts(p_day_start timestamptz)
+-- Irmãos ocultos valem para o Reconhecer e o Produzir do mesmo item (fichas não ocultam);
+-- em revisão, conta um por item.
+drop function public.review_counts(timestamptz, text);
+create function public.review_counts(p_day_start timestamptz, p_language text default null)
   returns table (due_now integer, new_available integer, new_done_today integer, new_limit integer, next_due_at timestamptz)
   language sql stable security invoker set search_path = '' as $$
   with active as (
-    select f.* from public.flashcards f
+    select f.*,
+      f.item_id is not null and f.state in (0, 2) and exists (
+        select 1 from public.flashcards s
+        where s.item_id = f.item_id and s.id <> f.id and s.last_review_at >= p_day_start
+      ) as buried
+    from public.flashcards f
     left join public.items i on i.id = f.item_id
     left join public.fichas h on h.id = f.ficha_id
     where f.user_id = (select auth.uid())
       and coalesce(i.status, h.status) = 'ativo'
       and coalesce(i.deleted_at, h.deleted_at) is null
+      and (p_language is null or coalesce(i.language, h.language)::text = p_language)
   )
   select
-    (select count(*)::integer from active where state > 0 and due_at <= now()),
-    (select count(*)::integer from active where state = 0),
+    (select count(*)::integer from active where state in (1, 3) and due_at <= now())
+      + (select count(distinct coalesce(item_id, id))::integer from active
+          where state = 2 and due_at <= now() and not buried),
+    (select count(*)::integer from active where state = 0 and not buried),
     (select count(distinct l.flashcard_id)::integer from public.review_logs l
       where l.user_id = (select auth.uid()) and l.reviewed_at >= p_day_start
         and not exists (
@@ -189,7 +199,7 @@ $$;
 -- p_expected_reps é o reps que o app leu: se outra revisão entrou no meio, o cálculo ficou
 -- velho (flashcard_stale) e o app refaz. Revisão de item ou ficha apagada é descartada
 -- (a exclusão vence). Mesmo client_id: devolve a revisão que já existe, sem gravar de novo.
-drop function public.record_review(uuid, integer, smallint, timestamptz, jsonb, boolean, uuid);
+drop function public.record_review(uuid, integer, smallint, timestamptz, jsonb, boolean, uuid, integer);
 create function public.record_review(
   p_flashcard_id uuid,
   p_expected_reps integer,
@@ -197,7 +207,8 @@ create function public.record_review(
   p_reviewed_at timestamptz,
   p_next jsonb,
   p_unlock_produce boolean,
-  p_client_id uuid default null
+  p_client_id uuid default null,
+  p_duration_ms integer default null
 ) returns uuid
   language plpgsql volatile security definer set search_path = '' as $$
 declare
@@ -221,11 +232,15 @@ begin
   if not found then raise exception 'flashcard_not_found'; end if;
   if v_card.reps <> p_expected_reps then raise exception 'flashcard_stale'; end if;
 
-  insert into public.review_logs (flashcard_id, user_id, rating, reviewed_at, client_id)
-  values (v_card.id, v_user, p_rating, least(p_reviewed_at, now()), p_client_id)
+  v_next := jsonb_populate_record(v_card, p_next);
+
+  insert into public.review_logs (flashcard_id, user_id, rating, reviewed_at, client_id, duration_ms,
+    state_before, last_interval_days, interval_days)
+  values (v_card.id, v_user, p_rating, least(p_reviewed_at, now()), p_client_id,
+    least(greatest(p_duration_ms, 0), 600000),
+    v_card.state, v_card.scheduled_days, v_next.scheduled_days)
   returning id into v_log;
 
-  v_next := jsonb_populate_record(v_card, p_next);
   update public.flashcards set
     due_at = v_next.due_at,
     stability = v_next.stability,
@@ -300,11 +315,11 @@ begin
 end;
 $$;
 
-revoke all on function public.review_counts(timestamptz) from public, anon;
-revoke all on function public.record_review(uuid, integer, smallint, timestamptz, jsonb, boolean, uuid) from public, anon;
+revoke all on function public.review_counts(timestamptz, text) from public, anon;
+revoke all on function public.record_review(uuid, integer, smallint, timestamptz, jsonb, boolean, uuid, integer) from public, anon;
 revoke all on function public.undo_review(uuid, integer, jsonb, boolean) from public, anon;
-grant execute on function public.review_counts(timestamptz) to authenticated;
-grant execute on function public.record_review(uuid, integer, smallint, timestamptz, jsonb, boolean, uuid) to authenticated;
+grant execute on function public.review_counts(timestamptz, text) to authenticated;
+grant execute on function public.record_review(uuid, integer, smallint, timestamptz, jsonb, boolean, uuid, integer) to authenticated;
 grant execute on function public.undo_review(uuid, integer, jsonb, boolean) to authenticated;
 
 -- ---------- API v1 e sync: nomes novos ----------
@@ -528,6 +543,7 @@ begin
   return jsonb_build_object(
     'flashcard', to_jsonb(v_card),
     'sense', v_sense,
+    'desired_retention', (select s.desired_retention from public.user_settings s where s.user_id = v_user),
     'logs', coalesce((
       select jsonb_agg(jsonb_build_object('rating', l.rating, 'reviewed_at', l.reviewed_at)
         order by l.reviewed_at, l.received_at)
@@ -563,10 +579,13 @@ begin
   end if;
   if v_card.reps <> p_expected_reps then raise exception 'flashcard_stale'; end if;
 
-  insert into public.review_logs (flashcard_id, user_id, rating, reviewed_at, client_id, duration_ms)
-  values (v_card.id, v_user, p_rating, least(p_reviewed_at, now()), p_client_id, p_duration_ms);
-
   v_next := jsonb_populate_record(v_card, p_next);
+
+  insert into public.review_logs (flashcard_id, user_id, rating, reviewed_at, client_id, duration_ms,
+    state_before, last_interval_days, interval_days)
+  values (v_card.id, v_user, p_rating, least(p_reviewed_at, now()), p_client_id, p_duration_ms,
+    v_card.state, v_card.scheduled_days, v_next.scheduled_days);
+
   update public.flashcards set
     due_at = v_next.due_at,
     stability = v_next.stability,
@@ -591,7 +610,7 @@ begin
 end;
 $function$;
 
-CREATE FUNCTION public.api_sync_snapshot(p_token text, p_language text, p_after uuid, p_limit integer, p_day_start timestamp with time zone)
+CREATE FUNCTION public.api_sync_snapshot(p_token text, p_language text, p_after uuid, p_limit integer, p_day_start timestamp with time zone DEFAULT NULL::timestamp with time zone)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -603,10 +622,17 @@ declare
   v_limit integer := least(greatest(coalesce(p_limit, 500), 1), 1000);
   v_items jsonb;
   v_count integer;
+  v_settings public.user_settings;
+  v_day_start timestamptz;
 begin
   select * into v from public.sync_token_begin(p_token);
   if v.user_id is null then raise exception 'invalid_token'; end if;
   if v.retry_after is not null then return jsonb_build_object('rateLimited', v.retry_after); end if;
+
+  -- p_day_start nulo: o servidor usa o relógio do usuário.
+  select * into v_settings from public.user_settings s where s.user_id = v.user_id;
+  v_day_start := coalesce(p_day_start,
+    public.review_day_start(v_settings.time_zone, coalesce(v_settings.day_start_hour, 4)));
 
   with page as (
     select i.* from public.items i
@@ -636,7 +662,9 @@ begin
         'updated_at', greatest(
           p.updated_at,
           (select max(e.created_at) from public.encounters e where e.item_id = p.id),
-          (select max(l.received_at) from public.review_logs l where l.flashcard_id = c.id)
+          (select max(l.received_at) from public.review_logs l where l.flashcard_id = c.id),
+          (select max(l.received_at) from public.review_logs l
+            join public.flashcards s on s.id = l.flashcard_id where s.item_id = p.id and s.id <> c.id)
         ),
         'forms', coalesce((select jsonb_agg(f.form order by f.form) from (
             select distinct e.form from public.encounters e
@@ -650,22 +678,27 @@ begin
             where e2.item_id = p.id and e2.deleted_at is null
             order by e2.seen_at desc limit 2
           ) e left join public.works w on w.id = e.work_id and w.deleted_at is null), '[]'),
-        'flashcard', to_jsonb(c)
+        'flashcard', to_jsonb(c),
+        -- Última revisão do Produzir: o aparelho oculta o Reconhecer no mesmo dia.
+        'sibling_reviewed_at', (
+          select max(s.last_review_at) from public.flashcards s where s.item_id = p.id and s.id <> c.id
+        )
       ) as line
     from page p
     join public.flashcards c on c.item_id = p.id and c.kind = 'reconhecer'
   ) rows;
 
   return jsonb_build_object(
-    'account', (
-      select jsonb_build_object(
-        'ui_language', s.ui_language,
-        'native_language', s.native_language,
-        'study_languages', to_jsonb(s.study_languages::text[]),
-        'new_flashcards_per_day', s.new_flashcards_per_day
-      )
-      from public.user_settings s where s.user_id = v.user_id
+    'account', jsonb_build_object(
+      'ui_language', v_settings.ui_language,
+      'native_language', v_settings.native_language,
+      'study_languages', to_jsonb(v_settings.study_languages::text[]),
+      'new_flashcards_per_day', v_settings.new_flashcards_per_day,
+      'time_zone', v_settings.time_zone,
+      'day_start_hour', v_settings.day_start_hour,
+      'desired_retention', v_settings.desired_retention
     ),
+    'dayStart', v_day_start,
     'total', (
       select count(*) from public.items i
       where i.user_id = v.user_id and i.language = v_lang and i.deleted_at is null
@@ -673,9 +706,9 @@ begin
     -- Mesma conta de review_counts: flashcards cuja primeira revisão é de hoje (em qualquer idioma).
     'newDoneToday', (
       select count(distinct l.flashcard_id) from public.review_logs l
-      where l.user_id = v.user_id and l.reviewed_at >= p_day_start
+      where l.user_id = v.user_id and l.reviewed_at >= v_day_start
         and not exists (
-          select 1 from public.review_logs pl where pl.flashcard_id = l.flashcard_id and pl.reviewed_at < p_day_start
+          select 1 from public.review_logs pl where pl.flashcard_id = l.flashcard_id and pl.reviewed_at < v_day_start
         )
     ),
     'items', v_items,

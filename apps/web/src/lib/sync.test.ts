@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { formatWorkSource } from './items';
-import { dayStart, nextDayStart, REVIEW_TIME_ZONE } from './review';
+import { dayStart, DEFAULT_CLOCK, nextDayStart, REVIEW_TIME_ZONE } from './review';
 import {
 	flashcardState,
 	decodeCursor,
@@ -194,6 +194,8 @@ describe('cabeçalho e fim da página', () => {
 			studyLanguages: ['it', 'en'],
 			newFlashcardsPerDay: 10,
 			timeZone: REVIEW_TIME_ZONE,
+			dayStartHour: DEFAULT_CLOCK.startHour,
+			desiredRetention: 0.9,
 			dayStart: dayStart(serverNow),
 			nextDayStart: nextDayStart(serverNow),
 			newDoneToday: 1
@@ -214,6 +216,8 @@ describe('cabeçalho e fim da página', () => {
 				studyLanguages: [],
 				newFlashcardsPerDay: 10,
 				timeZone: REVIEW_TIME_ZONE,
+				dayStartHour: DEFAULT_CLOCK.startHour,
+				desiredRetention: 0.9,
 				dayStart: dayStart(serverNow),
 				nextDayStart: nextDayStart(serverNow),
 				newDoneToday: 0

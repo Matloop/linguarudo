@@ -21,13 +21,15 @@
 	import type { PageProps, SubmitFunction } from './$types';
 
 	let { data, form }: PageProps = $props();
+	const timeZone = $derived(data.shell?.clock.timeZone);
 
-	type Filter = 'todas' | 'hoje' | 'novas' | 'dominadas';
+	type Filter = 'todas' | 'hoje' | 'novas' | 'dominadas' | 'teimosas';
 	const FILTERS: [Filter, string][] = [
 		['todas', 'Todas'],
 		['hoje', 'Para revisar'],
 		['novas', 'Novas'],
-		['dominadas', 'Dominadas']
+		['dominadas', 'Dominadas'],
+		['teimosas', 'Teimosas']
 	];
 	const parseFilter = (v: string | null): Filter =>
 		FILTERS.some(([k]) => k === v) ? (v as Filter) : 'todas';
@@ -47,7 +49,8 @@
 		todas: data.items.length,
 		hoje: data.items.filter((i) => i.dueToday).length,
 		novas: data.items.filter((i) => i.status === 'ativo' && i.strength === 0).length,
-		dominadas: data.items.filter((i) => i.strength === 4).length
+		dominadas: data.items.filter((i) => i.strength === 4).length,
+		teimosas: data.items.filter((i) => i.leech).length
 	});
 	const rows = $derived.by(() => {
 		const needle = q.trim().toLocaleLowerCase();
@@ -55,6 +58,7 @@
 			if (filter === 'hoje' && !i.dueToday) return false;
 			if (filter === 'novas' && !(i.status === 'ativo' && i.strength === 0)) return false;
 			if (filter === 'dominadas' && i.strength !== 4) return false;
+			if (filter === 'teimosas' && !i.leech) return false;
 			return (
 				!needle ||
 				i.lemma.toLocaleLowerCase().includes(needle) ||
@@ -304,7 +308,8 @@
 						>
 						{@render strength(item.strength)}
 						<span class="next" class:hoje={item.dueToday}
-							>{item.status === 'conhecido' ? 'Já sei' : item.next}</span
+							>{#if item.leech}<span class="teimosa" title="Errou {item.lapses} vezes">Teimosa</span
+								>{/if}{item.status === 'conhecido' ? 'Já sei' : item.next}</span
 						>
 					</a>
 				</li>
@@ -473,6 +478,12 @@
 						<div class="str-l">
 							{@render strength(selected.strength)}<span>{STRENGTH_LABELS[selected.strength]}</span>
 						</div>
+						{#if selected.leech}
+							<p class="leech-note">
+								<span class="teimosa">Teimosa</span> Você errou {selected.lapses} vezes. Vale reescrever
+								ou trocar a frase do card.
+							</p>
+						{/if}
 					</div>
 				</section>
 
@@ -483,7 +494,8 @@
 							<div class="qs">
 								<Icon name={ORIGIN_ICONS[e.origin]} size="sm" />{e.source || e.originLabel} · {formatAgo(
 									new Date(e.seenAt),
-									now
+									now,
+									timeZone
 								)}
 							</div>
 							{#if e.sentence}<p>
@@ -506,7 +518,9 @@
 						<ul class="hist">
 							{#each data.history as h, i (i)}
 								<li>
-									<time datetime={h.reviewedAt}>{formatAgo(new Date(h.reviewedAt), now)}</time>
+									<time datetime={h.reviewedAt}
+										>{formatAgo(new Date(h.reviewedAt), now, timeZone)}</time
+									>
 									<span class="grade" data-g={h.rating}>{GRADE_LABELS[h.rating as Grade]}</span>
 									<span class="iv">{h.kind === 'produzir' ? 'Produzir' : 'Reconhecer'}</span>
 								</li>
@@ -553,7 +567,7 @@
 <style>
 	.dr-reading {
 		color: var(--ink-3);
-		font-size: 14px;
+		font-size: 15.5px;
 		margin-bottom: -2px;
 	}
 	.opt {
@@ -569,7 +583,7 @@
 		margin-bottom: 14px;
 	}
 	.seg .c {
-		font: 500 12px/1 var(--f-body);
+		font: 500 13.5px/1 var(--f-body);
 		font-variant-numeric: tabular-nums;
 		color: var(--ink-3);
 	}
@@ -578,7 +592,7 @@
 	}
 	.search {
 		position: relative;
-		width: 280px;
+		width: 320px;
 		margin: 0;
 	}
 	.search > :global(.ic) {
@@ -591,7 +605,7 @@
 	}
 	.search input {
 		width: 100%;
-		height: 36px;
+		height: 40px;
 		padding: 0 40px 0 36px;
 		border: 0;
 		border-radius: var(--r-m);
@@ -629,10 +643,10 @@
 	}
 	.wrow {
 		display: grid;
-		grid-template-columns: minmax(170px, 1fr) minmax(0, 2.1fr) 28px 44px 84px;
+		grid-template-columns: minmax(190px, 1fr) minmax(0, 2.1fr) 28px 48px 96px;
 		align-items: center;
-		gap: 22px;
-		padding: 13px 16px;
+		gap: 24px;
+		padding: 16px 16px;
 		border-radius: var(--r-m);
 		text-align: left;
 		width: 100%;
@@ -667,21 +681,22 @@
 		min-width: 0;
 	}
 	.w b {
-		font: 600 16px/1.3 var(--f-head);
+		font: 600 17.5px/1.3 var(--f-head);
 		display: block;
 		letter-spacing: -0.01em;
 		overflow-wrap: anywhere;
 	}
 	.w span {
-		font-size: 13px;
+		font-size: 14.5px;
 		color: var(--ink-3);
 		display: block;
+		margin-top: 2px;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.ctx {
-		font-size: 13.5px;
+		font-size: 15px;
 		color: var(--ink-2);
 		white-space: nowrap;
 		overflow: hidden;
@@ -693,7 +708,7 @@
 		place-items: center;
 	}
 	.next {
-		font-size: 13px;
+		font-size: 14.5px;
 		color: var(--ink-3);
 		text-align: right;
 		white-space: nowrap;
@@ -702,9 +717,25 @@
 		color: var(--terra-ink);
 		font-weight: 500;
 	}
+	.teimosa {
+		display: inline-block;
+		margin-right: 8px;
+		padding: 1px 7px;
+		border-radius: 999px;
+		background: var(--terra-soft, color-mix(in oklab, var(--terra-ink) 12%, transparent));
+		color: var(--terra-ink);
+		font-size: 12.5px;
+		font-weight: 500;
+	}
+	.leech-note {
+		grid-column: 1 / -1;
+		margin: 4px 0 0;
+		color: var(--ink-2);
+		font-size: 14px;
+	}
 	.list-foot {
 		margin-top: 22px;
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 		display: flex;
 		gap: 18px;
@@ -726,7 +757,7 @@
 	.no-res b {
 		display: block;
 		color: var(--ink);
-		font: 600 17px var(--f-head);
+		font: 600 18.5px var(--f-head);
 		margin-bottom: 4px;
 	}
 
@@ -781,7 +812,7 @@
 		margin: 0;
 	}
 	.dr-word {
-		font: 600 40px/1.1 var(--f-head);
+		font: 600 43px/1.1 var(--f-head);
 		letter-spacing: -0.03em;
 		margin: 8px 0 0;
 		overflow-wrap: anywhere;
@@ -792,7 +823,7 @@
 		gap: 12px;
 		margin-top: 10px;
 		color: var(--ink-3);
-		font-size: 15px;
+		font-size: 16.5px;
 	}
 	.listen {
 		display: inline-flex;
@@ -802,7 +833,7 @@
 		padding: 0 11px 0 9px;
 		border: 0;
 		border-radius: var(--r-s);
-		font-size: 13px;
+		font-size: 14.5px;
 		font-weight: 500;
 		color: var(--accent-ink);
 		background: var(--sel);
@@ -813,13 +844,13 @@
 		background: var(--press);
 	}
 	.dr-tr {
-		font-size: 18px;
+		font-size: 19.5px;
 		margin-top: 16px;
 	}
 	.note {
 		margin: 8px 0 0;
 		color: var(--ink-2);
-		font-size: 14px;
+		font-size: 15.5px;
 	}
 	.item-tags {
 		display: flex;
@@ -829,14 +860,14 @@
 	}
 	.small {
 		margin: 0;
-		font-size: 13.5px;
+		font-size: 15px;
 	}
 	.dr-sec {
 		margin-top: 30px;
 	}
 	.dr-sec h3 {
 		margin: 0 0 12px;
-		font-size: 12px;
+		font-size: 13.5px;
 		font-weight: 500;
 		color: var(--ink-3);
 		letter-spacing: 0.04em;
@@ -853,19 +884,19 @@
 	}
 	.quote p {
 		margin: 0;
-		font-size: 14.5px;
+		font-size: 16px;
 		line-height: 1.55;
 	}
 	.quote .pt {
 		color: var(--ink-3);
-		font-size: 13px;
+		font-size: 14.5px;
 		margin-top: 6px;
 	}
 	.quote .qs {
 		display: flex;
 		align-items: center;
 		gap: 7px;
-		font-size: 12px;
+		font-size: 13.5px;
 		color: var(--ink-3);
 		margin-bottom: 8px;
 	}
@@ -880,14 +911,14 @@
 		box-shadow: inset 0 0 0 1px var(--line);
 	}
 	.next-box b {
-		font: 600 17px/1.2 var(--f-head);
+		font: 600 18.5px/1.2 var(--f-head);
 		display: block;
 	}
 	.next-box b.hoje {
 		color: var(--terra-ink);
 	}
 	.next-box span {
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 	}
 	.str-l {
@@ -909,7 +940,7 @@
 		gap: 12px;
 		align-items: center;
 		padding: 8px 2px;
-		font-size: 13.5px;
+		font-size: 15px;
 	}
 	.hist li + li {
 		border-top: 1px solid var(--line);
@@ -917,7 +948,7 @@
 	.hist time,
 	.hist .iv {
 		color: var(--ink-3);
-		font-size: 12.5px;
+		font-size: 14px;
 	}
 	.dr-foot {
 		padding: 14px 20px;
@@ -936,7 +967,7 @@
 	}
 	.edit label {
 		display: block;
-		font-size: 12px;
+		font-size: 13.5px;
 		font-weight: 500;
 		color: var(--ink-3);
 		margin-top: 16px;
@@ -951,7 +982,7 @@
 		border-radius: var(--r-m);
 		background: var(--sunk);
 		box-shadow: inset 0 0 0 1px var(--line);
-		font-size: 15px;
+		font-size: 16.5px;
 		color: var(--ink);
 		resize: vertical;
 		outline: none;
@@ -964,12 +995,12 @@
 			0 0 0 3px var(--ring);
 	}
 	.edit input[name='lemma'] {
-		font: 600 22px/1.3 var(--f-head);
+		font: 600 24px/1.3 var(--f-head);
 	}
 	.edit .err {
 		margin: 6px 0 0;
 		color: var(--terra-ink);
-		font-size: 12.5px;
+		font-size: 14px;
 	}
 	.media-row {
 		display: grid;
@@ -1105,7 +1136,7 @@
 			padding: 8px 22px 22px;
 		}
 		.dr-word {
-			font-size: 36px;
+			font-size: 39px;
 		}
 		.dr-foot {
 			padding-bottom: calc(14px + var(--safe-b));

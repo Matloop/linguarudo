@@ -284,12 +284,14 @@ test('aprovar em /parear, push, snapshot e revogar', async ({ page }) => {
 
 	// Integrações mostra o aparelho; revogar derruba o token.
 	await page.goto('/integracoes');
-	await expect(page.getByText('Nenhum token ainda.')).toBeVisible();
-	await expect(page.getByText(/Última sincronização/)).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Conectar' })).toBeVisible();
+	await expect(page.getByText(/1 aparelho · sincronizou/)).toBeVisible();
+	await page.getByRole('button', { name: 'Gerenciar' }).click();
+	await expect(page.getByText(/Sincronizou /)).toBeVisible();
 	await page
 		.getByRole('button', { name: `Revogar aparelho X4 Pro …${approved.tokenHint}` })
 		.click();
-	await expect(page.getByText('Nenhum aparelho pareado.')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Parear', exact: true })).toBeVisible();
 	const revoked = await x4.push([seen]);
 	expect(revoked.status).toBe(401);
 	expect(revoked.body.code).toBe('invalid_token');
