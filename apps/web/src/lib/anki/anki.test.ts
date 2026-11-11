@@ -204,7 +204,9 @@ describe('mapeamento', () => {
 			sentence: 'Il cane abbaia.',
 			audio: 'cane.mp3',
 			image: null,
-			tags: ['Italiano::Vocab', 'animali']
+			// O deck do Anki vira deck (não tag).
+			deck: 'Italiano::Vocab',
+			tags: ['animali']
 		});
 		if (item?.type !== 'item') throw new Error();
 		expect(item.cards.map((c) => c.kind)).toEqual(['reconhecer', 'produzir']);
@@ -259,6 +261,7 @@ describe('lote do import', () => {
 	const item = {
 		type: 'item',
 		guid: 'g2',
+		deck: 'Italiano::Vocab',
 		tags: ['animali'],
 		lemma: 'cane',
 		reading: '',
@@ -296,6 +299,10 @@ describe('lote do import', () => {
 		if (f.type !== 'ficha') throw new Error();
 		expect(f.front).not.toContain('script');
 		expect(f.reverse).toBe(false);
+		// Sem deck: o padrão.
+		expect(r.notes[0].deck).toBe('Italiano::Vocab');
+		expect(f.deck).toBe('');
+		expect(parseImportBatch([{ ...item, deck: 42 }], user).ok).toBe(false);
 		expect(r.notes[0].cards[0].logs[0].at).toBe('2026-01-01T00:00:00.000Z');
 	});
 
@@ -438,7 +445,7 @@ describe('pacote .apkg', () => {
 		});
 		expect(col.decks.get('9')).toBe('Italiano::Geografia');
 		const built = buildImport(col, mappingsFor(col), new Set());
-		expect(built.notes[0]).toMatchObject({ type: 'ficha', tags: ['Italiano::Geografia'] });
+		expect(built.notes[0]).toMatchObject({ type: 'ficha', deck: 'Italiano::Geografia', tags: [] });
 	});
 
 	test('arquivo que não é pacote', async () => {

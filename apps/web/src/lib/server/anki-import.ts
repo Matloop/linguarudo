@@ -27,7 +27,12 @@ function allSuspended(cards: ImportCard[]): boolean {
 }
 
 async function toPayload(note: ImportNote, language: Language) {
-	const base = { guid: note.guid, tags: note.tags, suspended: allSuspended(note.cards) };
+	const base = {
+		guid: note.guid,
+		deck: note.deck,
+		tags: note.tags,
+		suspended: allSuspended(note.cards)
+	};
 	if (note.type === 'ficha') {
 		return {
 			...base,

@@ -1,6 +1,6 @@
 // Do Anki para o Linguetta: cada tipo de nota vira Vocabulário (item do banco),
-// Ficha ou fica de fora. Gera as notas a importar com mídia, tags (decks e tags
-// do Anki) e o histórico de revisões de cada flashcard.
+// Ficha ou fica de fora. Gera as notas a importar com o deck do Anki (vira deck no
+// Linguetta), mídia, tags e o histórico de revisões de cada flashcard.
 
 import {
 	clozeCount,
@@ -55,6 +55,8 @@ export interface ImportCard {
 
 interface ImportBase {
 	guid: string;
+	/** Caminho do deck no Anki ("Pai::Filho"); '' ou "Default" = deck padrão. */
+	deck: string;
 	tags: string[];
 	cards: ImportCard[];
 }
@@ -148,18 +150,25 @@ export function summarize(col: AnkiCollection): NotetypeSummary[] {
 
 const MAX_TAGS = 50;
 const MAX_TAG = 100;
+const MAX_DECK_PATH = 400;
 
 function cut(s: string, max: number): string {
 	return [...s].slice(0, max).join('').trim();
 }
 
-function tagsFor(note: AnkiNote, decks: string[]): string[] {
+function tagsFor(note: AnkiNote): string[] {
 	const out = new Set<string>();
-	for (const t of [...decks, ...note.tags]) {
+	for (const t of note.tags) {
 		const tag = cut(t.trim(), MAX_TAG);
-		if (tag && tag !== 'Default' && tag !== 'Padrão') out.add(tag);
+		if (tag) out.add(tag);
 	}
 	return [...out].slice(0, MAX_TAGS);
+}
+
+/** Deck da nota: o do primeiro flashcard (menor ord); notas espalhadas ficam num só. */
+function deckFor(col: AnkiCollection, cards: AnkiCollection['cards']): string {
+	const first = [...cards].sort((a, b) => a.ord - b.ord)[0];
+	return cut(first ? (col.decks.get(first.deckId) ?? '') : '', MAX_DECK_PATH);
 }
 
 function isGrade(n: number): n is Grade {
@@ -230,8 +239,8 @@ export function buildImport(
 			continue;
 		}
 		const ankiCards = cardsByNote.get(note.id) ?? [];
-		const decks = [...new Set(ankiCards.map((c) => col.decks.get(c.deckId) ?? ''))];
-		const tags = tagsFor(note, decks);
+		const tags = tagsFor(note);
+		const deck = deckFor(col, ankiCards);
 		const fields: Fields = Object.fromEntries(
 			nt.fields.map((name, i) => [name, note.fields[i] ?? ''])
 		);
@@ -258,6 +267,7 @@ export function buildImport(
 			push({
 				type: 'item',
 				guid: note.guid,
+				deck,
 				tags,
 				lemma,
 				reading: text(m.reading, LIMITS.reading),
@@ -304,6 +314,7 @@ export function buildImport(
 		push({
 			type: 'ficha',
 			guid: note.guid,
+			deck,
 			tags,
 			front,
 			back: face(b.html, false, false, false),

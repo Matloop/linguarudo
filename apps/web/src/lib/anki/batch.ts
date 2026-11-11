@@ -88,6 +88,7 @@ function itemNote(n: Record<string, unknown>, userId: string, now: number): Impo
 	return {
 		type: 'item',
 		guid: text(n.guid, 100, 'guid', true),
+		deck: text(n.deck ?? '', 400, 'deck'),
 		tags: tags(n.tags),
 		lemma: text(n.lemma, LIMITS.lemma, 'lema', true),
 		reading: text(n.reading ?? '', LIMITS.reading, 'leitura'),
@@ -110,6 +111,7 @@ function fichaNote(n: Record<string, unknown>, userId: string, now: number): Imp
 	return {
 		type: 'ficha',
 		guid: text(n.guid, 100, 'guid', true),
+		deck: text(n.deck ?? '', 400, 'deck'),
 		tags: tags(n.tags),
 		front,
 		back,
