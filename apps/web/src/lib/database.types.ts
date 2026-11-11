@@ -145,6 +145,39 @@ export type Database = {
           },
         ]
       }
+      songs: {
+        Row: {
+          artist: string
+          created_at: string
+          id: string
+          lang: Database["public"]["Enums"]["word_lang"]
+          played_at: string
+          title: string
+          user_id: string
+          youtube_id: string
+        }
+        Insert: {
+          artist: string
+          created_at?: string
+          id?: string
+          lang: Database["public"]["Enums"]["word_lang"]
+          played_at?: string
+          title: string
+          user_id?: string
+          youtube_id: string
+        }
+        Update: {
+          artist?: string
+          created_at?: string
+          id?: string
+          lang?: Database["public"]["Enums"]["word_lang"]
+          played_at?: string
+          title?: string
+          user_id?: string
+          youtube_id?: string
+        }
+        Relationships: []
+      }
       user_settings: {
         Row: {
           new_cards_per_day: number

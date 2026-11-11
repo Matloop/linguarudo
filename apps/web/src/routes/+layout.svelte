@@ -18,8 +18,8 @@
 	<meta name="theme-color" content="#0C4033" />
 </svelte:head>
 
-<!-- A landing (/) tem header e footer próprios. -->
-{#if page.route.id === '/'}
+<!-- A landing (/) tem header e footer próprios; o jogo de música ocupa a tela toda. -->
+{#if page.route.id === '/' || page.route.id === '/musica/[id]'}
 	{@render children()}
 {:else}
 	<header>
@@ -41,6 +41,7 @@
 						>
 					{/if}
 				</a>
+				<a href={resolve('/musica')} aria-current={isCurrent('/musica')}>Música</a>
 				<a href={resolve('/integracoes')} aria-current={isCurrent('/integracoes')}> Integrações </a>
 			</nav>
 			<form method="POST" action="/sair">

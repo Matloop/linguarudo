@@ -29,6 +29,12 @@ describe('isProtectedPath', () => {
 		expect(isProtectedPath('/revisar')).toBe(true);
 	});
 
+	test('/musica e subrotas exigem login', () => {
+		expect(isProtectedPath('/musica')).toBe(true);
+		expect(isProtectedPath('/musica/abc')).toBe(true);
+		expect(isProtectedPath('/musicaa')).toBe(false);
+	});
+
 	test('/integracoes exige login; /api usa token, não sessão', () => {
 		expect(isProtectedPath('/integracoes')).toBe(true);
 		expect(isProtectedPath('/api/words')).toBe(false);
