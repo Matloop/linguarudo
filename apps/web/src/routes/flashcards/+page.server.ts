@@ -5,12 +5,14 @@ import {
 	loadLogs,
 	loadReviewFlashcard,
 	reviewErrorMessage,
-	reviewableFlashcards,
+	reviewableFichaFlashcards,
+	reviewableItemFlashcards,
+	rowSense,
 	toReviewItem,
 	type ReviewFlashcardRow
 } from '#lib/server/reviews.ts';
 import { replay, scheduleReview, unlocksProduce } from '#lib/server/scheduler.ts';
-import { nextDueText } from '#lib/server/summary.ts';
+import { loadTags, nextDueText } from '#lib/server/summary.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /** Teto de segurança por carga; revisões vencidas não têm limite (a próxima carga traz o resto). */
@@ -22,7 +24,7 @@ async function requireUser(locals: App.Locals) {
 	return user;
 }
 
-export const load: PageServerLoad = async ({ locals, parent }) => {
+export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	const user = await requireUser(locals);
 	const { shell } = await parent();
 	if (!shell) error(401, 'Entre para revisar.');
@@ -35,18 +37,31 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	if (!summary) error(500, 'Não deu para carregar a revisão agora.');
 
 	// A revisão é do idioma ativo; o limite de novas do dia é um só para todos.
-	const base = () => reviewableFlashcards(locals.supabase, user.id, language);
+	// Com ?tag=, só os flashcards (de item ou de ficha) que têm a tag.
+	const tag = url.searchParams.get('tag')?.trim() || null;
+	const filter = { language, tag };
 	const remaining = newRemaining(summary.newLimit, summary.newDoneToday);
-	const [due, fresh, nextDue] = await Promise.all([
-		base().gt('state', 0).lte('due_at', now.toISOString()).order('due_at').limit(MAX_DUE_PER_LOAD),
-		remaining > 0
-			? base().eq('state', 0).order('created_at').order('id').limit(remaining)
-			: Promise.resolve({ data: [], error: null }),
+	const nowIso = now.toISOString();
+	const sources = [
+		() => reviewableItemFlashcards(locals.supabase, user.id, filter),
+		() => reviewableFichaFlashcards(locals.supabase, user.id, filter)
+	];
+	const none = Promise.resolve({ data: [], error: null });
+	const [results, tags, nextDue] = await Promise.all([
+		Promise.all(
+			sources.flatMap((base) => [
+				base().gt('state', 0).lte('due_at', nowIso).order('due_at').limit(MAX_DUE_PER_LOAD),
+				remaining > 0
+					? base().eq('state', 0).order('created_at').order('id').limit(remaining)
+					: none
+			])
+		),
+		loadTags(locals.supabase, user.id, language).catch(() => []),
 		nextDueText(locals.supabase, user.id, language, now).catch(() => null)
 	]);
-	if (due.error || fresh.error) error(500, 'Não deu para carregar a revisão agora.');
+	if (results.some((r) => r.error)) error(500, 'Não deu para carregar a revisão agora.');
 
-	const rows = [...due.data, ...fresh.data] as ReviewFlashcardRow[];
+	const rows = results.flatMap((r) => (r.data ?? []) as ReviewFlashcardRow[]);
 	const queue = buildQueue(
 		rows.map((r) => ({ ...r, dueAt: r.due_at, createdAt: r.created_at })),
 		{ now, newLimit: summary.newLimit, newDoneToday: summary.newDoneToday }
@@ -56,7 +71,9 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 		language,
 		uiLanguage: shell.uiLanguage,
 		nativeLanguage: shell.nativeLanguage,
-		nextDue
+		nextDue,
+		tag,
+		tags
 	};
 };
 
@@ -91,7 +108,7 @@ export const actions: Actions = {
 			p_rating: rating,
 			p_reviewed_at: review.reviewed_at,
 			p_next: { ...next },
-			p_unlock_produce: unlocksProduce({ kind: row.kind, sense: row.items.sense, intervalDays })
+			p_unlock_produce: unlocksProduce({ kind: row.kind, sense: rowSense(row), intervalDays })
 		});
 		if (dbError || !logId) {
 			const { status, text } = reviewErrorMessage(dbError?.message);
@@ -124,7 +141,7 @@ export const actions: Actions = {
 			p_next: { ...card },
 			p_drop_produce: !unlocksProduce({
 				kind: row.kind,
-				sense: row.items.sense,
+				sense: rowSense(row),
 				intervalDays: maxIntervalDays
 			})
 		});

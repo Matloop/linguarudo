@@ -3,6 +3,7 @@
 
 import { lemmaKey } from '@linguetta/language';
 import { parseLanguage, type Language } from './languages.ts';
+import { parseTags, tagsError } from './tags.ts';
 
 export const LIMITS = {
 	lemma: 80,
@@ -141,30 +142,36 @@ export interface ItemEdit {
 	reading: string;
 	sense: string;
 	note: string;
+	tags: string[];
 }
 
 export type ItemEditField = keyof ItemEdit;
 
-/** Editar um item existente. */
-export function parseItemEdit(raw: Record<string, unknown>): FormResult<ItemEdit, ItemEditField> {
+/** Editar um item existente. Sem o campo tags no formulário, as tags ficam como estão. */
+export function parseItemEdit(
+	raw: Record<string, unknown>
+): FormResult<Omit<ItemEdit, 'tags'> & { tags?: string[] }, ItemEditField> {
 	const values = {
 		lemma: asString(raw.lemma),
 		reading: asString(raw.reading),
 		sense: asString(raw.sense),
-		note: asString(raw.note)
+		note: asString(raw.note),
+		tags: asString(raw.tags)
 	};
 	const lemma = normalizeLemma(values.lemma);
 	const reading = normalizeLemma(values.reading);
 	const sense = normalizeText(values.sense);
 	const note = normalizeText(values.note);
+	const tags = typeof raw.tags === 'string' ? parseTags(raw.tags) : undefined;
 	const errors = compact<ItemEditField>({
 		lemma: lemmaError(lemma),
 		reading: tooLong(reading, LIMITS.reading),
 		sense: tooLong(sense, LIMITS.sense),
-		note: tooLong(note, LIMITS.note)
+		note: tooLong(note, LIMITS.note),
+		tags: tags && tagsError(tags)
 	});
 	if (Object.keys(errors).length > 0) return { ok: false, errors, values };
-	return { ok: true, value: { lemma, reading, sense, note } };
+	return { ok: true, value: { lemma, reading, sense, note, ...(tags ? { tags } : {}) } };
 }
 
 // ---------- Entrada de save_items ----------

@@ -29,7 +29,9 @@
 		| 'settings'
 		| 'bookmark'
 		| 'globe'
-		| 'archive';
+		| 'archive'
+		| 'tag'
+		| 'cards';
 </script>
 
 <script lang="ts">

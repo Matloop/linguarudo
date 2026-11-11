@@ -120,6 +120,13 @@ describe('parseItemEdit', () => {
 		});
 	});
 
+	test('tags só mudam se vierem no formulário', () => {
+		const r = parseItemEdit({ lemma: 'festa', tags: ' viagem, Viagem ,A2' });
+		expect(r.ok && r.value.tags).toEqual(['viagem', 'A2']);
+		const sem = parseItemEdit({ lemma: 'festa' });
+		expect(sem.ok && 'tags' in sem.value).toBe(false);
+	});
+
 	test('lema vazio e nota longa são erro', () => {
 		const r = parseItemEdit({ lemma: '', note: 'n'.repeat(LIMITS.note + 1) });
 		expect(r.ok).toBe(false);

@@ -48,7 +48,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 	const { data, error: dbError } = await locals.supabase
 		.from('items')
 		.select(
-			'id, language, lemma, reading, sense, ipa, note, status, seen_count, created_at, flashcards(id, kind, state, stability, due_at), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
+			'id, language, lemma, reading, sense, ipa, note, tags, status, seen_count, created_at, flashcards(id, kind, state, stability, due_at), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
 		)
 		.eq('user_id', user.id)
 		.eq('language', language)

@@ -383,6 +383,16 @@
 					>Nota<textarea name="note" rows="3" maxlength={LIMITS.note} value={selected.note}
 					></textarea></label
 				>
+				<label
+					>Tags <i class="opt">· separadas por vírgula</i><input
+						name="tags"
+						value={selected.tags.join(', ')}
+						placeholder="viagem, A2"
+						autocomplete="off"
+						aria-invalid={editErrors?.tags ? 'true' : undefined}
+					/></label
+				>
+				{#if editErrors?.tags}<p class="err" role="alert">{editErrors.tags}</p>{/if}
 				{#if editErrors?.form}<p class="err" role="alert">{editErrors.form}</p>{/if}
 				<div class="edit-acts">
 					<button class="btn btn-primary" disabled={busy}>Salvar</button>
@@ -405,6 +415,15 @@
 				{/if}
 				<div class="dr-tr" class:faint={!selected.sense}>{selected.sense || 'Sem tradução'}</div>
 				{#if selected.note}<p class="note">{selected.note}</p>{/if}
+				{#if selected.tags.length > 0}
+					<div class="item-tags">
+						{#each selected.tags as tag (tag)}
+							<a class="chip" href={resolve(`/flashcards?tag=${encodeURIComponent(tag)}`)}
+								><Icon name="tag" size="sm" />{tag}</a
+							>
+						{/each}
+					</div>
+				{/if}
 
 				<section class="dr-sec">
 					<h3>Próxima revisão</h3>
@@ -772,6 +791,12 @@
 		margin: 8px 0 0;
 		color: var(--ink-2);
 		font-size: 14px;
+	}
+	.item-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-top: 12px;
 	}
 	.small {
 		margin: 0;

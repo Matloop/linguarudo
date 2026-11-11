@@ -24,6 +24,7 @@ import {
 	STRENGTH_LABELS,
 	undoLast,
 	type QueueFlashcard,
+	type ItemReview,
 	type ReviewItem
 } from './review';
 
@@ -41,9 +42,10 @@ function card(id: string, over: Partial<QueueFlashcard> = {}): QueueFlashcard {
 	};
 }
 
-function item(id: string, over: Partial<ReviewItem> = {}): ReviewItem {
+function item(id: string, over: Partial<ItemReview> = {}): ReviewItem {
 	return {
 		flashcardId: id,
+		source: 'item',
 		kind: 'reconhecer',
 		reps: 0,
 		state: 0,
@@ -57,6 +59,7 @@ function item(id: string, over: Partial<ReviewItem> = {}): ReviewItem {
 		highlight: '',
 		origin: null,
 		sourceDetail: '',
+		tags: [],
 		intervals: { 1: '1 min', 2: '14 h', 3: '5 d', 4: '54 d' },
 		...over
 	};

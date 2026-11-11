@@ -158,6 +158,12 @@
 			d="M2.5 10.5L5 8.5L7.5 8L9.5 5L8.5 3"
 		/></symbol
 	>
+	<symbol id="i-tag" viewBox="0 0 24 24"
+		><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.3" /></symbol
+	>
+	<symbol id="i-cards" viewBox="0 0 24 24"
+		><rect x="3" y="6" width="14" height="14" rx="2" /><path d="M7 3h12a2 2 0 0 1 2 2v12" /></symbol
+	>
 	<symbol id="i-archive" viewBox="0 0 24 24"
 		><path d="M7 6L17 6" /><path d="M7 9L17 9" /><path d="M9 17H15" /><path
 			d="M3 12H2.6C2.26863 12 2 12.2686 2 12.6V21.4C2 21.7314 2.26863 22 2.6 22H21.4C21.7314 22 22 21.7314 22 21.4V12.6C22 12.2686 21.7314 12 21.4 12H21M3 12V2.6C3 2.26863 3.26863 2 3.6 2H20.4C20.7314 2 21 2.26863 21 2.6V12M3 12H21"

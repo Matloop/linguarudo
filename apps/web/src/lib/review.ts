@@ -1,6 +1,7 @@
 // Regras puras da revisão (fila, sessão, datas, formatação). Não importa o
 // ts-fsrs, para não pesar no navegador; o agendamento fica em server/scheduler.ts.
 
+import type { FichaFlashcardKind } from './fichas.ts';
 import type { FlashcardKind, Origin } from './items.ts';
 import { findWord } from '@linguetta/language';
 import type { Language } from './languages.ts';
@@ -313,21 +314,41 @@ export function highlightParts(context: string, term: string, language: Language
 
 // ---------- Sessão ----------
 
-/** O que a tela de revisão recebe por flashcard. */
-export interface ReviewItem {
+interface ReviewBase {
 	flashcardId: string;
-	/** Reconhecer: mostra o lema, pede o sentido. Produzir: mostra o sentido, pede o lema. */
-	kind: FlashcardKind;
 	reps: number;
 	state: number;
 	dueAt: string;
+	language: Language;
+	tags: string[];
+	intervals: Record<Grade, string>;
+}
+
+/** Flashcard de ficha: frente/verso em HTML sanitizado (b, i, br). */
+export interface FichaReview extends ReviewBase {
+	source: 'ficha';
+	/** Frente: pergunta a frente. Inverso: pergunta o verso. Lacuna: esconde a lacuna `ord`. */
+	kind: FichaFlashcardKind;
+	ord: number;
+	fichaId: string;
+	front: string;
+	back: string;
+}
+
+/** O que a tela de revisão recebe por flashcard. */
+export type ReviewItem = ItemReview | FichaReview;
+
+/** Flashcard de item (palavra ou expressão do banco). */
+export interface ItemReview extends ReviewBase {
+	source: 'item';
+	/** Reconhecer: mostra o lema, pede o sentido. Produzir: mostra o sentido, pede o lema. */
+	kind: FlashcardKind;
 	lemma: string;
 	sense: string;
 	/** Pronúncia guardada no item; vazia se não há. */
 	ipa: string;
 	/** Leitura (furigana, pinyin), mostrada acima do lema; vazia se não há. */
 	reading: string;
-	language: Language;
 	/** Frase do encontro mais recente; vazia se o item não tem encontro. */
 	sentence: string;
 	/** Trecho da frase a destacar (a forma vista); vazio = o lema. */
@@ -335,7 +356,6 @@ export interface ReviewItem {
 	origin: Origin | null;
 	/** "Kaguya · T1E2, 42:10"; vazio se o encontro não tem obra. */
 	sourceDetail: string;
-	intervals: Record<Grade, string>;
 }
 
 export interface Session {

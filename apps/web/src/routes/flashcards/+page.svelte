@@ -12,8 +12,11 @@
 		sessionProgress,
 		startSession,
 		undoLast,
-		type Grade
+		type FichaReview,
+		type Grade,
+		type ItemReview
 	} from '#lib/review.ts';
+	import { FICHA_KIND_LABELS, renderCloze } from '#lib/fichas.ts';
 	import { langAttrs, languageInline, pickVoice } from '#lib/languages.ts';
 	import { isTypingTarget, shortcutFor } from '#lib/shortcuts.ts';
 	import { toast } from '#lib/ui/app-state.svelte.ts';
@@ -66,8 +69,34 @@
 		showButton?.focus({ preventScroll: true });
 	}
 
+	// Trocar a tag do filtro começa outra sessão com a fila nova.
+	let sessionTag = untrack(() => data.tag);
+	$effect(() => {
+		if (data.tag === sessionTag) return;
+		sessionTag = data.tag;
+		session = startSession(data.queue);
+		flipped = false;
+		hit = null;
+	});
+
+	const tagQuery = (tag: string | null): `?${string}` | '' =>
+		tag ? `?tag=${encodeURIComponent(tag)}` : '';
+
+	/** Faces da ficha: o que pergunta e o que responde, já em HTML sanitizado. */
+	function fichaFaces(f: FichaReview): { ask: string; answer: string; extra: string } {
+		if (f.kind === 'lacuna') {
+			return {
+				ask: renderCloze(f.front, f.ord, false),
+				answer: renderCloze(f.front, f.ord, true),
+				extra: f.back
+			};
+		}
+		if (f.kind === 'inverso') return { ask: f.back, answer: f.front, extra: '' };
+		return { ask: f.front, answer: f.back, extra: '' };
+	}
+
 	function speak() {
-		if (!current || !canSpeak) return;
+		if (!current || current.source !== 'item' || !canSpeak) return;
 		const utterance = new SpeechSynthesisUtterance(current.lemma);
 		utterance.lang = current.language;
 		const voice = pickVoice(speechSynthesis.getVoices(), current.language);
@@ -168,29 +197,60 @@
 	<title>Flashcards · Linguetta</title>
 </svelte:head>
 
-{#snippet source()}
-	{#if current}
-		<div class="fh">
-			<span class="src">
-				<Icon name={ORIGIN_ICONS[current.origin ?? 'manual']} size="sm" />
-				{current.sourceDetail || 'Guardada à mão'}
-			</span>
-			{#if canSpeak}
-				<button class="icon-btn" type="button" onclick={speak} aria-label="Ouvir" title="Ouvir">
-					<Icon name="sound" size="sm" />
-				</button>
-			{/if}
-		</div>
-	{/if}
+{#snippet source(item: ItemReview)}
+	<div class="fh">
+		<span class="src">
+			<Icon name={ORIGIN_ICONS[item.origin ?? 'manual']} size="sm" />
+			{item.sourceDetail || 'Guardada à mão'}
+		</span>
+		{#if canSpeak}
+			<button class="icon-btn" type="button" onclick={speak} aria-label="Ouvir" title="Ouvir">
+				<Icon name="sound" size="sm" />
+			</button>
+		{/if}
+	</div>
 {/snippet}
 
-{#snippet sentence(underline: boolean)}
-	{#if current?.sentence}
+{#snippet sentence(item: ItemReview, underline: boolean)}
+	{#if item.sentence}
 		<p class="ctx" {...study}>
-			{#each highlightParts(current.sentence, current.highlight || current.lemma, current.language) as part, i (i)}
+			{#each highlightParts(item.sentence, item.highlight || item.lemma, item.language) as part, i (i)}
 				{#if part.hit}<u class:plain={!underline}>{part.text}</u>{:else}{part.text}{/if}
 			{/each}
 		</p>
+	{/if}
+{/snippet}
+
+{#snippet fichaHead(f: FichaReview)}
+	<div class="fh">
+		<span class="src">
+			<Icon name="cards" size="sm" />
+			Ficha{#if f.tags[0]}&nbsp;· {f.tags[0]}{/if}
+		</span>
+		<span class="src">
+			{f.kind === 'lacuna' ? `Lacuna ${f.ord}` : FICHA_KIND_LABELS[f.kind]}
+		</span>
+	</div>
+{/snippet}
+
+{#snippet tagBar()}
+	{#if data.tags.length > 0 || data.tag}
+		<nav class="tags" aria-label="Filtrar por tag">
+			<a
+				class="chip"
+				class:on={!data.tag}
+				href={resolve(`/flashcards${tagQuery(null)}`)}
+				aria-current={!data.tag}>Tudo</a
+			>
+			{#each data.tags as tag (tag)}
+				<a
+					class="chip"
+					class:on={data.tag === tag}
+					href={resolve(`/flashcards${tagQuery(tag)}`)}
+					aria-current={data.tag === tag}><Icon name="tag" size="sm" />{tag}</a
+				>
+			{/each}
+		</nav>
 	{/if}
 {/snippet}
 
@@ -199,15 +259,24 @@
 </form>
 
 {#if session.answered === 0 && !current}
-	<div class="ph"><div><h1>Flashcards</h1></div></div>
+	<div class="ph">
+		<div><h1>Flashcards</h1></div>
+		<a class="btn btn-soft" href={resolve('/flashcards/fichas')}><Icon name="cards" />Fichas</a>
+	</div>
+	{@render tagBar()}
 	<div class="empty">
 		<div>
 			<Mark class="mark mark-hero" />
 			<h2>Nada para revisar</h2>
-			{#if data.nextDue}
-				<p>A próxima palavra em {languageName} volta {data.nextDue}.</p>
+			{#if data.tag}
+				<p>Nenhum flashcard com a tag “{data.tag}” para agora.</p>
+			{:else if data.nextDue}
+				<p>O próximo flashcard em {languageName} volta {data.nextDue}.</p>
 			{:else}
-				<p>Quando você guardar palavras em {languageName}, elas aparecem aqui no dia certo.</p>
+				<p>
+					Quando você guardar palavras ou criar fichas em {languageName}, elas aparecem aqui no dia
+					certo.
+				</p>
 			{/if}
 			<div class="acts">
 				<a
@@ -215,7 +284,9 @@
 					href={resolve('/flashcards?guardar')}
 					data-sveltekit-noscroll><Icon name="plus" />Guardar palavra</a
 				>
-				<a class="btn btn-soft btn-lg" href={resolve('/inicio')}>Voltar ao início</a>
+				<a class="btn btn-soft btn-lg" href={resolve('/flashcards/fichas/nova')}
+					><Icon name="cards" />Nova ficha</a
+				>
 			</div>
 		</div>
 	</div>
@@ -239,50 +310,76 @@
 				>
 			</span>
 		</div>
+		{#if session.answered === 0}{@render tagBar()}{/if}
 
 		{#if current}
 			<div class="rv-stage">
 				{#key current.flashcardId}
 					<div class="card3d enter" class:flipped data-testid="flashcard">
 						<div class="card-in">
-							<section class="face front" inert={flipped} aria-label="Frente do flashcard">
-								{@render source()}
-								<div class="mid">
-									{#if current.kind === 'produzir'}
-										<div class="ask">Como se diz em {languageName}?</div>
-										<div class="word" {...native}>{current.sense}</div>
-									{:else}
-										{#if current.reading}<div class="reading" {...study}>
-												{current.reading}
-											</div>{/if}
-										<div class="word" {...study}>{current.lemma}</div>
-										{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
-									{/if}
-								</div>
-								{#if current.kind === 'reconhecer'}{@render sentence(true)}{/if}
-							</section>
-							<section class="face back" inert={!flipped} aria-label="Verso do flashcard">
-								{@render source()}
-								<div class="mid">
-									{#if current.kind === 'produzir'}
-										<div class="small-w" {...native}>{current.sense}</div>
-										{#if current.reading}<div class="reading" {...study}>
-												{current.reading}
-											</div>{/if}
-										<div class="tr" {...study}>{current.lemma}</div>
-										{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
-									{:else}
-										<div class="small-w">
-											{#if current.reading}<span class="rd" {...study}>{current.reading}</span>{/if}
-											<b {...study}>{current.lemma}</b>{#if current.ipa}&nbsp;· {current.ipa}{/if}
-										</div>
-										<div class="tr" class:none={!current.sense} {...current.sense ? native : {}}>
-											{current.sense || 'Sem tradução guardada'}
-										</div>
-									{/if}
-								</div>
-								{@render sentence(false)}
-							</section>
+							{#if current.source === 'ficha'}
+								{@const faces = fichaFaces(current)}
+								<section class="face front" inert={flipped} aria-label="Frente do flashcard">
+									{@render fichaHead(current)}
+									<div class="mid">
+										<!-- HTML sanitizado no servidor (sanitizeFichaHtml): só b, i e br. -->
+										<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+										<div class="ficha-face">{@html faces.ask}</div>
+									</div>
+								</section>
+								<section class="face back" inert={!flipped} aria-label="Verso do flashcard">
+									{@render fichaHead(current)}
+									<div class="mid">
+										<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+										<div class="ficha-face">{@html faces.answer}</div>
+										{#if faces.extra}
+											<div class="divider"></div>
+											<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+											<div class="small-w ficha-extra">{@html faces.extra}</div>
+										{/if}
+									</div>
+								</section>
+							{:else}
+								<section class="face front" inert={flipped} aria-label="Frente do flashcard">
+									{@render source(current)}
+									<div class="mid">
+										{#if current.kind === 'produzir'}
+											<div class="ask">Como se diz em {languageName}?</div>
+											<div class="word" {...native}>{current.sense}</div>
+										{:else}
+											{#if current.reading}<div class="reading" {...study}>
+													{current.reading}
+												</div>{/if}
+											<div class="word" {...study}>{current.lemma}</div>
+											{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
+										{/if}
+									</div>
+									{#if current.kind === 'reconhecer'}{@render sentence(current, true)}{/if}
+								</section>
+								<section class="face back" inert={!flipped} aria-label="Verso do flashcard">
+									{@render source(current)}
+									<div class="mid">
+										{#if current.kind === 'produzir'}
+											<div class="small-w" {...native}>{current.sense}</div>
+											{#if current.reading}<div class="reading" {...study}>
+													{current.reading}
+												</div>{/if}
+											<div class="tr" {...study}>{current.lemma}</div>
+											{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
+										{:else}
+											<div class="small-w">
+												{#if current.reading}<span class="rd" {...study}>{current.reading}</span
+													>{/if}
+												<b {...study}>{current.lemma}</b>{#if current.ipa}&nbsp;· {current.ipa}{/if}
+											</div>
+											<div class="tr" class:none={!current.sense} {...current.sense ? native : {}}>
+												{current.sense || 'Sem tradução guardada'}
+											</div>
+										{/if}
+									</div>
+									{@render sentence(current, false)}
+								</section>
+							{/if}
 						</div>
 					</div>
 				{/key}
@@ -339,7 +436,7 @@
 					<h2 id="fim-titulo">{remaining > 0 ? 'Pronto por agora' : 'Pronto por hoje'}</h2>
 					<p>
 						Você revisou {session.answered}
-						{session.answered === 1 ? 'palavra' : 'palavras'}.
+						{session.answered === 1 ? 'flashcard' : 'flashcards'}.
 						{#if remaining === 0}Até a próxima.{/if}
 					</p>
 					<div class="sum" data-testid="resumo">
@@ -351,7 +448,7 @@
 					</div>
 					{#if remaining > 0}
 						<div class="tomorrow">
-							Ainda {remaining === 1 ? 'tem 1 palavra' : `tem ${remaining} palavras`} para revisar.
+							Ainda {remaining === 1 ? 'tem 1 flashcard' : `tem ${remaining} flashcards`} para revisar.
 						</div>
 					{:else if data.nextDue}
 						<div class="tomorrow">A próxima volta {data.nextDue}.</div>
@@ -554,6 +651,49 @@
 	.tr.none {
 		font-size: 22px;
 		color: var(--ink-3);
+	}
+
+	.tags {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 6px;
+		margin: 18px auto 0;
+		max-width: 580px;
+	}
+	.ph + .tags {
+		margin: -12px 0 0;
+		justify-content: flex-start;
+	}
+	.ficha-face {
+		font: 400 18px/1.45 var(--f-body);
+		max-width: 460px;
+		overflow-wrap: anywhere;
+		overflow-y: auto;
+	}
+	.ficha-face :global(b) {
+		font-weight: 650;
+	}
+	.ficha-face :global(.cloze) {
+		display: inline-block;
+		min-width: 64px;
+		border-bottom: 2px solid var(--ink-3);
+		color: var(--ink-3);
+	}
+	.ficha-face :global(.cloze.open) {
+		color: var(--ink);
+		border-color: var(--primary);
+		font-weight: 650;
+	}
+	.divider {
+		width: 40px;
+		height: 1px;
+		background: var(--line-2);
+		margin: 14px auto;
+	}
+	.ficha-extra {
+		max-width: 460px;
+		line-height: 1.5;
 	}
 
 	.rv-acts {

@@ -4,6 +4,7 @@
 // reconstrói do zero, na ordem de reviewed_at.
 
 import { DefaultScheduler } from 'ts-fsrs';
+import type { FichaFlashcardKind } from '#lib/fichas.ts';
 import type { FlashcardKind } from '#lib/items.ts';
 import { formatInterval, type Grade } from '#lib/review.ts';
 
@@ -163,7 +164,7 @@ export async function scheduleReview(
 
 /** Uma revisão de Reconhecer com intervalo longo cria o Produzir, se houver sentido a pedir. */
 export function unlocksProduce(r: {
-	kind: FlashcardKind;
+	kind: FlashcardKind | FichaFlashcardKind;
 	sense: string;
 	intervalDays: number;
 }): boolean {

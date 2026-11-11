@@ -25,20 +25,37 @@ export interface ShellSummary {
 	newDoneToday: number;
 }
 
+/** Flashcards ativos do idioma, de item e de ficha (consultas separadas: o embed é !inner). */
 function activeFlashcards(supabase: Client, userId: string, language: Language) {
-	return supabase
-		.from('flashcards')
-		.select('id, items!inner(language, status, deleted_at)', { count: 'exact', head: true })
-		.eq('user_id', userId)
-		.eq('items.language', language)
-		.eq('items.status', 'ativo')
-		.is('items.deleted_at', null);
+	return [
+		supabase
+			.from('flashcards')
+			.select('id, items!inner(language, status, deleted_at)', { count: 'exact', head: true })
+			.eq('user_id', userId)
+			.eq('items.language', language)
+			.eq('items.status', 'ativo')
+			.is('items.deleted_at', null),
+		supabase
+			.from('flashcards')
+			.select('id, fichas!inner(language, status, deleted_at)', { count: 'exact', head: true })
+			.eq('user_id', userId)
+			.eq('fichas.language', language)
+			.eq('fichas.status', 'ativo')
+			.is('fichas.deleted_at', null)
+	];
 }
 
 async function count(query: PromiseLike<{ count: number | null; error: unknown }>) {
 	const { count, error } = await query;
 	if (error) throw new Error('contagem por idioma');
 	return count ?? 0;
+}
+
+type CountQuery = ReturnType<typeof activeFlashcards>[number];
+
+async function countAll(queries: CountQuery[], narrow: (q: CountQuery) => CountQuery) {
+	const counts = await Promise.all(queries.map((q) => count(narrow(q))));
+	return counts.reduce((a, b) => a + b, 0);
 }
 
 export async function loadShellSummary(
@@ -60,8 +77,10 @@ export async function loadShellSummary(
 						.eq('language', language)
 						.is('deleted_at', null)
 				),
-				count(activeFlashcards(supabase, userId, language).gt('state', 0).lte('due_at', nowIso)),
-				count(activeFlashcards(supabase, userId, language).eq('state', 0))
+				countAll(activeFlashcards(supabase, userId, language), (q) =>
+					q.gt('state', 0).lte('due_at', nowIso)
+				),
+				countAll(activeFlashcards(supabase, userId, language), (q) => q.eq('state', 0))
 			])
 		)
 	]);
@@ -91,17 +110,63 @@ export async function nextDueText(
 	language: Language,
 	now: Date
 ): Promise<string | null> {
-	const { data } = await supabase
-		.from('flashcards')
-		.select('due_at, items!inner(language, status, deleted_at)')
-		.eq('user_id', userId)
-		.eq('items.language', language)
-		.eq('items.status', 'ativo')
-		.is('items.deleted_at', null)
-		.gt('state', 0)
-		.gt('due_at', now.toISOString())
-		.order('due_at')
-		.limit(1)
-		.maybeSingle();
-	return data ? formatWhen(new Date(data.due_at), now) : null;
+	const nowIso = now.toISOString();
+	const [item, ficha] = await Promise.all([
+		supabase
+			.from('flashcards')
+			.select('due_at, items!inner(language, status, deleted_at)')
+			.eq('user_id', userId)
+			.eq('items.language', language)
+			.eq('items.status', 'ativo')
+			.is('items.deleted_at', null)
+			.gt('state', 0)
+			.gt('due_at', nowIso)
+			.order('due_at')
+			.limit(1)
+			.maybeSingle(),
+		supabase
+			.from('flashcards')
+			.select('due_at, fichas!inner(language, status, deleted_at)')
+			.eq('user_id', userId)
+			.eq('fichas.language', language)
+			.eq('fichas.status', 'ativo')
+			.is('fichas.deleted_at', null)
+			.gt('state', 0)
+			.gt('due_at', nowIso)
+			.order('due_at')
+			.limit(1)
+			.maybeSingle()
+	]);
+	const dues = [item.data?.due_at, ficha.data?.due_at].filter((d): d is string => !!d);
+	if (dues.length === 0) return null;
+	return formatWhen(new Date(Math.min(...dues.map((d) => Date.parse(d)))), now);
+}
+
+/** Tags usadas em itens e fichas do idioma, em ordem alfabética (para os filtros). */
+export async function loadTags(
+	supabase: Client,
+	userId: string,
+	language: Language
+): Promise<string[]> {
+	const [items, fichas] = await Promise.all([
+		supabase
+			.from('items')
+			.select('tags')
+			.eq('user_id', userId)
+			.eq('language', language)
+			.is('deleted_at', null)
+			.filter('tags', 'neq', '{}')
+			.limit(5000),
+		supabase
+			.from('fichas')
+			.select('tags')
+			.eq('user_id', userId)
+			.eq('language', language)
+			.is('deleted_at', null)
+			.filter('tags', 'neq', '{}')
+			.limit(5000)
+	]);
+	if (items.error || fichas.error) throw new Error('tags');
+	const all = new Set([...items.data, ...fichas.data].flatMap((r) => r.tags));
+	return [...all].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
