@@ -13,7 +13,13 @@
 		highlightParts,
 		type Grade
 	} from '#lib/review.ts';
+	import { deckDisplayName, plural } from '#lib/decks-ui.ts';
+	import BulkBar from '#lib/ui/BulkBar.svelte';
+	import DeckPicker from '#lib/ui/DeckPicker.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
+	import Popover from '#lib/ui/Popover.svelte';
+	import { postAction } from '#lib/ui/post-action.ts';
+	import { Selection } from '#lib/ui/selection.svelte.ts';
 	import MediaField from '#lib/ui/MediaField.svelte';
 	import Mark from '#lib/ui/Mark.svelte';
 	import { openSave, toast } from '#lib/ui/app-state.svelte.ts';
@@ -37,6 +43,22 @@
 	// Filtro e busca são locais (sem ir ao servidor); a URL guarda os dois.
 	let filter = $derived(parseFilter(page.url.searchParams.get('f')));
 	let q = $derived(page.url.searchParams.get('q') ?? '');
+	// Deck da URL (?deck=); o de topo inclui os subdecks. Deck que sumiu = todos.
+	let deckFilter = $derived(
+		data.decks.some((d) => d.id === page.url.searchParams.get('deck'))
+			? page.url.searchParams.get('deck')
+			: null
+	);
+	const deckScope = $derived(
+		deckFilter
+			? new Set(
+					data.decks
+						.filter((d) => d.id === deckFilter || d.parentId === deckFilter)
+						.map((d) => d.id)
+				)
+			: null
+	);
+	const inDeck = $derived(data.items.filter((i) => !deckScope || deckScope.has(i.deckId)));
 	let editing = $state(false);
 	let busy = $state(false);
 	let canSpeak = $state(false);
@@ -46,15 +68,15 @@
 	const langName = $derived(languageInline(data.language, data.uiLanguage));
 	const study = $derived(langAttrs(data.language));
 	const counts = $derived({
-		todas: data.items.length,
-		hoje: data.items.filter((i) => i.dueToday).length,
-		novas: data.items.filter((i) => i.status === 'ativo' && i.strength === 0).length,
-		dominadas: data.items.filter((i) => i.strength === 4).length,
-		teimosas: data.items.filter((i) => i.leech).length
+		todas: inDeck.length,
+		hoje: inDeck.filter((i) => i.dueToday).length,
+		novas: inDeck.filter((i) => i.status === 'ativo' && i.strength === 0).length,
+		dominadas: inDeck.filter((i) => i.strength === 4).length,
+		teimosas: inDeck.filter((i) => i.leech).length
 	});
 	const rows = $derived.by(() => {
 		const needle = q.trim().toLocaleLowerCase();
-		return data.items.filter((i) => {
+		return inDeck.filter((i) => {
 			if (filter === 'hoje' && !i.dueToday) return false;
 			if (filter === 'novas' && !(i.status === 'ativo' && i.strength === 0)) return false;
 			if (filter === 'dominadas' && i.strength !== 4) return false;
@@ -66,6 +88,37 @@
 			);
 		});
 	});
+	const sel = new Selection(() => rows.map((i) => i.id));
+	$effect(() => {
+		void rows;
+		sel.prune();
+	});
+	const pickerDecks = $derived(data.decks.map((d) => ({ id: d.id, name: d.name, depth: d.depth })));
+	let moveOpen = $state(false);
+	let moving = $state(false);
+
+	async function moveTo(choice: { deckId: string } | { newName: string }) {
+		moving = true;
+		const r = await postAction('move', {
+			item: [...sel.ids],
+			...('deckId' in choice ? { deck: choice.deckId } : { newName: choice.newName })
+		});
+		moving = false;
+		moveOpen = false;
+		if (!r.ok) return toast(r.message);
+		toast(
+			`${plural(Number(r.data.n), 'palavra movida', 'palavras movidas')} para ${deckDisplayName(String(r.data.target))}`
+		);
+		sel.clear();
+	}
+
+	function pickDeck(e: Event) {
+		const v = (e.currentTarget as HTMLSelectElement).value;
+		sel.clear();
+		deckFilter = v || null;
+		replaceState(resolve(`/palavras${searchWith({ deck: v || null })}`), page.state);
+	}
+
 	const selected = $derived(data.items.find((i) => i.id === data.selectedId) ?? null);
 	const editErrors = $derived(
 		form?.action === 'edit' && 'errors' in form && form.id === selected?.id ? form.errors : null
@@ -118,6 +171,7 @@
 	}
 
 	function onKeydown(e: KeyboardEvent) {
+		if (!selected && sel.onkeydown(e)) return;
 		if (e.key === 'Escape' && selected && !document.querySelector('dialog[open]')) {
 			if (editing) editing = false;
 			else closeDrawer();
@@ -272,6 +326,24 @@
 			/>
 			<kbd>/</kbd>
 		</form>
+		{#if data.decks.length > 1}
+			<label class="visually-hidden" for="deck-filtro">Deck</label>
+			<select
+				id="deck-filtro"
+				class="input deck-filter"
+				value={deckFilter ?? ''}
+				onchange={pickDeck}
+			>
+				<option value="">Todos os decks</option>
+				{#each data.decks as d (d.id)}
+					<option value={d.id}
+						>{d.depth ? '\u00a0\u00a0\u00a0' : ''}{deckDisplayName(d.name)
+							.split(' › ')
+							.at(-1)}</option
+					>
+				{/each}
+			</select>
+		{/if}
 	</div>
 
 	{#if rows.length === 0}
@@ -281,10 +353,17 @@
 				: 'Nenhuma palavra neste filtro.'}
 		</div>
 	{:else}
-		<ul class="list" aria-label="Palavras">
+		<ul class="list" class:picking={sel.size > 0} aria-label="Palavras">
 			{#each rows as item (item.id)}
 				{@const enc = item.encounters[0]}
-				<li>
+				<li data-sel-id={item.id} class:picked={sel.has(item.id)}>
+					<input
+						class="ck"
+						type="checkbox"
+						aria-label="Selecionar {item.lemma}"
+						checked={sel.has(item.id)}
+						onclick={(e) => sel.toggle(item.id, e.shiftKey)}
+					/>
 					<a
 						class="wrow"
 						class:sel={item.id === data.selectedId}
@@ -323,6 +402,22 @@
 		</div>
 	{/if}
 {/if}
+
+<BulkBar count={sel.size} label="Ações das palavras" onclear={() => sel.clear()}>
+	<Popover label="Mover para deck" bind:open={moveOpen} align="start" placement="above">
+		{#snippet trigger({ toggle, expanded, id })}
+			<button
+				class="btn btn-ghost"
+				type="button"
+				aria-haspopup="dialog"
+				aria-expanded={expanded}
+				aria-controls={id}
+				onclick={toggle}><Icon name="folder" size="sm" />Mover para deck…</button
+			>
+		{/snippet}
+		<DeckPicker decks={pickerDecks} current={deckFilter} pending={moving} onpick={moveTo} />
+	</Popover>
+</BulkBar>
 
 {#if selected}
 	{@const enc = selected.encounters[0]}
@@ -452,7 +547,7 @@
 				{#if selected.tags.length > 0}
 					<div class="item-tags">
 						{#each selected.tags as tag (tag)}
-							<a class="chip" href={resolve(`/flashcards?tag=${encodeURIComponent(tag)}`)}
+							<a class="chip" href={resolve(`/flashcards/estudar?tag=${encodeURIComponent(tag)}`)}
 								><Icon name="tag" size="sm" />{tag}</a
 							>
 						{/each}
@@ -533,7 +628,7 @@
 
 		<div class="dr-foot">
 			{#if selected.dueToday}
-				<a class="btn btn-primary" href={resolve('/flashcards')}>Revisar agora</a>
+				<a class="btn btn-primary" href={resolve('/flashcards/estudar')}>Revisar agora</a>
 			{/if}
 			<button type="button" class="btn btn-ghost" onclick={() => (editing = !editing)}
 				><Icon name="pencil" size="sm" />Editar</button
@@ -641,12 +736,47 @@
 	.list li {
 		position: relative;
 	}
+	/* Seleção (Mover para deck…): a caixa fica na margem esquerda da linha. */
+	.list .ck {
+		position: absolute;
+		left: 14px;
+		top: 50%;
+		translate: 0 -50%;
+		z-index: 1;
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+	.list li:hover .ck,
+	.list li:focus-within .ck,
+	.list.picking .ck,
+	.list .ck:checked {
+		opacity: 1;
+	}
+	@media (hover: none) {
+		.list .ck {
+			opacity: 1;
+		}
+	}
+	.list li.picked .wrow {
+		background: var(--sel);
+	}
+	.tools > .search {
+		margin-left: auto;
+		flex: 0 1 320px;
+		min-width: 200px;
+	}
+	.deck-filter {
+		width: auto;
+		max-width: 170px;
+		flex: none;
+		text-overflow: ellipsis;
+	}
 	.wrow {
 		display: grid;
 		grid-template-columns: minmax(190px, 1fr) minmax(0, 2.1fr) 28px 48px 96px;
 		align-items: center;
 		gap: 24px;
-		padding: 16px 16px;
+		padding: 16px 16px 16px 46px;
 		border-radius: var(--r-m);
 		text-align: left;
 		width: 100%;
@@ -1042,6 +1172,19 @@
 			align-items: stretch;
 			gap: 12px;
 		}
+		.tools > .search {
+			margin-left: 0;
+			flex: none;
+			order: 1;
+			min-width: 0;
+		}
+		.deck-filter {
+			max-width: none;
+			width: 100%;
+		}
+		.list .ck {
+			left: 10px;
+		}
 		.search {
 			width: 100%;
 		}
@@ -1067,7 +1210,7 @@
 			grid-template-columns: minmax(0, 1fr) auto;
 			grid-template-areas: 'w n' 'c c';
 			gap: 4px 12px;
-			padding: 13px 10px;
+			padding: 13px 10px 13px 40px;
 		}
 		.wrow .w {
 			grid-area: w;

@@ -17,6 +17,9 @@ import { formatNextReview, isDueToday, isLeech, itemStrength } from '#lib/review
 import { droppedMedia, parseMediaField, type MediaKind } from '#lib/media.ts';
 import { releaseMedia, signMedia } from '#lib/server/media.ts';
 import { loadSettings } from '#lib/server/settings.ts';
+import { deckTree } from '#lib/decks.ts';
+import { listDecks } from '#lib/server/decks.ts';
+import { moveAction } from '#lib/server/deck-actions.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const PAGE_SIZE = 500;
@@ -47,28 +50,32 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 	const language = shell.active;
 	const now = new Date();
 
-	const { data, error: dbError } = await locals.supabase
-		.from('items')
-		.select(
-			'id, language, lemma, reading, sense, ipa, note, tags, image, audio, status, seen_count, created_at, flashcards(id, kind, state, stability, due_at, lapses), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
-		)
-		.eq('user_id', user.id)
-		.eq('language', language)
-		.is('deleted_at', null)
-		.is('encounters.deleted_at', null)
-		.order('created_at', { ascending: false })
-		.order('seen_at', { referencedTable: 'encounters', ascending: false })
-		.limit(ENCOUNTERS_SHOWN, { referencedTable: 'encounters' })
-		.limit(PAGE_SIZE);
+	const [{ data, error: dbError }, decks] = await Promise.all([
+		locals.supabase
+			.from('items')
+			.select(
+				'id, language, lemma, reading, sense, ipa, note, tags, image, audio, status, deck_id, seen_count, created_at, flashcards(id, kind, state, stability, due_at, lapses), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
+			)
+			.eq('user_id', user.id)
+			.eq('language', language)
+			.is('deleted_at', null)
+			.is('encounters.deleted_at', null)
+			.order('created_at', { ascending: false })
+			.order('seen_at', { referencedTable: 'encounters', ascending: false })
+			.limit(ENCOUNTERS_SHOWN, { referencedTable: 'encounters' })
+			.limit(PAGE_SIZE),
+		listDecks(locals.supabase, language).catch(() => [])
+	]);
 	if (dbError) error(500, 'Não deu para carregar suas palavras agora.');
 
-	const items = data.map(({ flashcards, encounters, seen_count, created_at, ...item }) => {
+	const items = data.map(({ flashcards, encounters, seen_count, created_at, deck_id, ...item }) => {
 		const status = item.status as ItemStatus;
 		const dueAts = status === 'ativo' ? flashcards.map((c) => c.due_at) : [];
 		return {
 			...item,
 			status,
 			createdAt: created_at,
+			deckId: deck_id,
 			seenCount: seen_count,
 			strength: itemStrength(flashcards),
 			leech: isLeech(flashcards),
@@ -121,6 +128,12 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 
 	return {
 		items,
+		decks: deckTree(decks).map((d) => ({
+			id: d.id,
+			name: d.name,
+			parentId: d.parentId,
+			depth: d.parentId ? 1 : 0
+		})),
 		language,
 		uiLanguage: shell.uiLanguage,
 		selectedId: selected?.id ?? null,
@@ -131,6 +144,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 };
 
 export const actions: Actions = {
+	move: moveAction,
 	add: async ({ locals, request }) => {
 		const user = await requireUser(locals);
 		const settings = await loadSettings(locals.supabase, user.id);
