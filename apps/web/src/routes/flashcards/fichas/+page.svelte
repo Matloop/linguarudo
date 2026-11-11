@@ -47,6 +47,9 @@
 	</div>
 	<div class="acts">
 		<a class="btn btn-ghost" href={resolve('/flashcards')}><Icon name="repeat" />Revisar</a>
+		<a class="btn btn-ghost" href={resolve('/flashcards/importar')}
+			><Icon name="upload" />Importar do Anki</a
+		>
 		<a class="btn btn-primary" href={resolve('/flashcards/fichas/nova')}
 			><Icon name="plus" />Nova ficha</a
 		>

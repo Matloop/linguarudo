@@ -1,10 +1,5 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import {
-	fichaHtmlToText,
-	parseFichaInput,
-	parseFichaMedia,
-	type FichaMedia
-} from '#lib/fichas.ts';
+import { fichaHtmlToText, parseFichaInput, parseFichaMedia, type FichaMedia } from '#lib/fichas.ts';
 import { droppedMedia } from '#lib/media.ts';
 import { fichaFormValues, fichaMediaUrls, type FichaErrors } from '#lib/server/fichas.ts';
 import { releaseMedia } from '#lib/server/media.ts';

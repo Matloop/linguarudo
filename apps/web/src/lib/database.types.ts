@@ -634,10 +634,23 @@ export type Database = {
       }
       api_sync_unpair: { Args: { p_token: string }; Returns: undefined }
       api_token_owner: { Args: { p_token: string }; Returns: string }
+      import_anki_notes: {
+        Args: { p_language: string; p_notes: Json }
+        Returns: {
+          created_at: string
+          flashcard_id: string
+          fresh: boolean
+          guid: string
+          kind: string
+          ord: number
+        }[]
+      }
+      import_anki_reviews: { Args: { p_flashcards: Json }; Returns: number }
       media_in_use: { Args: { p_paths: string[] }; Returns: string[] }
       media_quota: { Args: never; Returns: Record<string, unknown> }
       media_quota_bytes: { Args: never; Returns: number }
       media_usage: { Args: never; Returns: number }
+      merge_tags: { Args: { p_a: string[]; p_b: string[] }; Returns: string[] }
       open_work: { Args: { p_work: Json }; Returns: string }
       record_review: {
         Args: {
