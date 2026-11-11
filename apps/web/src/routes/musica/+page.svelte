@@ -4,13 +4,14 @@
 	import { untrack } from 'svelte';
 	import { LIMITS } from '#lib/items.ts';
 	import { parseYoutubeId } from '#lib/music/youtube.ts';
-	import { LANGUAGE_LABELS } from '#lib/languages.ts';
+	import { languageLabel } from '#lib/languages.ts';
 	import { MUSIC_LANGUAGES, type MusicLanguage } from '#lib/music/wordlists.ts';
 	import Icon from '#lib/ui/Icon.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 
+	const uiLanguage = $derived(data.shell?.uiLanguage ?? 'pt');
 	const errors = $derived(form && 'errors' in form ? form.errors : {});
 	const formError = $derived(errors.form);
 
@@ -143,7 +144,7 @@
 			{#each MUSIC_LANGUAGES as l (l)}
 				<label>
 					<input type="radio" name="language" value={l} bind:group={language} />
-					<span>{LANGUAGE_LABELS[l]}</span>
+					<span>{languageLabel(l, uiLanguage)}</span>
 				</label>
 			{/each}
 		</div>
@@ -182,7 +183,7 @@
 							<b>{song.title}</b>
 							<span>{song.artist}</span>
 						</span>
-						<span class="code" title={LANGUAGE_LABELS[song.language]}
+						<span class="code" title={languageLabel(song.language, uiLanguage)}
 							>{song.language.toUpperCase()}</span
 						>
 						<span class="data">{song.playedAt ? playedAt(song.playedAt) : ''}</span>

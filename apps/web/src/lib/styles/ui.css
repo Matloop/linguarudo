@@ -321,7 +321,9 @@ mark {
 }
 
 .code {
-	width: 28px;
+	/* Tags longas (zh-Hant, pt-BR) alargam o selo em vez de vazar. */
+	min-width: 28px;
+	padding: 0 5px;
 	height: 28px;
 	border-radius: var(--r-s);
 	flex: none;

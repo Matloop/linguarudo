@@ -30,10 +30,23 @@ describe('pickSynced', () => {
 			[rec({ duration: 240, syncedLyrics: '[00:01.00] Far one' }), best, rec({ duration: 150 })],
 			{ title: 'Canção Falsa', artist: 'Banda Inventada', duration: 203 }
 		);
-		expect(out).toBe(best.syncedLyrics);
+		expect(out).toEqual({ synced: best.syncedLyrics!, duration: 201 });
 	});
 
-	test('recusa versões com mais de 10 s de diferença quando a duração é conhecida', () => {
+	test('clipe mais longo que a faixa: aceita a faixa se nada chega a 10 s', () => {
+		const clip = { title: 'Canção Falsa', artist: 'Banda Inventada', duration: 216 };
+		expect(pickSynced([rec({ duration: 200 })], clip)).toEqual({
+			synced: '[00:01.00] Invented verse',
+			duration: 200
+		});
+		// Uma versão que bate com o vídeo ainda ganha.
+		const live = rec({ duration: 214, syncedLyrics: '[00:03.00] Live' });
+		expect(pickSynced([rec({ duration: 200 }), live], clip)?.synced).toBe('[00:03.00] Live');
+		// Mais de 5 min de sobra não é a mesma música.
+		expect(pickSynced([rec({ duration: 200 })], { ...clip, duration: 520 })).toBeNull();
+	});
+
+	test('recusa faixa mais longa que o vídeo por mais de 10 s', () => {
 		expect(
 			pickSynced([rec({ duration: 260 })], {
 				title: 'Canção Falsa',
@@ -59,8 +72,8 @@ describe('pickSynced', () => {
 				title: 'Canção Falsa',
 				artist: 'Banda Inventada',
 				duration: null
-			})
-		).toBe(exact.syncedLyrics);
+			})?.synced
+		).toBe(exact.syncedLyrics!);
 	});
 
 	test('lista vazia ou inválida devolve null', () => {
@@ -91,7 +104,7 @@ describe('findSyncedLyrics', () => {
 	test('com duração conhecida tenta /api/get primeiro e manda User-Agent genérico', async () => {
 		const { fn, calls } = fakeFetch(() => json(rec({ syncedLyrics: '[00:01.00] Invented verse' })));
 		const out = await findSyncedLyrics(BASE, WANTED, fn);
-		expect(out).toEqual({ status: 'ok', synced: '[00:01.00] Invented verse' });
+		expect(out).toEqual({ status: 'ok', synced: '[00:01.00] Invented verse', duration: 200 });
 		expect(calls).toHaveLength(1);
 		expect(calls[0].url.pathname).toBe('/api/get');
 		expect(calls[0].url.searchParams.get('track_name')).toBe('Canção Falsa');
@@ -99,7 +112,7 @@ describe('findSyncedLyrics', () => {
 		expect(calls[0].url.searchParams.get('duration')).toBe('200');
 		const headers = new Headers(calls[0].init?.headers);
 		expect(headers.get('user-agent')).toBe(USER_AGENT);
-		expect(USER_AGENT).toBe('Linguetta (https://linguarudo-app.vercel.app)');
+		expect(USER_AGENT).toBe('Linguetta (https://linguetta-app.vercel.app)');
 	});
 
 	test('se /api/get não acha (404), cai para a busca e escolhe o melhor', async () => {
@@ -109,7 +122,7 @@ describe('findSyncedLyrics', () => {
 				: json([rec({ duration: 199, syncedLyrics: '[00:02.00] Search verse' })])
 		);
 		const out = await findSyncedLyrics(BASE, WANTED, fn);
-		expect(out).toEqual({ status: 'ok', synced: '[00:02.00] Search verse' });
+		expect(out).toEqual({ status: 'ok', synced: '[00:02.00] Search verse', duration: 199 });
 		expect(calls.map((c) => c.url.pathname)).toEqual(['/api/get', '/api/search']);
 	});
 

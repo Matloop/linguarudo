@@ -11,6 +11,7 @@ import {
 	type ItemStatus,
 	type ParsedEntry
 } from './items.ts';
+import { lemmaKey } from '@linguetta/language';
 import { parseLanguage, type Language } from './languages.ts';
 import { isMastered } from './review.ts';
 
@@ -78,17 +79,18 @@ export function parseSaveBody(
 
 // ---------- Corpo de POST /api/v1/items/seen ----------
 
-export function parseSeenBody(body: unknown): { language: Language; lemmas: string[] } | null {
+/** Os lemas viram chaves (lemmaKey) aqui: o cliente nunca manda a chave. */
+export function parseSeenBody(body: unknown): { language: Language; lemmaKeys: string[] } | null {
 	const b = body as { language?: unknown; lemmas?: unknown } | null;
-	const language = typeof b?.language === 'string' ? parseLanguage(b.language) : null;
+	const language = parseLanguage(b?.language);
 	if (!language || !Array.isArray(b?.lemmas) || b.lemmas.length > API_LIMITS.seenBatch) return null;
-	const lemmas = new Set<string>();
+	const keys = new Set<string>();
 	for (const t of b.lemmas) {
 		if (typeof t !== 'string') continue;
-		const lemma = normalizeLemma(t).toLowerCase();
-		if (lemma && charLength(lemma) <= LIMITS.lemma) lemmas.add(lemma);
+		const lemma = normalizeLemma(t);
+		if (lemma && charLength(lemma) <= LIMITS.lemma) keys.add(lemmaKey(lemma, language));
 	}
-	return { language, lemmas: [...lemmas] };
+	return { language, lemmaKeys: [...keys] };
 }
 
 // ---------- Respostas ----------
@@ -102,7 +104,12 @@ export interface ApiCard {
 
 export interface ApiItem {
 	id: string;
+	/** Como a pessoa escreveu (a caixa é preservada). */
 	lemma: string;
+	/** Identidade do item no idioma: (language, lemmaKey). Só o servidor calcula. */
+	lemmaKey: string;
+	/** Leitura (furigana, pinyin); vazia se não há. */
+	reading: string;
 	sense: string;
 	status: ItemStatus;
 	/** Dominado (derivado da estabilidade); a legenda pode trocar sem destaque. */
@@ -110,7 +117,7 @@ export interface ApiItem {
 	/** Entra primeiro na legenda (ver isPreferred). */
 	prefer: boolean;
 	cards: ApiCard[];
-	/** Grafias já vistas nos encontros, além do lema (destaque na legenda do modo só-alvo). */
+	/** Grafias já vistas nos encontros, como escritas, além do lema (destaque na legenda do modo só-alvo). */
 	forms: string[];
 }
 
@@ -127,9 +134,37 @@ function cardBriefs(raw: unknown): (CardBrief & { kind: CardKind; stability: num
 	);
 }
 
+/**
+ * Grafias como escritas, sem repetir pela chave do idioma e sem a do próprio lema
+ * ('Haus' e 'haus' contam uma vez só; fica a primeira que chegou).
+ */
+export function distinctForms(raw: unknown, itemKey: string, language: Language): string[] {
+	if (!Array.isArray(raw)) return [];
+	const seen = new Set([itemKey]);
+	const forms: string[] = [];
+	for (const f of raw) {
+		if (typeof f !== 'string' || !f) continue;
+		const key = lemmaKey(f, language);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		forms.push(f);
+	}
+	return forms;
+}
+
 /** Uma linha de api_items como sai em GET /api/v1/items. */
 export function apiItem(
-	row: { id: string; lemma: string; sense: string; status: string; cards: unknown; forms?: unknown },
+	row: {
+		id: string;
+		lemma: string;
+		lemma_key: string;
+		reading?: string | null;
+		sense: string;
+		status: string;
+		cards: unknown;
+		forms?: unknown;
+	},
+	language: Language,
 	now: Date
 ): ApiItem {
 	const cards = cardBriefs(row.cards);
@@ -137,6 +172,8 @@ export function apiItem(
 	return {
 		id: row.id,
 		lemma: row.lemma,
+		lemmaKey: row.lemma_key,
+		reading: row.reading ?? '',
 		sense: row.sense,
 		status,
 		mastered: isMastered(cards),
@@ -147,7 +184,7 @@ export function apiItem(
 			dueAt: c.due_at,
 			stability: c.stability
 		})),
-		forms: Array.isArray(row.forms) ? row.forms.filter((f): f is string => typeof f === 'string') : []
+		forms: distinctForms(row.forms, row.lemma_key, language)
 	};
 }
 
@@ -158,6 +195,7 @@ export type ApiSaveResult =
 				id: string;
 				language: string;
 				lemma: string;
+				lemmaKey: string;
 				/** false: o item já existia (o encontro entrou nele). */
 				created: boolean;
 				encounterId: string | null;
@@ -195,6 +233,7 @@ export function apiSaveResults(
 				id: r.item_id,
 				language: r.language,
 				lemma: r.lemma,
+				lemmaKey: entry.entry.lemma_key,
 				created: r.created,
 				encounterId: r.encounter_id,
 				card: { state: r.card_state, dueAt: r.card_due_at }

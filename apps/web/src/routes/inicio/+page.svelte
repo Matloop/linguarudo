@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { LANGUAGE_LABELS } from '#lib/languages.ts';
+	import { invalidateAll } from '$app/navigation';
+	import { languageInline } from '#lib/languages.ts';
 	import { estimateMinutes, formatAgo, formatToday } from '#lib/review.ts';
 	import Icon from '#lib/ui/Icon.svelte';
+	import LanguagePicker from '#lib/ui/LanguagePicker.svelte';
 	import Mark from '#lib/ui/Mark.svelte';
 	import { openSave } from '#lib/ui/app-state.svelte.ts';
 	import { ORIGIN_ICONS } from '#lib/ui/origins.ts';
@@ -11,8 +13,15 @@
 	let { data }: PageProps = $props();
 
 	const now = $derived(new Date(data.now));
-	const language = $derived(data.shell?.active ?? 'en');
-	const langName = $derived(LANGUAGE_LABELS[language].toLowerCase());
+	const T = {
+		pickTitle: 'Qual idioma você estuda?',
+		pickText:
+			'Escolha o primeiro. Cada idioma tem as próprias palavras e revisões; dá para adicionar outros depois.'
+	} as const;
+
+	const uiLanguage = $derived(data.shell?.uiLanguage ?? 'pt');
+	const language = $derived(data.shell?.active ?? null);
+	const langName = $derived(language ? languageInline(language, uiLanguage) : '');
 	const summary = $derived(
 		data.shell?.summary?.languages.find((l) => l.language === language) ?? null
 	);
@@ -40,7 +49,30 @@
 	<title>Início · Linguetta</title>
 </svelte:head>
 
-{#if empty}
+{#if data.needsLanguage || !language}
+	<div class="empty welcome pick-first">
+		<div>
+			<Mark class="mark mark-hero" />
+			<h1>{T.pickTitle}</h1>
+			<p>{T.pickText}</p>
+			<div class="picker-box" data-testid="escolher-idioma">
+				<LanguagePicker
+					id="primeiro-idioma"
+					action="/perfil?/adicionarIdioma"
+					name="idioma"
+					ui={uiLanguage}
+					exclude={data.shell?.nativeLanguage ? [data.shell.nativeLanguage] : []}
+					hidden={{ voltar: '/inicio' }}
+					submit={() =>
+						async ({ result, update }) => {
+							if (result.type === 'redirect' || result.type === 'success') await invalidateAll();
+							else await update();
+						}}
+				/>
+			</div>
+		</div>
+	</div>
+{:else if empty}
 	<div class="empty welcome">
 		<div>
 			<Mark class="mark mark-hero" />
@@ -175,6 +207,15 @@
 {/if}
 
 <style>
+	.picker-box {
+		width: min(420px, 100%);
+		margin: 18px auto 0;
+		padding: 10px;
+		border-radius: var(--r-l);
+		background: var(--raise);
+		box-shadow: var(--sh-card);
+		text-align: start;
+	}
 	.welcome {
 		min-height: calc(100vh - 160px);
 	}

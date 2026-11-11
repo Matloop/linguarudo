@@ -22,10 +22,11 @@ As palavras **deve**, **não deve** e **pode** são normativas. Exemplos de cada
 
 ## 2. Convenções
 
-- Base: a URL do app (produção `https://linguarudo-app.vercel.app`; self-host e dev trocam no aparelho). Só HTTPS em produção.
+- Base: a URL do app (produção `https://linguetta-app.vercel.app`; self-host e dev trocam no aparelho). Só HTTPS em produção.
 - JSON em UTF-8, camelCase. Strings em NFC. O snapshot é JSONL (seção 7).
 - Datas: ISO 8601 em UTC com `Z` (`2026-11-11T21:30:00.000Z`). O servidor sempre devolve com milissegundos. O aparelho pode mandar sem milissegundos.
-- `language`: ISO 639-1 da lista do app: `en`, `it`, `es`, `fr`, `de`, `pt`, `ja`, `ko`, `zh`, `nl`, `ru`.
+- `language`: qualquer tag BCP 47 na forma canônica de `Intl.getCanonicalLocales` (`it`, `pt-BR`, `zh-Hant`, `tet`), ADR 0004. O servidor canoniza o que recebe (`pt-br` vira `pt-BR`) e recusa o que não é tag (`xx!!`). Não há lista fechada de idiomas.
+- Identidade de item: `(language, lemmaKey)`. `lemma` fica como a pessoa escreveu (só NFC: `Haus` continua `Haus`); `lemmaKey` é a chave de comparação que **só o servidor** calcula (`lemmaKey` de `@linguarudo/language`: NFC, caixa e regras do idioma). O aparelho recebe `lemmaKey` no snapshot e nunca o envia.
 - Tamanhos de texto contam **code points** (não bytes). O aparelho corta no limite sem partir um caractere.
 - Campo opcional ausente, `null` e `""` significam a mesma coisa, salvo onde dito.
 - Cabeçalhos do aparelho: `User-Agent: Linguetta-X4/<versão do firmware>`, `Accept-Encoding: identity` (o servidor não comprime a resposta nesse caso).
@@ -79,8 +80,8 @@ Resposta `200`:
   "protocol": 1,
   "deviceCode": "Zk3pQ8vX1mN7cR2tY6wL0aB4dF9hJ5sE_uK8oP3iG7q",
   "userCode": "K7Q-4MP",
-  "verificationUri": "https://linguarudo-app.vercel.app/parear",
-  "verificationUriComplete": "https://linguarudo-app.vercel.app/parear?code=K7Q4MP",
+  "verificationUri": "https://linguetta-app.vercel.app/parear",
+  "verificationUriComplete": "https://linguetta-app.vercel.app/parear?code=K7Q4MP",
   "expiresIn": 600,
   "interval": 5
 }
@@ -115,7 +116,7 @@ Sempre `200` (salvo `400` para corpo malformado e `429`), com `status`:
   "token": "lr_pY2vQ9xN4cM8bR1tK6wZ3aL7dF0hJ5sE2uG8oP4iT1k",
   "tokenHint": "iT1k",
   "deviceName": "X4 Pro",
-  "account": { "id": "uuid", "email": "matheus@example.com", "nativeLanguage": "pt", "studyLanguages": ["it", "en"] }
+  "account": { "id": "uuid", "email": "matheus@example.com", "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"] }
 }
 ```
 
@@ -123,6 +124,7 @@ Sempre `200` (salvo `400` para corpo malformado e `429`), com `status`:
 - Formato do token: igual ao de `generateToken()` (`lr_` + 32 bytes em base64url).
 - `account.id` serve para o aparelho notar que foi pareado com **outra** conta: aí ele **deve** perguntar antes de descartar banco, outbox e cursor.
 - O aparelho escolhe o idioma de estudo entre `studyLanguages` (o primeiro, se a pessoa não escolher). Trocar de idioma depois pede um snapshot completo (seção 7).
+- `uiLanguage` (`pt` | `en`), `nativeLanguage` e `studyLanguages` vêm como estão na conta, **sem padrão**: `uiLanguage`/`nativeLanguage` podem ser `null` e `studyLanguages` pode ser `[]` (de 0 a 20 tags). Com lista vazia, o aparelho pede para escolher um idioma no app antes de sincronizar.
 
 ### Página `/parear`
 
@@ -161,6 +163,7 @@ A pessoa tocou num link do blend (`#lb:LEMA|TRADUÇÃO|NOTA`, ver `crossnext-ble
   sense: "sorrir",             // até 200. TRADUÇÃO do link: vira o sentido do item se ele não tiver
   note: "verbo",               // até 2000. NOTA do link (opcional)
   ipa: "",                     // até 100 (opcional)
+  reading: "",                 // até 100 (opcional). Leitura do lema: furigana, pinyin
   pos: "",                     // classe gramatical, até 80 (opcional)
   encounter: {                 // obrigatório
     form: "sorridere",         // até 80. Texto do link como aparece na página
@@ -177,14 +180,14 @@ A pessoa tocou num link do blend (`#lb:LEMA|TRADUÇÃO|NOTA`, ver `crossnext-ble
     koHash: "a3f1c9e2b7d4068f15e2c3b4a5d6e7f8", // hash parcial do arquivo (seção 9), 32 hex minúsculos
     title: "O nome da rosa",   // 1–200. dc:title do OPF; sem título, o nome do arquivo sem extensão
     author: "Umberto Eco",     // até 200. dc:creator do OPF
-    language: "pt"             // dc:language do OPF, se for da lista (opcional)
+    language: "pt"             // dc:language do OPF, se for tag BCP 47 válida (opcional)
   }
 }
 ```
 
 No servidor:
 
-- O item é achado por `(language, lower(lemma))` entre os não apagados, ou criado. Se já existe, ganha o encontro, e os campos vazios dele (`sense`, `note`, `ipa`, `part_of_speech`) são preenchidos com o que veio. O que a pessoa já escreveu fica. É o mesmo núcleo de `save_items_for`.
+- O servidor calcula `lemmaKey` do `lemma` recebido. O item é achado por `(language, lemmaKey)` entre os não apagados, ou criado com o `lemma` como veio. Se já existe, ganha o encontro, e os campos vazios dele (`sense`, `note`, `ipa`, `reading`, `part_of_speech`) são preenchidos com o que veio. O que a pessoa já escreveu fica. É o mesmo núcleo de `save_items_for`.
 - **Exclusão vence:** se não há item vivo com esse lema, mas há um apagado com `deleted_at > at`, a operação é descartada (`dropped`, `item_deleted`). Salvar depois de apagar recria o item.
 - O encontro grava `form`, `sentence`, `highlight = form`, `sense`, `position`, `origin = "ereader"`, `seen_at = min(at, agora)` e `client_id = clientId`.
 - A obra é achada por `kind = "livro"` + `koHash` (ref_key `kosync:<hash>`), ou criada. Título e autor (`subtitle`) mais novos vencem, como no resto do app.
@@ -217,7 +220,7 @@ A pessoa tocou numa palavra do blend que já está no banco. Soma uma aparição
 { clientId, type: "seen", at, language: "it", lemma: "bello" }
 ```
 
-- O servidor soma 1 em `seen_count` do item vivo com `(language, lower(lemma))` e faz `last_seen_at = max(last_seen_at, min(at, agora))`.
+- O servidor calcula `lemmaKey` do `lemma` e soma 1 em `seen_count` do item vivo com `(language, lemmaKey)` e faz `last_seen_at = max(last_seen_at, min(at, agora))`.
 - Sem item vivo: `dropped`, `not_found`.
 - Uma operação por toque. O aparelho não agrega toques em contagem.
 
@@ -321,7 +324,7 @@ end
   "serverNow": "2026-11-11T21:30:02.417Z",
   "deckName": "Linguetta · Italiano",
   "total": 5,
-  "settings": { "nativeLanguage": "pt", "newCardsPerDay": 10, "timeZone": "America/Sao_Paulo", "utcOffsetMinutes": -180 },
+  "settings": { "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"], "newCardsPerDay": 10, "timeZone": "America/Sao_Paulo", "utcOffsetMinutes": -180 },
   "today": { "dayStart": "2026-11-11T03:00:00.000Z", "nextDayStart": "2026-11-12T03:00:00.000Z", "newDoneToday": 1 },
   "fsrs": { "tsFsrs": "6.0.0", "version": "FSRS-7", "desiredRetention": 0.9, "enableFuzz": true,
             "learningSteps": ["1m", "10m"], "relearningSteps": ["10m"], "maximumInterval": 36500 }
@@ -329,7 +332,8 @@ end
 ```
 
 - `cursor`: opaco, até 200 caracteres. O aparelho só guarda e devolve.
-- `deckName`: "Linguetta · " + nome do idioma na língua nativa.
+- `deckName`: "Linguetta · " + nome do idioma na língua da interface (`uiLanguage`); sem `uiLanguage`, o nome do idioma nele mesmo ("Linguetta · Deutsch").
+- `settings.uiLanguage`, `settings.nativeLanguage`, `settings.studyLanguages`: como no `account` do pareamento, sem padrão (`null`, `null`, `[]` numa conta sem preferências).
 - `total`: linhas `item` + `del` somadas em todas as páginas (para a barra de progresso; pode diferir um pouco do recebido).
 - `settings.newCardsPerDay`: limite de cartões novos por dia (`user_settings`). `timeZone`/`utcOffsetMinutes`: o fuso que define o "dia" (`REVIEW_TIME_ZONE`).
 - `today`: o dia corrente no fuso e quantos cartões novos já tiveram a primeira revisão nele (em qualquer aparelho). Depois de `nextDayStart`, o aparelho zera a contagem e passa a usar dias de 24 h a partir dele até o próximo sync.
@@ -341,7 +345,7 @@ end
 {
   "t": "item",
   "id": "7a1e4c90-5b2d-4f3a-9e8c-1d2f3a4b5c01",
-  "lemma": "bello", "language": "it",
+  "lemma": "bello", "lemmaKey": "bello", "language": "it",
   "sense": "bonito", "note": "adjetivo", "ipa": "", "pos": "",
   "status": "ativo",
   "seenCount": 6, "lastSeenAt": "2026-11-11T08:20:00.000Z",
@@ -358,7 +362,9 @@ end
 | Campo | |
 |---|---|
 | `id` | Id do item |
-| `lemma`, `language` | Como no banco |
+| `lemma`, `language` | Como no banco: lema como escrito, tag canônica |
+| `lemmaKey` | Chave do item no idioma (calculada pelo servidor). Use para comparar lemas e formas; nunca mande de volta |
+| `reading` | Leitura do lema (furigana, pinyin), até 100. Ausente se vazia |
 | `sense` | Sentido principal (até 200). É o verso do cartão |
 | `note` | Nota do item, **cortada em 200 code points** no snapshot |
 | `ipa`, `pos` | Pronúncia e classe (`part_of_speech`) |
@@ -366,7 +372,7 @@ end
 | `seenCount`, `lastSeenAt` | Contador de visto |
 | `createdAt` | Criação do item |
 | `updatedAt` | Última mudança do item, do Reconhecer ou dos encontros. Aumenta a cada mudança |
-| `forms` | Formas vistas nos encontros, minúsculas, sem o lema, até 10 |
+| `forms` | Formas vistas nos encontros, como escritas, uma por chave e sem a do lema, até 10 |
 | `encounters` | Os 2 encontros mais recentes (por `seen_at`), cada um com `form`, `sentence`, `sense`, `work` (título da obra ou ausente) e `at` |
 | `card` | O Reconhecer (`CardState`). Sempre presente |
 
@@ -436,11 +442,11 @@ Pasta `/.linguetta/` na raiz do cartão. Toda reescrita é atômica: grava `<nom
 {
   "v": 1,
   "protocol": 1,
-  "server": "https://linguarudo-app.vercel.app",
+  "server": "https://linguetta-app.vercel.app",
   "token": "lr_...",
   "tokenHint": "iT1k",
   "deviceName": "X4 Pro",
-  "account": { "id": "uuid", "email": "matheus@example.com", "nativeLanguage": "pt", "studyLanguages": ["it", "en"] },
+  "account": { "id": "uuid", "email": "matheus@example.com", "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"] },
   "language": "it",
   "cursor": "v1....",
   "lastSyncAt": "2026-11-11T21:30:03.020Z",
@@ -458,7 +464,7 @@ Pasta `/.linguetta/` na raiz do cartão. Toda reescrita é atômica: grava `<nom
 
 O que o aparelho mostra entre um sync e outro é `bank.jsonl` + o outbox:
 
-- **Itens:** os do banco, mais um item local para cada `save` do outbox cujo `(language, lower(lemma))` não está no banco. Um `save` de lema que já está no banco acrescenta o encontro só na visão local.
+- **Itens:** os do banco, mais um item local para cada `save` do outbox cujo lema não está no banco. O aparelho não calcula `lemmaKey`: compara o lema do `save` com o `lemmaKey` dos itens do banco por uma aproximação local (minúsculas Unicode simples); no próximo sync vale a resposta do servidor. Um `save` de lema que já está no banco acrescenta o encontro só na visão local.
 - **Cartões:** o estado do banco, com as `review` do outbox daquele cartão aplicadas pelo FSRS local em ordem de `at`. O cartão de um item local nasce novo (`state` 0, `dueAt = at` do save) e usa o `saveClientId` no lugar do `cardId` (também como semente do fuzz).
 - **Visto:** `seenCount` do banco + `seen` do outbox.
 - **Novos de hoje:** `today.newDoneToday` + as `review` do outbox, com `at >= today.dayStart`, de cartões que estavam novos na visão local.
@@ -513,7 +519,7 @@ hash = md5 em hex minúsculo (32 caracteres)
 | push + snapshot | 60 pedidos por minuto por token (`429`) |
 | Registro de `clientId` | ≥ 180 dias |
 
-Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 100, `pos` 80, `form` 80, `sentence` 500, `title` 200, `author` 200, `chapter` 200, `deviceName` 60. São os `LIMITS` de `apps/web/src/lib/items.ts`.
+Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 100, `reading` 100, `pos` 80, `form` 80, `sentence` 500, `title` 200, `author` 200, `chapter` 200, `deviceName` 60. São os `LIMITS` de `apps/web/src/lib/items.ts`.
 
 ## 11. Paridade do FSRS
 
@@ -535,7 +541,7 @@ A mesma regra do app (`buildQueue` em `apps/web/src/lib/review.ts`), sobre a vis
 2. Novos (`state = 0`) em ordem de `card.createdAt`, até `newCardsPerDay − novos de hoje`.
 3. Cartão errado que vence em até 20 minutos volta para o fim da fila da mesma sessão.
 
-Frente do cartão: o lema (e `ipa`). Verso: `sense`, `note` e a frase do encontro mais recente com a forma destacada.
+Frente do cartão: o lema (com `reading` acima, se houver, e `ipa`). Verso: `sense`, `note` e a frase do encontro mais recente com a forma destacada.
 
 ## 12. Fixtures
 
@@ -565,6 +571,6 @@ O que o banco atual (`supabase/migrations/`) ainda não tem e o contrato pede. O
 - **Encontros:** `position` aceita `chapter`, `spine` e `percent`; `formatWorkSource` mostra "título · capítulo · N%". `origin = "ereader"` já existe.
 - **Revisões:** `review_logs.duration_ms` (nulo). Uma função `api_*` com token que faça o que `record_review` faz, ou o servidor calcula com `scheduleReview` e grava com a checagem de `reps`.
 - **Idempotência do visto:** um registro `sync_ops (user_id, client_id, type, result jsonb, received_at)` com chave `(user_id, client_id)` resolve as três operações de uma vez e guarda o resultado para o `duplicate`.
-- **Exclusão vence no save:** procurar item apagado com o mesmo `(language, lower(lemma))` e `deleted_at > at`.
+- **Exclusão vence no save:** procurar item apagado com o mesmo `(language, lemmaKey)` e `deleted_at > at`.
 - **Delta:** `updatedAt` precisa subir também quando o Reconhecer ou um encontro muda (hoje `items.updated_at` só sobe em update do item). Um contador monotônico (sequence) por mudança dá um cursor seguro contra transações concorrentes; enquanto não houver, responder sempre `mode: "full"` cumpre o contrato.
 - **`today.newDoneToday`:** a mesma conta de `review_counts` com `dayStart` de `review.ts`.

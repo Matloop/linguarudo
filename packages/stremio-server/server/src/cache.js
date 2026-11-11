@@ -2,10 +2,11 @@ import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-/** Chave estável: depende só do provider/modelo/idiomas/densidade/preferências e dos textos (não dos ids). */
-export function cacheKey({ provider, model, sourceLang, targetLang, density, texts, preferWords = [] }) {
-  // v2: anotações com `lemma`. preferWords só entra na chave quando não está vazio.
-  const parts = ['v2', provider, model ?? '', sourceLang, targetLang, Number(density), texts];
+/** Chave estável: depende só do provider/modelo/idiomas (incl. nativa)/densidade/preferências e dos textos (não dos ids). */
+export function cacheKey({ provider, model, sourceLang, targetLang, nativeLanguage, density, texts, preferWords = [] }) {
+  // v3: tags BCP 47, nativeLanguage, `reading` e lema com a caixa do dicionário.
+  // preferWords só entra na chave quando não está vazio.
+  const parts = ['v3', provider, model ?? '', sourceLang, targetLang, nativeLanguage ?? '', Number(density), texts];
   if (preferWords.length > 0) parts.push(preferWords);
   const payload = JSON.stringify(parts);
   return createHash('sha256').update(payload).digest('hex');
@@ -13,7 +14,7 @@ export function cacheKey({ provider, model, sourceLang, targetLang, density, tex
 
 /** Chave das consultas (lookup/translate): tipo + provider/modelo + partes do pedido. */
 export function lookupKey(kind, provider, model, parts) {
-  return createHash('sha256').update(JSON.stringify([`${kind}-v1`, provider, model ?? '', ...parts])).digest('hex');
+  return createHash('sha256').update(JSON.stringify([`${kind}-v2`, provider, model ?? '', ...parts])).digest('hex');
 }
 
 export function createDiskCache(dir) {

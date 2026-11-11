@@ -1,21 +1,34 @@
-<img src="prototypes/lg-icone.png" width="64" height="64" alt="">
+<img src="apps/web/static/icon-512.png" width="72" height="72" alt="Linguetta">
 
-# Linguarudo
+# Linguetta
 
-App para aprender inglês e italiano a partir do que você já consome: séries (via Stremio), músicas e aulas curtas. O núcleo é o banco de palavras de cada usuário.
+Guarde as palavras que você encontra e revise no dia certo.
 
-Esta primeira fatia tem login (Google ou link mágico) e **Minhas palavras**: listar, adicionar, filtrar EN/IT e apagar.
+O Linguetta junta num banco só o vocabulário que você recolhe do que já assiste, ouve e lê: séries no Stremio, letras de música, e-reader. Cada item vira flashcard revisado com FSRS, em qualquer aparelho. Funciona com qualquer idioma de estudo (tag BCP 47, veja a [ADR 0004](docs/adr/0004-qualquer-idioma.md)).
 
-**Revisar** (`/revisar`): cada palavra vira um cartão (trigger no banco) revisado com FSRS ([ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs), FSRS-7, retenção 0,9). São 10 cartões novos por dia por usuário (`user_settings.new_cards_per_day`) e revisões vencidas sem limite. Dá para desfazer a última nota e pausar palavras em Minhas palavras. O "dia" segue `REVIEW_TIME_ZONE` em `apps/web/src/lib/review.ts`.
+Produção: https://linguetta-app.vercel.app
+
+## O que tem
+
+- **Início** (`/inicio`): o que tem para revisar hoje e os primeiros passos (guardar à mão com N, conectar o Stremio).
+- **Palavras** (`/palavras`): o banco, com encontros, sentidos e filtro por idioma.
+- **Revisar** (`/revisar`): flashcards com FSRS ([ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)). Novos por dia vêm de `user_settings.new_cards_per_day`; o "dia" segue `REVIEW_TIME_ZONE` em `apps/web/src/lib/review.ts`.
+- **Música** (`/musica`): cole o link do YouTube e complete a letra sincronizada (LRCLIB) enquanto a música toca; as palavras vão para o banco.
+- **Integrações** (`/integracoes`) e **Parear** (`/parear`): token para o fork do Stremio e pareamento por QR para aparelhos via `/api/v1/sync`.
+- Login com Google ou link mágico; interface em PT ou EN.
+
+O vocabulário do domínio (Item, Encontro, Obra, Flashcard, Ficha...) está em [CONTEXT.md](CONTEXT.md). As decisões ficam em [docs/adr](docs/adr).
 
 ## Estrutura
 
 | Pasta | O que é |
 |---|---|
-| `apps/web` | App SvelteKit 3 (TS), hospedado na Vercel. Dados passam pelo servidor (load + form actions) |
-| `supabase` | Config local, migrations (`words`, `cards`, `review_logs`, `user_settings`, com RLS) e template do e-mail de login |
-| `packages/stremio-server` | Servidor LingoBlend (legendas misturadas no Stremio), trazido do projeto original |
-| `prototypes` | Protótipos HTML e arte da marca (referência visual) |
+| `apps/web` | App SvelteKit (TS) na Vercel. Dados passam pelo servidor (load + form actions) e pela API `/api/v1` |
+| `packages/language` | `@linguetta/language`: perfil de idioma, segmentação de palavras e `lemmaKey`, usado pela web e pelo servidor |
+| `packages/stremio-server` | Servidor do LingoBlend (legendas misturadas e consulta de palavras no fork do Stremio). Contrato em `docs/CONTRACT.md` |
+| `supabase` | Config local, migrations (com RLS) e template do e-mail de login |
+| `docs/sync` | Contrato e fixtures do `/api/v1/sync` (e-reader e outros aparelhos) |
+| `prototypes` | Protótipos HTML (referência visual; os mais antigos ainda são da fase Linguarudo) |
 
 ## Rodar local
 
@@ -48,10 +61,10 @@ bun run test:e2e    # Playwright; precisa do `supabase start` rodando
 
 ## Produção
 
-Vercel (`adapter-vercel`) + Supabase Cloud. No painel do Supabase:
+Vercel (projeto `linguetta-app`, `adapter-vercel`, região gru1) + Supabase Cloud (sa-east-1). No painel do Supabase:
 
-- Authentication > URL Configuration: Site URL com o domínio da Vercel e `https://<domínio>/**` nos redirects.
+- Authentication > URL Configuration: Site URL `https://linguetta-app.vercel.app` e `https://linguetta-app.vercel.app/**` nos redirects.
 - Authentication > Emails > Magic Link (e Confirm signup): use o HTML de `supabase/templates/magic_link.html`.
 - Authentication > Providers > Google: client id e secret do Google Cloud.
 
-Na Vercel, defina `PUBLIC_SUPABASE_URL` e `PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+Na Vercel, defina `PUBLIC_SUPABASE_URL` e `PUBLIC_SUPABASE_PUBLISHABLE_KEY`. O deploy é `vercel deploy --prod` da raiz; o `.vercelignore` impede que os `.env` subam junto.

@@ -1,1 +1,1 @@
-{"name":"@linguarudo/lingoblend-devaddon","private":true,"type":"module","scripts":{"start":"node index.js"}}
+{"name":"@linguetta/lingoblend-devaddon","private":true,"type":"module","scripts":{"start":"node index.js"}}

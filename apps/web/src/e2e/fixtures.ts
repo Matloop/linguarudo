@@ -19,9 +19,12 @@ export const LRC = [
 ].join('\n');
 
 export const VIDEO_SECONDS = 28;
+export const CLIP_EXTRA_SECONDS = 12;
 
 export const VIDEOS = {
 	ok: { id: 'LANTERN0001', title: 'Slow Lantern', artist: 'Banda Inventada' },
+	/** Clipe: a faixa no LRCLIB tem CLIP_EXTRA_SECONDS a menos que o vídeo. */
+	clip: { id: 'CLIPELONGO1', title: 'Clipe Comprido', artist: 'Banda Inventada' },
 	noLyrics: { id: 'SEMLETRA001', title: 'Sem Letra', artist: 'Banda Inventada' },
 	down: { id: 'FORADOAR001', title: 'Fora do Ar', artist: 'Banda Inventada' }
 } as const;

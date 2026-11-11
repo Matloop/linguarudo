@@ -1,0 +1,21 @@
+{
+  "name": "@linguetta/language",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Idiomas BCP 47: canonização, perfil (escrita, direção, espaços), lema e segmentação de palavras",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "types": "./index.d.ts",
+  "files": ["src", "index.d.ts"],
+  "scripts": {
+    "test": "node --test"
+  }
+}

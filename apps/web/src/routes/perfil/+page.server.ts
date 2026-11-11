@@ -1,6 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { safeNext } from '#lib/auth.ts';
-import { parseLanguage, parseStudyLanguages } from '#lib/languages.ts';
+import { parseLanguage, parseStudyLanguages, parseUiLanguage } from '#lib/languages.ts';
 import {
 	LANGUAGE_COOKIE,
 	PREF_COOKIE_OPTIONS,
@@ -52,7 +52,7 @@ export const actions: Actions = {
 	idioma: async ({ locals, request, cookies }) => {
 		const user = await requireUser(locals);
 		const form = await request.formData();
-		const lang = parseLanguage(form.get('idioma')?.toString());
+		const lang = parseLanguage(form.get('idioma'));
 		const { studyLanguages } = await loadSettings(locals.supabase, user.id);
 		if (!lang || !studyLanguages.includes(lang)) {
 			return fail(400, { message: 'Esse idioma não está nos seus idiomas.' });
@@ -87,10 +87,42 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const settings = await loadSettings(locals.supabase, user.id);
 		const study = parseStudyLanguages(form.getAll('idiomas'), settings.nativeLanguage);
-		if (!study) return fail(400, { message: 'Fique com pelo menos um idioma.' });
+		if (!study) return fail(400, { message: 'Não dá para salvar esses idiomas.' });
 		const { error: dbError } = await locals.supabase
 			.from('user_settings')
 			.update({ study_languages: study })
+			.eq('user_id', user.id);
+		if (dbError) return fail(500, { message: 'Não deu para salvar agora.' });
+		back(form);
+	},
+
+	/** Idioma da interface (por ora só português e inglês). */
+	interface: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		const form = await request.formData();
+		const ui = parseUiLanguage(form.get('interface'));
+		if (!ui) return fail(400, { message: 'Escolha português ou inglês.' });
+		const { error: dbError } = await locals.supabase
+			.from('user_settings')
+			.update({ ui_language: ui })
+			.eq('user_id', user.id);
+		if (dbError) return fail(500, { message: 'Não deu para salvar agora.' });
+		back(form);
+	},
+
+	/** Língua nativa: qualquer tag BCP 47; sai da lista de estudo se estava lá. */
+	nativa: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		const form = await request.formData();
+		const native = parseLanguage(form.get('nativa'));
+		if (!native) return fail(400, { message: 'Esse código de idioma não existe.' });
+		const settings = await loadSettings(locals.supabase, user.id);
+		const { error: dbError } = await locals.supabase
+			.from('user_settings')
+			.update({
+				native_language: native,
+				study_languages: settings.studyLanguages.filter((l) => l !== native)
+			})
 			.eq('user_id', user.id);
 		if (dbError) return fail(500, { message: 'Não deu para salvar agora.' });
 		back(form);

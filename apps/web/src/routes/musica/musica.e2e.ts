@@ -42,7 +42,7 @@ async function pickSong(
 	// O título e o artista vêm do oEmbed (falso) e não pisam no que já foi escrito.
 	await expect(page.getByLabel('Título da música')).toHaveValue(video.title);
 	await expect(page.getByLabel('Artista')).toHaveValue(video.artist);
-	await page.getByRole('radio', { name: lang }).check();
+	await page.getByRole('radio', { name: lang === 'Inglês' ? /^(Inglês|English)$/ : lang }).check();
 	await page.getByRole('button', { name: 'Jogar' }).click();
 	await expect(page).toHaveURL(/\/musica\/[0-9a-f-]{36}$/);
 }
@@ -348,4 +348,101 @@ test('no celular o vídeo e as opções cabem na tela', async ({ page }) => {
 	await expect(page.locator('.ops')).toBeVisible();
 	const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
 	expect(overflow).toBe(false);
+});
+
+test('sincronia: o palpite pela duração aparece em clipe, e aplicar fica salvo na música', async ({
+	page
+}) => {
+	await installFakeYoutube(page);
+	await login(page);
+	await pickSong(page, VIDEOS.clip);
+
+	// O vídeo tem 12 s a mais que a faixa do LRCLIB: a letra é achada mesmo assim e vem o palpite.
+	const dica = page.getByTestId('dica-sincronia');
+	await expect(dica).toContainText('12,0 s a mais que a música');
+	await dica.getByRole('button', { name: 'Aplicar +12,0 s' }).click();
+	await expect(dica).toBeHidden();
+
+	await page.reload();
+	await expect(page.getByRole('button', { name: 'Começar' })).toBeVisible();
+	await expect(page.getByTestId('dica-sincronia')).toHaveCount(0);
+	await begin(page);
+	await expect(page.getByTestId('sincronia')).toContainText('+12,0 s');
+});
+
+test('sincronia: ignorar o palpite também fica salvo', async ({ page }) => {
+	await installFakeYoutube(page);
+	await login(page);
+	await pickSong(page, VIDEOS.clip);
+	await page.getByTestId('dica-sincronia').getByRole('button', { name: 'Ignorar' }).click();
+	await expect(page.getByTestId('dica-sincronia')).toBeHidden();
+	await page.reload();
+	await expect(page.getByRole('button', { name: 'Começar' })).toBeVisible();
+	await expect(page.getByTestId('dica-sincronia')).toHaveCount(0);
+});
+
+test('sincronia: marcar a linha no tempo, ajuste fino, concluir salva e cancelar desfaz', async ({
+	page
+}) => {
+	test.setTimeout(60_000);
+	await installFakeYoutube(page);
+	await login(page);
+	await pickSong(page, VIDEOS.ok);
+	// Faixa e vídeo com a mesma duração: sem palpite.
+	await expect(page.getByRole('button', { name: 'Começar' })).toBeVisible();
+	await expect(page.getByTestId('dica-sincronia')).toHaveCount(0);
+	await begin(page);
+	await page.waitForTimeout(800);
+
+	// Nunca ajustada: o modo abre do começo do vídeo, mirando a primeira linha, sem lacunas.
+	const seeksBefore = await calls(page, 'seek:0');
+	await page.keyboard.press('s');
+	await expect(page.getByRole('region', { name: 'Sincronizar a letra' })).toBeVisible();
+	await expect(page.getByTestId('estado')).toHaveText('Ajustando a sincronia');
+	expect(await calls(page, 'seek:0')).toBe(seeksBefore + 1);
+	await expect(page.getByTestId('sinc-alvo')).toHaveText(VERSES[0]);
+	await expect(page.locator('.gap')).toHaveCount(0);
+	await expect(page.locator('.op')).toHaveCount(0);
+	expect(await playing(page)).toBe(true);
+
+	// "Começou agora" (Espaço) com o vídeo uns 2 s adiante da linha 1, que começa em 1 s.
+	await expect.poll(() => page.evaluate(() => window.__fakeYT.time)).toBeGreaterThan(3);
+	await page.keyboard.press('Space');
+	const marked = await page.getByTestId('sinc-offset').innerText();
+	expect(marked).toMatch(/^\+[1-9],\d s$/);
+	await expect(page.getByTestId('sinc-alvo')).toHaveText(VERSES[1]);
+
+	// Ajuste fino: Shift+→ soma 1 s, ← tira 0,1 s.
+	await page.keyboard.press('Shift+ArrowRight');
+	await page.keyboard.press('ArrowLeft');
+	const tuned = await page.getByTestId('sinc-offset').innerText();
+	const num = (s: string) =>
+		Number(
+			s
+				.replace(/[^\d,−+-]/g, '')
+				.replace(',', '.')
+				.replace('−', '-')
+		);
+	expect(num(tuned)).toBeCloseTo(num(marked) + 0.9, 5);
+
+	// Concluir: volta ao jogo, pausado, com aviso; o valor fica salvo na música.
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('region', { name: 'Sincronizar a letra' })).toBeHidden();
+	await expect(page.getByText(/Sincronia salva: .*Toque play para continuar/)).toBeVisible();
+	await expect(page.getByTestId('estado')).toHaveText('Pausado');
+	expect(await playing(page)).toBe(false);
+	await expect(page.getByTestId('sincronia')).toContainText(tuned);
+
+	// Cancelar desfaz o que mudou no modo.
+	await page.getByTestId('sincronia').click();
+	await expect(page.getByRole('region', { name: 'Sincronizar a letra' })).toBeVisible();
+	await page.keyboard.press('Shift+ArrowRight');
+	await expect(page.getByTestId('sinc-offset')).not.toHaveText(tuned);
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('region', { name: 'Sincronizar a letra' })).toBeHidden();
+	await expect(page.getByTestId('sincronia')).toContainText(tuned);
+
+	await page.reload();
+	await begin(page);
+	await expect(page.getByTestId('sincronia')).toContainText(tuned);
 });

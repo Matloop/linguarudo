@@ -47,7 +47,7 @@ O provider `claude` escolhe as palavras e traduz com o modelo configurado. As re
 ```sh
 curl -s localhost:7979/health
 curl -s -X POST localhost:7979/annotate -H 'Content-Type: application/json' \
-  -d '{"sourceLang":"pt","targetLang":"it","density":0.1,"cues":[{"id":"c1","text":"Eu não quero só ir às festas."}]}'
+  -d '{"sourceLang":"pt","targetLang":"it","nativeLanguage":"pt-BR","density":0.1,"cues":[{"id":"c1","text":"Eu não quero só ir às festas."}]}'
 ```
 
 Erros voltam como `{ "error": "..." }`: 400 (requisição inválida), 413 (corpo > 2 MB), 502 (falha no provider).

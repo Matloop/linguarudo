@@ -51,6 +51,7 @@ function item(id: string, over: Partial<ReviewItem> = {}): ReviewItem {
 		lemma: id,
 		sense: '',
 		ipa: '',
+		reading: '',
 		language: 'en',
 		sentence: '',
 		highlight: '',
@@ -224,7 +225,7 @@ describe('nextAvailableAt', () => {
 
 describe('highlightParts', () => {
 	test('destaca a palavra ignorando maiúsculas', () => {
-		expect(highlightParts("Don't Give up on me.", 'give up')).toEqual([
+		expect(highlightParts("Don't Give up on me.", 'give up', 'en')).toEqual([
 			{ text: "Don't ", hit: false },
 			{ text: 'Give up', hit: true },
 			{ text: ' on me.', hit: false }
@@ -232,11 +233,20 @@ describe('highlightParts', () => {
 	});
 
 	test('destaca todas as ocorrências', () => {
-		expect(highlightParts('allora, allora', 'allora').filter((p) => p.hit)).toHaveLength(2);
+		expect(highlightParts('allora, allora', 'allora', 'it').filter((p) => p.hit)).toHaveLength(2);
+	});
+
+	test('usa a regra de palavra do idioma (alemão com maiúscula, japonês sem espaços)', () => {
+		expect(highlightParts('Das Haus ist alt.', 'haus', 'de').filter((p) => p.hit)).toEqual([
+			{ text: 'Haus', hit: true }
+		]);
+		expect(highlightParts('猫が好き', '猫', 'ja').filter((p) => p.hit)).toEqual([
+			{ text: '猫', hit: true }
+		]);
 	});
 
 	test('sem a palavra, volta o texto inteiro', () => {
-		expect(highlightParts('nada aqui', 'xyz')).toEqual([{ text: 'nada aqui', hit: false }]);
+		expect(highlightParts('nada aqui', 'xyz', 'pt')).toEqual([{ text: 'nada aqui', hit: false }]);
 	});
 });
 

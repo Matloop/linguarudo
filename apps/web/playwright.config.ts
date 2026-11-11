@@ -24,6 +24,7 @@ export default defineConfig({
 			}
 		}
 	],
-	use: { baseURL: 'http://localhost:4173' },
+	// Conta nova tira interface e língua nativa do Accept-Language (ADR 0004).
+	use: { baseURL: 'http://localhost:4173', locale: 'pt-BR' },
 	testMatch: '**/*.e2e.{ts,js}'
 });

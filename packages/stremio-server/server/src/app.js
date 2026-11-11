@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import { cacheKey } from './cache.js';
 import { HttpError } from './errors.js';
 import { lookup, parseLookupRequest, parseTranslateRequest, translate } from './lookup.js';
-import { normalizeLang } from './lang.js';
+import { lemmaKey } from '@linguetta/language';
+import { requireLanguage, sameLanguage } from './lang.js';
 import { validateBatch } from './validate.js';
 
 export const MAX_BODY = 2 * 1024 * 1024;
@@ -31,13 +32,13 @@ function send(res, status, body) {
 function readBody(req, limit = MAX_BODY) {
   return new Promise((resolve, reject) => {
     const declared = Number(req.headers['content-length']);
-    if (declared > limit) return reject(new HttpError(413, `corpo maior que ${limit} bytes`));
+    if (declared > limit) return reject(new HttpError(413, 'body_too_large', `corpo maior que ${limit} bytes`));
     const chunks = [];
     let size = 0;
     req.on('data', (c) => {
       size += c.length;
       if (size > limit) {
-        reject(new HttpError(413, `corpo maior que ${limit} bytes`));
+        reject(new HttpError(413, 'body_too_large', `corpo maior que ${limit} bytes`));
         req.destroy();
       } else chunks.push(c);
     });
@@ -51,67 +52,71 @@ async function readJson(req, limit) {
     return JSON.parse(await readBody(req, limit));
   } catch (e) {
     if (e instanceof HttpError) throw e;
-    throw new HttpError(400, 'JSON inválido');
+    throw new HttpError(400, 'invalid_json', 'JSON inválido');
   }
 }
 
 /** Valida e normaliza o corpo de POST /annotate. */
 export function parseAnnotateRequest(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'corpo deve ser um objeto JSON');
-  const sourceLang = normalizeLang(body.sourceLang);
-  const targetLang = normalizeLang(body.targetLang);
-  if (!sourceLang) throw new HttpError(400, 'sourceLang inválido');
-  if (!targetLang) throw new HttpError(400, 'targetLang inválido');
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'invalid_body', 'corpo deve ser um objeto JSON');
+  const sourceLang = requireLanguage(body.sourceLang, 'sourceLang');
+  const targetLang = requireLanguage(body.targetLang, 'targetLang');
+  const nativeLanguage = requireLanguage(body.nativeLanguage, 'nativeLanguage');
   let density = body.density === undefined ? DEFAULT_DENSITY : Number(body.density);
-  if (!Number.isFinite(density) || density < 0 || density > 1) throw new HttpError(400, 'density deve estar entre 0 e 1');
+  if (!Number.isFinite(density) || density < 0 || density > 1) throw new HttpError(400, 'invalid_density', 'density deve estar entre 0 e 1');
   density = Math.round(density * 1000) / 1000;
-  if (!Array.isArray(body.cues)) throw new HttpError(400, 'cues deve ser uma lista');
-  if (body.cues.length > MAX_CUES) throw new HttpError(400, `no máximo ${MAX_CUES} cues por requisição`);
+  if (!Array.isArray(body.cues)) throw new HttpError(400, 'invalid_cues', 'cues deve ser uma lista');
+  if (body.cues.length > MAX_CUES) throw new HttpError(400, 'too_many_cues', `no máximo ${MAX_CUES} cues por requisição`);
   const cues = body.cues.map((c, i) => {
     const id = typeof c?.id === 'number' ? String(c.id) : c?.id;
-    if (typeof id !== 'string' || !id) throw new HttpError(400, `cues[${i}].id inválido`);
-    if (typeof c.text !== 'string') throw new HttpError(400, `cues[${i}].text inválido`);
+    if (typeof id !== 'string' || !id) throw new HttpError(400, 'invalid_cues', `cues[${i}].id inválido`);
+    if (typeof c.text !== 'string') throw new HttpError(400, 'invalid_cues', `cues[${i}].text inválido`);
     return { id, text: c.text };
   });
-  const preferWords = parsePreferWords(body.preferWords);
-  return { sourceLang, targetLang, density, cues, preferWords };
+  const preferWords = parsePreferWords(body.preferWords, targetLang);
+  return { sourceLang, targetLang, nativeLanguage, density, cues, preferWords };
 }
 
-/** Lemas (língua-alvo) que o usuário está aprendendo: minúsculos, sem duplicatas, ordenados (chave de cache estável). */
-function parsePreferWords(raw) {
+/**
+ * Lemas (língua-alvo) que o usuário está aprendendo. A caixa fica como veio ("Haus"); duplicatas
+ * saem pela lemmaKey do idioma (fica a primeira) e a lista vai ordenada pela chave (cache estável).
+ */
+function parsePreferWords(raw, lang) {
   if (raw === undefined || raw === null) return [];
-  if (!Array.isArray(raw)) throw new HttpError(400, 'preferWords deve ser uma lista');
-  if (raw.length > MAX_PREFER_WORDS) throw new HttpError(400, `no máximo ${MAX_PREFER_WORDS} preferWords`);
-  const words = new Set();
+  if (!Array.isArray(raw)) throw new HttpError(400, 'invalid_prefer_words', 'preferWords deve ser uma lista');
+  if (raw.length > MAX_PREFER_WORDS) throw new HttpError(400, 'too_many_prefer_words', `no máximo ${MAX_PREFER_WORDS} preferWords`);
+  const byKey = new Map();
   for (const w of raw) {
     if (typeof w !== 'string') continue;
-    const v = w.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
-    if (v && v.length <= 80) words.add(v);
+    const v = w.normalize('NFC').trim().replace(/\s+/g, ' ');
+    if (!v || v.length > 80) continue;
+    const key = lemmaKey(v, lang);
+    if (!byKey.has(key)) byKey.set(key, v);
   }
-  return [...words].sort();
+  return [...byKey.keys()].sort().map((k) => byKey.get(k));
 }
 
 /**
  * Lógica de anotação, independente de HTTP.
- * provider: { name, model, annotate({ sourceLang, targetLang, density, texts, preferWords }) -> Array<raw[]> }
+ * provider: { name, model, annotate({ sourceLang, targetLang, nativeLanguage, density, texts, preferWords }) -> Array<raw[]> }
  * cache: { get(key), set(key, annotationsByIndex) } ou null
  */
 export async function annotate({ provider, cache }, req) {
-  const { sourceLang, targetLang, density, cues, preferWords = [] } = req;
+  const { sourceLang, targetLang, nativeLanguage, density, cues, preferWords = [] } = req;
   const texts = cues.map((c) => c.text);
   let byIndex = null;
   let cached = false;
 
-  if (sourceLang === targetLang || density === 0 || texts.every((t) => !t.trim())) {
+  if (sameLanguage(sourceLang, targetLang) || density === 0 || texts.every((t) => !t.trim())) {
     byIndex = texts.map(() => []);
   } else {
-    const key = cacheKey({ provider: provider.name, model: provider.model, sourceLang, targetLang, density, texts, preferWords });
+    const key = cacheKey({ provider: provider.name, model: provider.model, sourceLang, targetLang, nativeLanguage, density, texts, preferWords });
     byIndex = cache ? await cache.get(key) : null;
     if (Array.isArray(byIndex) && byIndex.length === texts.length) {
       cached = true;
     } else {
-      const raw = await provider.annotate({ sourceLang, targetLang, density, texts, preferWords });
-      byIndex = validateBatch(texts, raw);
+      const raw = await provider.annotate({ sourceLang, targetLang, nativeLanguage, density, texts, preferWords });
+      byIndex = validateBatch(texts, raw, { sourceLang, targetLang });
       if (cache) await cache.set(key, byIndex).catch((e) => console.warn('[cache] falha ao gravar:', e.message));
     }
   }
@@ -123,32 +128,39 @@ export async function annotate({ provider, cache }, req) {
   return { provider: provider.name, annotations, cached };
 }
 
+/** Código estável do erro: o do HttpError, provider_error para falha do provider, internal no resto. */
+function errorCode(err, status) {
+  if (err.code && typeof err.code === 'string' && err instanceof HttpError) return err.code;
+  if (status === 502 || status === 504) return 'provider_error';
+  return status >= 500 ? 'internal' : 'bad_request';
+}
+
 export function createApp({ provider, cache = null, log = console }) {
   return createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     try {
       if (req.method === 'OPTIONS') return send(res, 204);
       if (url.pathname === '/health') {
-        if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'use GET');
+        if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method_not_allowed', 'use GET');
         return send(res, 200, { ok: true, provider: provider.name, model: provider.model });
       }
       if (url.pathname === '/lookup' || url.pathname === '/translate') {
-        if (req.method !== 'POST') throw new HttpError(405, 'use POST');
+        if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed', 'use POST');
         const body = await readJson(req, 64 * 1024);
         const t0 = Date.now();
         if (url.pathname === '/lookup') {
           const parsed = parseLookupRequest(body);
           const out = await lookup({ provider, cache }, parsed);
-          log.info?.(`[lookup] ${parsed.lang} "${parsed.text}" → ${out.result.lemma}, ${out.cached ? 'cache' : provider.name} ${Date.now() - t0}ms`);
+          log.info?.(`[lookup] ${parsed.lang}/${parsed.nativeLanguage} "${parsed.text}" → ${out.result.lemma}, ${out.cached ? 'cache' : provider.name} ${Date.now() - t0}ms`);
           return send(res, 200, out.result);
         }
         const parsed = parseTranslateRequest(body);
         const out = await translate({ provider, cache }, parsed);
-        log.info?.(`[translate] ${parsed.sourceLang}->${parsed.targetLang}, ${out.cached ? 'cache' : provider.name} ${Date.now() - t0}ms`);
+        log.info?.(`[translate] ${parsed.sourceLang}->${parsed.nativeLanguage}, ${out.cached ? 'cache' : provider.name} ${Date.now() - t0}ms`);
         return send(res, 200, { translation: out.translation });
       }
       if (url.pathname === '/annotate') {
-        if (req.method !== 'POST') throw new HttpError(405, 'use POST');
+        if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed', 'use POST');
         const body = await readJson(req);
         const parsed = parseAnnotateRequest(body);
         const t0 = Date.now();
@@ -160,11 +172,11 @@ export function createApp({ provider, cache = null, log = console }) {
         );
         return send(res, 200, { provider: out.provider, annotations: out.annotations });
       }
-      throw new HttpError(404, 'não encontrado');
+      throw new HttpError(404, 'not_found', 'não encontrado');
     } catch (err) {
       const status = err.status ?? 500;
       if (status >= 500) log.error?.(`[error] ${req.method} ${url.pathname}:`, err.message, err.cause?.message ?? '');
-      if (!res.headersSent) send(res, status, { error: err.message || 'erro interno' });
+      if (!res.headersSent) send(res, status, { error: err.message || 'erro interno', code: errorCode(err, status) });
     }
   });
 }

@@ -1,7 +1,7 @@
 // Preferências da interface guardadas em cookie: tema, barra lateral e idioma
 // ativo. O servidor lê os cookies e já renderiza a página certa (sem piscar).
 
-import { isLanguage, parseLanguage, type Language } from './languages.ts';
+import { MAX_STUDY_LANGUAGES, parseLanguage, type Language } from './languages.ts';
 
 export type Theme = 'claro' | 'escuro';
 
@@ -30,23 +30,24 @@ export function parseCollapsed(value: string | null | undefined): boolean {
 	return value === 'recolhida';
 }
 
-/** Idioma do cookie se ainda é de estudo; senão o primeiro da lista. */
+/** Idioma do cookie se ainda é de estudo; senão o primeiro da lista (null se vazia). */
 export function resolveActiveLanguage(
 	cookie: string | null | undefined,
 	study: readonly Language[]
-): Language {
+): Language | null {
 	const lang = parseLanguage(cookie);
-	return lang && study.includes(lang) ? lang : study[0];
+	return lang && study.includes(lang) ? lang : (study[0] ?? null);
 }
 
 /** Lista nova com o idioma no fim, ou null se ele não pode entrar. */
 export function addStudyLanguage(
 	study: readonly Language[],
 	value: string | null | undefined,
-	native: Language
+	native: Language | null
 ): Language[] | null {
-	const lang = value?.trim().toLowerCase();
-	if (!isLanguage(lang) || lang === native || study.includes(lang)) return null;
+	const lang = parseLanguage(value);
+	if (!lang || lang === native || study.includes(lang)) return null;
+	if (study.length >= MAX_STUDY_LANGUAGES) return null;
 	return [...study, lang];
 }
 

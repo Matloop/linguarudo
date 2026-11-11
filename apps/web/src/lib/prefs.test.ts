@@ -60,8 +60,15 @@ describe('adicionar idioma', () => {
 		expect(addStudyLanguage(['en'], 'FR', 'pt')).toEqual(['en', 'fr']);
 	});
 
-	test('recusa idioma fora da lista, já presente ou igual à língua nativa', () => {
-		expect(addStudyLanguage(['en'], 'xx', 'pt')).toBeNull();
+	test('aceita qualquer tag BCP 47, canônica', () => {
+		expect(addStudyLanguage([], 'tet', 'pt')).toEqual(['tet']);
+		expect(addStudyLanguage(['en'], 'zh-hant', null)).toEqual(['en', 'zh-Hant']);
+	});
+
+	test('recusa tag inválida, já presente, igual à língua nativa ou além do teto', () => {
+		expect(addStudyLanguage(['en'], 'xx!!', 'pt')).toBeNull();
+		const twenty = 'af ar bg ca cs da de el en es et fa fi fr he hi hr hu id it'.split(' ');
+		expect(addStudyLanguage(twenty, 'ja', 'pt')).toBeNull();
 		expect(addStudyLanguage(['en', 'it'], 'it', 'pt')).toBeNull();
 		expect(addStudyLanguage(['en'], 'pt', 'pt')).toBeNull();
 		expect(addStudyLanguage(['en'], null, 'pt')).toBeNull();

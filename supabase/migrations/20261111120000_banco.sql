@@ -1,4 +1,4 @@
--- Banco do Linguarudo no modelo de domínio (CONTEXT.md): itens, obras, encontros,
+-- Banco do Linguetta no modelo de domínio (CONTEXT.md): itens, obras, encontros,
 -- cartões e revisões, mais configurações e tokens de integração.
 --
 -- Regras gerais:

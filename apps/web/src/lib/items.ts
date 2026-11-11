@@ -1,13 +1,16 @@
 // Regras puras do banco: itens, encontros e obras (glossário em CONTEXT.md).
 // Os limites espelham os checks de supabase/migrations/*_banco.sql; se mudar um, mude o outro.
 
-import { isLanguage, type Language } from './languages.ts';
+import { lemmaKey } from '@linguetta/language';
+import { parseLanguage, type Language } from './languages.ts';
 
 export const LIMITS = {
 	lemma: 80,
 	sense: 200,
 	note: 2000,
 	ipa: 100,
+	/** Leitura (furigana, pinyin): fica acima do lema na revisão. */
+	reading: 100,
 	partOfSpeech: 80,
 	form: 80,
 	sentence: 500,
@@ -77,6 +80,7 @@ export function isDuplicateError(err: unknown): boolean {
 export interface ItemInput {
 	language: Language;
 	lemma: string;
+	reading: string;
 	sense: string;
 	/** Frase onde a pessoa viu; vira um encontro manual. Vazia = item sem encontro. */
 	sentence: string;
@@ -111,27 +115,30 @@ export function parseItemInput(
 	const values = {
 		language: asString(raw.language),
 		lemma: asString(raw.lemma),
+		reading: asString(raw.reading),
 		sense: asString(raw.sense),
 		sentence: asString(raw.sentence)
 	};
-	const language = values.language.toLowerCase();
+	const language = parseLanguage(values.language);
 	const lemma = normalizeLemma(values.lemma);
+	const reading = normalizeLemma(values.reading);
 	const sense = normalizeText(values.sense);
 	const sentence = normalizeText(values.sentence);
 
 	const errors = compact<ItemField>({
-		language:
-			isLanguage(language) && languages.includes(language) ? undefined : 'Escolha um idioma.',
+		language: language && languages.includes(language) ? undefined : 'Escolha um idioma.',
 		lemma: lemmaError(lemma),
+		reading: tooLong(reading, LIMITS.reading),
 		sense: tooLong(sense, LIMITS.sense),
 		sentence: tooLong(sentence, LIMITS.sentence)
 	});
-	if (Object.keys(errors).length > 0 || !isLanguage(language)) return { ok: false, errors, values };
-	return { ok: true, value: { language, lemma, sense, sentence } };
+	if (Object.keys(errors).length > 0 || !language) return { ok: false, errors, values };
+	return { ok: true, value: { language, lemma, reading, sense, sentence } };
 }
 
 export interface ItemEdit {
 	lemma: string;
+	reading: string;
 	sense: string;
 	note: string;
 }
@@ -142,19 +149,22 @@ export type ItemEditField = keyof ItemEdit;
 export function parseItemEdit(raw: Record<string, unknown>): FormResult<ItemEdit, ItemEditField> {
 	const values = {
 		lemma: asString(raw.lemma),
+		reading: asString(raw.reading),
 		sense: asString(raw.sense),
 		note: asString(raw.note)
 	};
 	const lemma = normalizeLemma(values.lemma);
+	const reading = normalizeLemma(values.reading);
 	const sense = normalizeText(values.sense);
 	const note = normalizeText(values.note);
 	const errors = compact<ItemEditField>({
 		lemma: lemmaError(lemma),
+		reading: tooLong(reading, LIMITS.reading),
 		sense: tooLong(sense, LIMITS.sense),
 		note: tooLong(note, LIMITS.note)
 	});
 	if (Object.keys(errors).length > 0) return { ok: false, errors, values };
-	return { ok: true, value: { lemma, sense, note } };
+	return { ok: true, value: { lemma, reading, sense, note } };
 }
 
 // ---------- Entrada de save_items ----------
@@ -204,7 +214,11 @@ export type EncounterEntry = {
 
 export type SaveEntry = {
 	language: Language;
+	/** Como a pessoa escreveu (NFC); a caixa é preservada. */
 	lemma: string;
+	/** Chave de identidade (language, lemma_key). Só o servidor calcula (ADR 0004). */
+	lemma_key: string;
+	reading: string;
 	sense: string;
 	note: string;
 	ipa: string;
@@ -262,9 +276,9 @@ function parseWork(raw: unknown): WorkEntry | { error: string } {
 	}
 	const title = clip(w.title, LIMITS.title, normalizeLemma);
 	if (!title) return { error: 'work.title vazio' };
-	const language = asString(w.language).toLowerCase();
+	const language = parseLanguage(w.language);
 	const refs = parseWorkRefs(w.refs);
-	if (kind === 'musica' && !(refs.youtube_id && isLanguage(language))) {
+	if (kind === 'musica' && !(refs.youtube_id && language)) {
 		return { error: 'música precisa de refs.youtubeId e language' };
 	}
 	return {
@@ -272,7 +286,7 @@ function parseWork(raw: unknown): WorkEntry | { error: string } {
 		title,
 		subtitle: clip(w.subtitle, LIMITS.subtitle),
 		refs,
-		language: isLanguage(language) ? language : null
+		language
 	};
 }
 
@@ -320,8 +334,8 @@ export type ParsedEntry = { ok: true; entry: SaveEntry } | { ok: false; error: s
 export function parseSaveEntry(raw: unknown, defaultOrigin: Origin): ParsedEntry {
 	const r = record(raw);
 	if (!r) return { ok: false, error: 'item inválido' };
-	const language = asString(r.language).toLowerCase();
-	if (!isLanguage(language)) return { ok: false, error: 'language inválido' };
+	const language = parseLanguage(r.language);
+	if (!language) return { ok: false, error: 'language inválido' };
 	const lemma = normalizeLemma(asString(r.lemma));
 	const err = lemmaError(lemma);
 	if (err) return { ok: false, error: lemma === '' ? 'lemma vazio' : 'lemma longo demais' };
@@ -329,6 +343,8 @@ export function parseSaveEntry(raw: unknown, defaultOrigin: Origin): ParsedEntry
 	const entry: SaveEntry = {
 		language,
 		lemma,
+		lemma_key: lemmaKey(lemma, language),
+		reading: clip(r.reading, LIMITS.reading, normalizeLemma),
 		sense: clip(r.sense, LIMITS.sense),
 		note: clip(r.note, LIMITS.note),
 		ipa: clip(r.ipa, LIMITS.ipa),

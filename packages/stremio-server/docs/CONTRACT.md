@@ -7,7 +7,7 @@ Três partes, cada uma numa pasta deste projeto:
 | Fork do player | `stremio-video/` (Matloop/stremio-video, branch `lingoblend`) | Pede as anotações ao provider, troca as palavras na legenda renderizada por spans clicáveis e emite um evento DOM no clique |
 | Fork da UI | `stremio-web/` (Matloop/stremio-web, branch `lingoblend`) | Registra o provider (que chama o servidor), mostra o cartão no clique, menu de configurações, palavras salvas |
 | Servidor | `server/` | `POST /annotate`: escolhe ~10% das palavras e traduz no contexto (Claude ou mock) |
-| App Linguarudo | `apps/web` (monorepo) | Banco de palavras. Rotas `/api/v1` com token (seção 5) |
+| App Linguetta | `apps/web` (monorepo) | Banco de palavras. Rotas `/api/v1` com token (seção 5) |
 
 Escopo: só legendas renderizadas por `withHTMLSubtitles` (legendas de addons/OpenSubtitles e arquivos externos). Legendas embutidas desenhadas nativamente pelo `<video>` e o renderizador ASS em canvas ficam fora.
 
@@ -17,17 +17,20 @@ Escopo: só legendas renderizadas por `withHTMLSubtitles` (legendas de addons/Op
 {
   source: "festas",          // palavra/expressão exatamente como aparece no texto da cue (sem tags)
   target: "feste",           // tradução na língua alvo, no contexto da frase, mesma flexão
-  lemma: "festa",            // forma de dicionário do target, minúscula (é o que vai para o banco)
+  lemma: "festa",            // forma de dicionário do target, com a caixa do dicionário (é o que vai para o banco)
+  reading: "",               // opcional: leitura do target (furigana em kana no ja, pinyin com tons no zh, romanização em escritas não latinas)
   ipa: "/ˈfɛs.te/",          // opcional
-  pos: "subst. fem. plural", // opcional, classe gramatical em português
-  meaning: "festas, celebrações", // opcional, significado curto em português
+  pos: "subst. fem. plural", // opcional, classe gramatical escrita na língua nativa (nativeLanguage)
+  meaning: "festas, celebrações", // opcional, significado curto na língua nativa
   example: "Andiamo alle feste di Roma." // opcional, frase curta na língua alvo
 }
 ```
 
-`source` sempre corresponde a palavras inteiras do texto da cue (não pedaço de palavra). Pode ter mais de uma palavra ("de novo").
+`source` sempre corresponde a palavras inteiras do texto da cue (não pedaço de palavra), pelas fronteiras de palavra do idioma da cue (`segmentWords`/`findWord` de `@linguetta/language`, sobre `Intl.Segmenter`). Pode ter mais de uma palavra ("de novo"). Em idiomas sem espaço (ja, zh, th...) vale a palavra do segmentador e, se ela não coincidir, a primeira ocorrência como trecho ("食べ" em "私は毎朝パンを食べます").
 
-`lemma` sempre vem na resposta do servidor. Se o provider não mandar, o servidor usa o `target` em minúsculas.
+**Caixa do lema.** O lema fica como o dicionário do idioma escreve: minúsculo, salvo quando a ortografia pede maiúscula (substantivo alemão "Haus", nome próprio "Roma"). Lema todo em maiúsculas (legenda gritada) desce para minúsculas, só em escritas com caixa. Para comparar lemas (preferWords, `forms`, "No seu banco", cache) use sempre a semântica de `lemmaKey(lemma, idioma)`: NFC + minúsculas do idioma, com acentos distinguindo. Nunca compare com `toLowerCase()` cru.
+
+`lemma` sempre vem na resposta do servidor. Se o provider não mandar, o servidor usa o `target` (caixa mantida). `reading` só aparece quando não está vazio, como os outros opcionais.
 
 ## 2. API exportada por `stremio-video`
 
@@ -86,28 +89,43 @@ O `stremio-web` escuta `lingoblend:word` no container do vídeo.
 Requisição:
 
 ```json
-{ "sourceLang": "pt", "targetLang": "it", "density": 0.1,
+{ "sourceLang": "pt-BR", "targetLang": "it", "nativeLanguage": "pt-BR", "density": 0.1,
   "preferWords": ["festa", "giorno"],
   "cues": [{ "id": "c12", "text": "Eu não quero só ir às festas." }] }
 ```
 
-`preferWords` (opcional, até 1000): lemas do banco do usuário para trocar primeiro. São as palavras aprendendo, reaprendendo ou com revisão vencida. Elas entram quando aparecem no texto e contam na densidade. O resto da densidade sai de palavras novas. O servidor normaliza (minúsculas, sem duplicatas) e a lista entra na chave do cache.
+- `sourceLang`: idioma da legenda. `targetLang`: idioma que a pessoa estuda (o das trocas). `nativeLanguage` (**obrigatório**, sem padrão): língua nativa da pessoa; `meaning` e `pos` vêm escritos nela. Em geral é igual a `sourceLang`, mas não precisa ser. O `stremio-web` tira o valor de `GET /api/v1/me` (seção 5); sem token, pede no menu.
+- **Códigos de idioma** (aqui, em `/lookup` e em `/translate`): qualquer tag BCP 47. O servidor canoniza com `canonicalLanguage` de `@linguetta/language` (`Intl.getCanonicalLocales` + apelidos): `PT_br` → `pt-BR`, `iw` → `he`, `ita` → `it`, e os códigos do OpenSubtitles `pob` → `pt-BR`, `zht` → `zh-Hant`. Escrita e região são preservadas (`zh-Hant` continua `zh-Hant`). Nomes de idioma ("português") não valem. Mesmo idioma = mesma subtag base e mesma escrita (`pt-BR` = `pt-PT`, `zh-Hans` ≠ `zh-Hant`): aí não há troca.
+- `preferWords` (opcional, até 1000): lemas do banco do usuário (em `targetLang`) para trocar primeiro. São as palavras aprendendo, reaprendendo ou com revisão vencida. Elas entram quando aparecem no texto e contam na densidade. O resto da densidade sai de palavras novas. O servidor mantém a caixa ("Haus"), tira duplicatas pela `lemmaKey` (fica a primeira), ordena pela chave e a lista entra na chave do cache.
+- `density` é a fração aproximada de palavras do lote trocadas. As palavras são contadas pelo segmentador do idioma da legenda (`countWords(texto, sourceLang)`), então funciona em idiomas sem espaço.
 
-`sourceLang`/`targetLang` aceitam ISO 639-1 ou 639-2 (`por`, `ita`). Resposta:
+Resposta:
 
 ```json
 { "provider": "claude", "annotations": { "c12": [ { "source": "festas", "target": "feste", "lemma": "festa", "ipa": "...", "pos": "...", "meaning": "...", "example": "..." } ] } }
 ```
 
-Cues sem anotação podem ficar fora do mapa. `density` é a fração aproximada de palavras do lote trocadas. O cliente manda lotes de até ~80 cues.
+Cues sem anotação podem ficar fora do mapa. O cliente manda lotes de até ~80 cues. A chave do cache inclui os três idiomas.
 
-Erros: `{ "error": "mensagem" }` com status 400 (requisição inválida), 413 (corpo > 2 MB) ou 502 (falha no provider/Claude).
+**Erros** (todas as rotas do servidor): `{ "error": "mensagem para log", "code": "codigo_estavel" }`. A UI traduz pelo `code`.
+
+| Status | `code` |
+|---|---|
+| 400 | `invalid_json`, `invalid_body`, `missing_source_lang`, `invalid_source_lang`, `missing_target_lang`, `invalid_target_lang`, `missing_native_language`, `invalid_native_language`, `missing_lang`, `invalid_lang` (`/lookup`), `empty_text`, `text_too_long`, `invalid_density`, `invalid_cues`, `too_many_cues`, `invalid_prefer_words`, `too_many_prefer_words` |
+| 404 | `not_found` |
+| 405 | `method_not_allowed` |
+| 413 | `body_too_large` (corpo > 2 MB; 64 KB em `/lookup` e `/translate`) |
+| 501 | `not_supported` (provider sem `lookup`/`translate`) |
+| 502 | `provider_error` (falha no provider/Claude) |
+| 500 | `internal` |
+
+`missing_*` = campo ausente ou vazio; `invalid_*` = não é uma tag BCP 47 válida.
 
 `GET /health` → `{ ok: true, provider: "claude"|"claude-code"|"mock", model }`. CORS liberado para qualquer origem local.
 
-## 5. Linguarudo: `/api/v1` com token
+## 5. Linguetta: `/api/v1` com token
 
-O usuário gera um token em **Integrações** no app (aparece uma vez; o banco guarda só o sha256) e cola no menu IT do player, junto com a URL do Linguarudo. O padrão é produção (`DEFAULT_LINGUARUDO_URL` em `stremio-web/src/routes/Player/LingoBlend/linguarudo.js`). Para self-host ou dev, troque no menu (ex.: `http://localhost:5173`).
+O usuário gera um token em **Integrações** no app (aparece uma vez; o banco guarda só o sha256) e cola no menu IT do player, junto com a URL do Linguetta. O padrão é produção (`DEFAULT_LINGUARUDO_URL` em `stremio-web/src/routes/Player/LingoBlend/linguarudo.js`). Para self-host ou dev, troque no menu (ex.: `http://localhost:5173`).
 
 Todas as rotas pedem `Authorization: Bearer lr_...` e só tocam no banco do dono do token. CORS só para origens locais: `localhost`, `127.0.0.1` e `*.localhost` (o build web serve em `http://lingoblend.peario.xyz.localhost:8080`), qualquer porta. Erros vêm como `{ "message": "..." }`, com status 400 (requisição inválida) ou 401 (token ausente, inválido ou revogado). JSON em camelCase.
 
@@ -120,7 +138,7 @@ O vocabulário é o do glossário do app (`CONTEXT.md`): **item** (palavra ou ex
 | `POST /api/v1/items` | `{ items: [SaveItem] }` (até 200) | `{ results: [SaveResult] }`, um por item e na mesma ordem |
 | `POST /api/v1/items/seen` | `{ language, lemmas: [lema] }` (até 500) | `{ updated }` |
 
-`language` é um código ISO 639-1 da lista do app (`en`, `it`, `es`, `fr`, `de`, `pt`, `ja`, `ko`, `zh`, `nl`, `ru`).
+`language` é qualquer tag BCP 47; o app canoniza com `canonicalLanguage` de `@linguetta/language` (ADR 0004). `nativeLanguage` e `studyLanguages` vêm canônicos e podem vir vazios (usuário novo sem idioma de estudo).
 
 ### `ApiItem`
 
@@ -133,7 +151,7 @@ O vocabulário é o do glossário do app (`CONTEXT.md`): **item** (palavra ou ex
   mastered: false,             // dominado: todo cartão em revisão com estabilidade >= 90 dias
   prefer: true,                // entra primeiro na legenda
   cards: [{ kind: "reconhecer", state: 2, dueAt: "2026-11-10T12:00:00.000Z", stability: 12.5 }],
-  forms: ["feste"]             // formas vistas nos encontros, minúsculas, sem o lema (até 20)
+  forms: ["feste"]             // formas vistas nos encontros, com a caixa como foram vistas, sem o lema (até 20)
 }
 ```
 
@@ -141,7 +159,8 @@ O vocabulário é o do glossário do app (`CONTEXT.md`): **item** (palavra ou ex
 - `state` é o estado FSRS do cartão: 0 novo, 1 aprendendo, 2 revisão, 3 reaprendendo.
 - `prefer` vale para item ativo com algum cartão em 1 ou 3, ou em 2 com `dueAt` vencido. `preferWords` é a lista desses lemas, pronta para o `/annotate`.
 - Itens apagados não aparecem.
-- `forms` serve ao modo só língua-alvo (seção 6): uma palavra da legenda conta como do banco se for o lema ou uma dessas formas.
+- `forms` serve ao modo só língua-alvo (seção 6): uma palavra da legenda conta como do banco se a `lemmaKey` dela for a do lema ou a de uma dessas formas.
+- `lemma` vem com a caixa do dicionário ("Haus"); `preferWords` idem. Compare sempre pela `lemmaKey`.
 
 ### `SaveItem`
 
@@ -177,7 +196,7 @@ Só `language` e `lemma` são obrigatórios. Textos longos demais são cortados;
 }
 ```
 
-- O item é achado por `(language, lemma)` sem diferenciar maiúsculas. Se já existe, ganha só o encontro, e os campos vazios dele (sentido, IPA, classe) são preenchidos com o que veio.
+- O item é achado por `(language, lemmaKey(lemma, language))`: sem diferenciar maiúsculas pela regra do idioma, com acentos distinguindo. Só o servidor calcula a `lemmaKey`. Se já existe, ganha só o encontro, e os campos vazios dele (sentido, IPA, classe) são preenchidos com o que veio.
 - A obra é achada pelas `refs` (`imdbId` + temporada + episódio, `youtubeId` ou `path`); sem refs, por tipo + título + subtítulo. Se não existe, é criada.
 - O app mostra a origem do encontro como "Kaguya · T1E2, 42:10".
 
@@ -194,7 +213,7 @@ Só `language` e `lemma` são obrigatórios. Textos longos demais são cortados;
 
 ### Visto
 
-`POST /api/v1/items/seen` soma 1 em `seen_count` e atualiza `last_seen_at` dos itens com esses lemas (sem diferenciar maiúsculas). É um contador no item, não um encontro, e não mexe no FSRS. `updated` é quantos itens foram achados.
+`POST /api/v1/items/seen` soma 1 em `seen_count` e atualiza `last_seen_at` dos itens com esses lemas (comparados pela `lemmaKey`). É um contador no item, não um encontro, e não mexe no FSRS. `updated` é quantos itens foram achados.
 
 ### Próxima versão
 
@@ -210,14 +229,14 @@ No `stremio-web`:
 
 ## 6. Modo só língua-alvo ("Só italiano")
 
-O menu IT tem três modos: **Blend** (a legenda em português com palavras trocadas, seções 1 a 4), **Só <língua>** e **Desligado**. No modo só língua-alvo a legenda é uma faixa real na língua-alvo (addon ou `.srt`; faixas embutidas no MKV ficam fora da v1). Nenhuma fala é anotada antes: cada clique custa uma consulta.
+O menu tem três modos: **Blend** (a legenda na língua nativa com palavras trocadas, seções 1 a 4), **Só <língua>** e **Desligado**. No modo só língua-alvo a legenda é uma faixa real na língua-alvo (addon ou `.srt`; faixas embutidas no MKV ficam fora da v1). Nenhuma fala é anotada antes: cada clique custa uma consulta.
 
 ### `stremio-video`
 
 ```js
 lingoBlend.setTargetMode({
   matchLang: (lang) => boolean,     // a faixa conta como da língua-alvo?
-  elision: true,                    // corta no apóstrofo: "dell'anno" → "dell'" + "anno" (it, fr)
+  elision: true,                    // corta no apóstrofo: "dell'anno" → "dell'" + "anno"; vem de languageProfile(lang).elision (it, fr, ca, oc)
   lemmaOf: (word) => lemma | null,  // lema do banco para sublinhar a palavra
 });
 lingoBlend.setTargetMode(null);     // volta ao Blend
@@ -233,29 +252,38 @@ lingoBlend.getVisibleCues();        // [{ id, text }] das falas na tela
 { mode: "target", text: "Facevo finta di", words: 3, cueText, displayText, lang, rect }
 ```
 
+- A elisão é regra do perfil do idioma (`languageProfile(tag).elision`, hoje it, fr, ca, oc; em fr/ca/oc só os clíticos da lista, "aujourd'hui" fica inteiro), não uma lista no cliente. A segmentação usa `segmentWords(texto, lang)`.
+- `words` é o número de palavras da seleção contadas pelo segmentador do idioma (`countWords(text, lang)`), não por espaços. Em ja/zh/th uma seleção sem espaço pode ter várias palavras ("毎朝パン" → 2 ou mais). Um clítico elidido conta como palavra própria.
+
 ### Servidor: `POST /lookup`
 
 ```js
 // pedido
-{ lang: "it", text: "facevo finta di", sentence: "Facevo finta di dormire, ma ti ho sentito." }
+{ lang: "it", nativeLanguage: "pt-BR", text: "facevo finta di", sentence: "Facevo finta di dormire, ma ti ho sentito." }
 // resposta
-{ lemma: "fare finta di", ipa: "/ˈfa.re ˈfin.ta di/", pos: "expr.", meaning: "fingir", translation: "Eu fingia dormir, mas te ouvi." }
+{ lemma: "fare finta di", reading: "", ipa: "/ˈfa.re ˈfin.ta di/", pos: "expr.", meaning: "fingir", translation: "Eu fingia dormir, mas te ouvi." }
+// japonês, nativa inglês
+{ lang: "ja", nativeLanguage: "en", text: "食べ", sentence: "私は毎朝パンを食べます" }
+→ { lemma: "食べる", reading: "たべる", ipa: "/ta.be.ɾɯ/", pos: "verb (ichidan)", meaning: "to eat", translation: "I eat bread every morning." }
 ```
 
-- `lemma` é a forma canônica (infinitivo, singular; expressão no infinitivo). Sem lema, vale a seleção.
-- `text` até 80 caracteres, `sentence` até 500. Cache em disco pela seleção (sem diferenciar maiúsculas) e pela fala.
+- `lang` (idioma da legenda/estudo) e `nativeLanguage` são **obrigatórios** (400 `missing_lang`/`invalid_lang`, `missing_native_language`/`invalid_native_language`).
+- `lemma` é a forma de dicionário (infinitivo onde o idioma tem, singular, masculino singular nos adjetivos com gênero, forma de dicionário dos verbos japoneses; idioma sem flexão devolve a palavra como está; expressão na forma canônica), com a caixa do dicionário ("Haus"). Sem lema, vale a seleção. Seleção toda em maiúsculas desce para minúsculas, só em escritas com caixa.
+- `reading`: sempre presente (string). Furigana em kana no japonês, pinyin com tons no chinês, romanização usual em outras escritas não latinas; vazio em escrita latina. Fica separado de `ipa`.
+- `pos`, `meaning` e `translation` vêm na língua nativa.
+- `text` até 80 caracteres, `sentence` até 500. Cache em disco por idioma, língua nativa, `lemmaKey` da seleção e fala.
 
 ### Servidor: `POST /translate`
 
 ```js
-{ sourceLang: "it", targetLang: "pt", text: "Ciao!" }  // targetLang padrão "pt"
+{ sourceLang: "it", nativeLanguage: "pt-BR", text: "Ciao!" }
 → { translation: "Oi!" }
 ```
 
-Usado ao segurar **T**: a fala na tela em português, sem pausar. Cache em disco e no cliente.
+`nativeLanguage` (**obrigatório**, sem padrão) é o idioma de destino; o antigo `targetLang` saiu. Se for o mesmo idioma de `sourceLang`, a fala volta como está. Usado ao segurar **T**: a fala na tela na língua nativa, sem pausar. Cache em disco (por idioma de origem, língua nativa e texto) e no cliente.
 
 ### No `stremio-web`
 
-- Ligar o modo escolhe a primeira faixa extra na língua-alvo, uma vez por vídeo; sem nenhuma, o menu mostra "Nenhuma legenda em italiano".
-- O cartão abre com esqueleto, chama `/lookup` e mostra lema, IPA, classe, "Nesta fala: <seleção>" e a fala traduzida. Salvar manda `SaveItem` com o lema canônico, `encounter.form` = seleção, `sentence` = a fala e `translation` = a fala traduzida.
+- Ligar o modo escolhe a primeira faixa extra na língua-alvo, uma vez por vídeo; sem nenhuma, o menu mostra "Nenhuma legenda em <língua>".
+- O cartão abre com esqueleto, chama `/lookup` e mostra a leitura (acima do lema, quando houver), lema, IPA, classe, "Nesta fala: <seleção>" e a fala traduzida. Salvar manda `SaveItem` com o lema canônico, `encounter.form` = seleção, `sentence` = a fala e `translation` = a fala traduzida.
 - Se o `/lookup` falhar, dá para salvar com a seleção como lema.

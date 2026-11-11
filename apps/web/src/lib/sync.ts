@@ -10,7 +10,14 @@ import {
 	type Position,
 	type SaveEntry
 } from './items.ts';
-import { isLanguage, LANGUAGE_LABELS, type Language } from './languages.ts';
+import { lemmaKey } from '@linguetta/language';
+import {
+	languageLabel,
+	languageSelfLabel,
+	parseLanguage,
+	type Language,
+	type UiLanguage
+} from './languages.ts';
 import { isGrade, type Grade } from './review.ts';
 
 export const SYNC_PROTOCOL = 1;
@@ -117,6 +124,8 @@ export type SeenOp = {
 	at: string;
 	language: Language;
 	lemma: string;
+	/** Calculada aqui a partir de lemma e language; o cliente não manda. */
+	lemmaKey: string;
 };
 export type SyncOp = SaveOp | ReviewOp | SeenOp;
 
@@ -208,15 +217,18 @@ export function parseOp(raw: unknown): ParsedOp {
 	const errors: Record<string, string> = {};
 	const at = isoDate(r.at);
 	if (!at) errors.at = 'data inválida';
-	const language = str(r.language).toLowerCase();
-	if (!isLanguage(language)) errors.language = 'idioma inválido';
+	const language = parseLanguage(r.language) ?? '';
+	if (!language) errors.language = 'idioma inválido';
 
 	if (type === 'seen') {
 		const lemma = normalizeLemma(str(r.lemma));
 		const err = lemmaError(lemma);
 		if (err) errors.lemma = err;
 		if (Object.keys(errors).length) return invalid(errors, type);
-		return { ok: true, op: { type, clientId, at: at!, language: language as Language, lemma } };
+		return {
+			ok: true,
+			op: { type, clientId, at: at!, language, lemma, lemmaKey: lemmaKey(lemma, language) }
+		};
 	}
 
 	if (type === 'review') {
@@ -269,10 +281,11 @@ export function parseOp(raw: unknown): ParsedOp {
 	if (Object.keys(errors).length) return invalid(errors, type);
 
 	const form = clip(enc!.form, LIMITS.form);
-	const workLanguage = str(work!.language).toLowerCase();
 	const entry: SaveEntry = {
-		language: language as Language,
+		language,
 		lemma,
+		lemma_key: lemmaKey(lemma, language),
+		reading: clip(normalizeLemma(str(r.reading)), LIMITS.reading),
 		sense: clip(r.sense, LIMITS.sense),
 		note: clip(r.note, LIMITS.note),
 		ipa: clip(r.ipa, LIMITS.ipa),
@@ -292,7 +305,7 @@ export function parseOp(raw: unknown): ParsedOp {
 			title: clip(work!.title, LIMITS.title),
 			subtitle: clip(work!.author, SYNC_LIMITS.author),
 			refs: { ko_hash: str(work!.koHash).toLowerCase() },
-			language: isLanguage(workLanguage) ? workLanguage : null
+			language: parseLanguage(work!.language)
 		}
 	};
 	return { ok: true, op: { type, clientId, at: at!, language: language as Language, entry } };
@@ -385,6 +398,8 @@ export function cardState(c: CardRowJson): CardState {
 export interface SnapshotItemRow {
 	id: string;
 	lemma: string;
+	lemma_key: string;
+	reading: string | null;
 	language: string;
 	sense: string | null;
 	note: string | null;
@@ -429,8 +444,16 @@ function cut(v: string | null, max: number): string {
 
 /** Linha item. Se passar de 16384 bytes, perde encontros e formas até caber. */
 export function itemLine(row: SnapshotItemRow): string {
-	const forms = [...new Set((row.forms ?? []).map((f) => f.toLowerCase()))]
-		.filter((f) => f !== '' && f !== row.lemma.toLowerCase())
+	// Formas como escritas, uma por chave do idioma e sem a do próprio lema.
+	const seen = new Set([row.lemma_key]);
+	const forms = (row.forms ?? [])
+		.filter((f) => {
+			if (!f) return false;
+			const key = lemmaKey(f, row.language);
+			if (seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		})
 		.sort()
 		.slice(0, SYNC_LIMITS.forms);
 	const encounters = [...row.encounters]
@@ -445,6 +468,8 @@ export function itemLine(row: SnapshotItemRow): string {
 			...compact({
 				id: row.id,
 				lemma: row.lemma,
+				lemmaKey: row.lemma_key,
+				reading: row.reading,
 				language: row.language,
 				sense: row.sense,
 				note: cut(row.note, SYNC_LIMITS.note),
@@ -475,7 +500,9 @@ export interface HeaderInput {
 	cursor: string;
 	serverNow: Date;
 	total: number;
-	nativeLanguage: string;
+	uiLanguage: UiLanguage | null;
+	nativeLanguage: Language | null;
+	studyLanguages: Language[];
 	newCardsPerDay: number;
 	timeZone: string;
 	dayStart: Date;
@@ -483,8 +510,12 @@ export interface HeaderInput {
 	newDoneToday: number;
 }
 
-export function deckName(language: Language): string {
-	return `Linguetta · ${LANGUAGE_LABELS[language]}`;
+/**
+ * Nome do baralho no e-reader, na língua da interface ("Linguetta · Italiano"). Sem
+ * interface conhecida, o nome do idioma nele mesmo.
+ */
+export function deckName(language: Language, ui: UiLanguage | null): string {
+	return `Linguetta · ${ui ? languageLabel(language, ui) : languageSelfLabel(language)}`;
 }
 
 /** Diferença do fuso para o UTC no instante dado, em minutos (São Paulo: -180). */
@@ -519,10 +550,12 @@ export function headerLine(h: HeaderInput): string {
 		mode: 'full',
 		cursor: h.cursor,
 		serverNow: h.serverNow.toISOString(),
-		deckName: deckName(h.language),
+		deckName: deckName(h.language, h.uiLanguage),
 		total: h.total,
 		settings: {
+			uiLanguage: h.uiLanguage,
 			nativeLanguage: h.nativeLanguage,
+			studyLanguages: h.studyLanguages,
 			newCardsPerDay: h.newCardsPerDay,
 			timeZone: h.timeZone,
 			utcOffsetMinutes: utcOffsetMinutes(h.timeZone, h.serverNow)

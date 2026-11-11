@@ -1,4 +1,4 @@
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import {
 	ORIGIN_LABELS,
 	formatWorkSource,
@@ -12,7 +12,7 @@ import {
 	type Origin,
 	type SaveEntry
 } from '#lib/items.ts';
-import type { Language } from '#lib/languages.ts';
+import { lemmaKey } from '@linguetta/language';
 import { formatNextReview, isDueToday, itemStrength } from '#lib/review.ts';
 import { loadSettings } from '#lib/server/settings.ts';
 import type { Actions, PageServerLoad } from './$types';
@@ -41,13 +41,14 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 	const user = await requireUser(locals);
 	const { shell } = await parent();
 	if (!shell) error(401, 'Entre para ver suas palavras.');
+	if (!shell.active) redirect(303, '/inicio');
 	const language = shell.active;
 	const now = new Date();
 
 	const { data, error: dbError } = await locals.supabase
 		.from('items')
 		.select(
-			'id, language, lemma, sense, ipa, note, status, seen_count, created_at, cards(id, kind, state, stability, due_at), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
+			'id, language, lemma, reading, sense, ipa, note, status, seen_count, created_at, cards(id, kind, state, stability, due_at), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
 		)
 		.eq('user_id', user.id)
 		.eq('language', language)
@@ -64,7 +65,6 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 		const dueAts = status === 'ativo' ? cards.map((c) => c.due_at) : [];
 		return {
 			...item,
-			language: item.language as Language,
 			status,
 			createdAt: created_at,
 			seenCount: seen_count,
@@ -104,7 +104,14 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 		}));
 	}
 
-	return { items, language, selectedId: selected?.id ?? null, history, now: now.toISOString() };
+	return {
+		items,
+		language,
+		uiLanguage: shell.uiLanguage,
+		selectedId: selected?.id ?? null,
+		history,
+		now: now.toISOString()
+	};
 };
 
 export const actions: Actions = {
@@ -120,8 +127,17 @@ export const actions: Actions = {
 			return fail(400, { action: 'add' as const, errors, values: parsed.values });
 		}
 
-		const { language, lemma, sense, sentence } = parsed.value;
-		const entry: SaveEntry = { language, lemma, sense, note: '', ipa: '', part_of_speech: '' };
+		const { language, lemma, reading, sense, sentence } = parsed.value;
+		const entry: SaveEntry = {
+			language,
+			lemma,
+			lemma_key: lemmaKey(lemma, language),
+			reading,
+			sense,
+			note: '',
+			ipa: '',
+			part_of_speech: ''
+		};
 		if (sentence) {
 			entry.encounter = {
 				form: '',
@@ -169,9 +185,22 @@ export const actions: Actions = {
 			return fail(400, { action: 'edit' as const, id, errors });
 		}
 
+		// A chave de identidade sai do lema e do idioma do item (ADR 0004).
+		const { data: current } = await locals.supabase
+			.from('items')
+			.select('language')
+			.eq('id', id)
+			.eq('user_id', user.id)
+			.is('deleted_at', null)
+			.maybeSingle();
+		if (!current) {
+			const errors: EditErrors = { form: 'Palavra não encontrada.' };
+			return fail(404, { action: 'edit' as const, id, errors });
+		}
+
 		const { data, error: dbError } = await locals.supabase
 			.from('items')
-			.update(parsed.value)
+			.update({ ...parsed.value, lemma_key: lemmaKey(parsed.value.lemma, current.language) })
 			.eq('id', id)
 			.eq('user_id', user.id)
 			.is('deleted_at', null)

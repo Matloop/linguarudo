@@ -5,9 +5,9 @@
 
 ## Decisão
 
-- Os flashcards usam a interface própria do Linguarudo, com o mesmo FSRS do Anki, incluindo as etapas de aprendizado.
-- O Linguarudo importa `.apkg`/`.colpkg` com o histórico de revisões e exporta de volta. Só entram notas que forem palavra ou expressão.
-- O Linguarudo pode virar servidor de sync dos apps oficiais do Anki mais tarde, como opção.
+- Os flashcards usam a interface própria do Linguetta, com o mesmo FSRS do Anki, incluindo as etapas de aprendizado.
+- O Linguetta importa `.apkg`/`.colpkg` com o histórico de revisões e exporta de volta. Só entram notas que forem palavra ou expressão.
+- O Linguetta pode virar servidor de sync dos apps oficiais do Anki mais tarde, como opção.
 
 ## Porquê
 

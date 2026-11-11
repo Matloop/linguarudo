@@ -8,6 +8,7 @@ export const GET: RequestHandler = async (event) => {
 	const me = data[0];
 	return json({
 		email: me?.email ?? null,
+		uiLanguage: me?.ui_language ?? null,
 		nativeLanguage: me?.native_language ?? null,
 		studyLanguages: me?.study_languages ?? []
 	});

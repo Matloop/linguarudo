@@ -8,12 +8,12 @@ export const POST: RequestHandler = async (event) => {
 	const token = requireToken(event);
 	const body = parseSeenBody(await readJson(event.request));
 	if (!body) error(400, 'Mande { language, lemmas: [...] } com até 500 lemas.');
-	if (body.lemmas.length === 0) return json({ updated: 0 });
+	if (body.lemmaKeys.length === 0) return json({ updated: 0 });
 
 	const { data, error: dbError } = await apiClient().rpc('api_mark_seen', {
 		p_token: token,
 		p_language: body.language,
-		p_lemmas: body.lemmas
+		p_lemma_keys: body.lemmaKeys
 	});
 	if (dbError) rpcFailure(dbError);
 	return json({ updated: data });

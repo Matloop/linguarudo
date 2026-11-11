@@ -2,25 +2,60 @@
 	import { resolve } from '$app/paths';
 	import { enhance, type ActionResult, type SubmitFunction } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
-	import { LANGUAGES, LANGUAGE_LABELS, type Language } from '#lib/languages.ts';
+	import {
+		MAX_STUDY_LANGUAGES,
+		UI_LANGUAGES,
+		langAttrs,
+		languageLabel,
+		languageSelfLabel,
+		parseLanguage,
+		type Language
+	} from '#lib/languages.ts';
 	import type { Theme } from '#lib/prefs.ts';
 	import { applyTheme, toast } from '#lib/ui/app-state.svelte.ts';
 	import Icon from '#lib/ui/Icon.svelte';
+	import LanguagePicker from '#lib/ui/LanguagePicker.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 
 	const shell = $derived(data.shell);
+	const T = {
+		ui: 'Interface',
+		uiSub: 'Língua dos menus e botões',
+		native: 'Língua nativa',
+		nativeSub: 'A língua das traduções e dos sentidos',
+		nativeNone: 'Ainda não escolhida',
+		nativeChange: 'Trocar',
+		nativeSaved: (name: string) => `Língua nativa: ${name}`,
+		study: 'Estudo',
+		studySub: 'Cada idioma tem as próprias palavras e revisões',
+		studyNone: 'Nenhum idioma ainda. Adicione o primeiro.',
+		studyList: 'Seus idiomas',
+		studyAdd: 'Adicionar idioma',
+		added: (name: string) => `${name} adicionado aos seus idiomas`,
+		removed: (name: string) => `${name} saiu dos seus idiomas`,
+		removeLabel: (name: string) => `Tirar ${name}`,
+		removeTitle: 'Tirar dos seus idiomas',
+		removeConfirm: (name: string) =>
+			`Tirar ${name}? As palavras continuam guardadas e voltam se você adicionar o idioma de novo.`
+	} as const;
+
 	const study = $derived(shell?.studyLanguages ?? []);
-	const addable = $derived(
-		LANGUAGES.filter((l) => l !== shell?.nativeLanguage && !study.includes(l))
-	);
+	const native = $derived(shell?.nativeLanguage ?? null);
+	const uiLanguage = $derived(shell?.uiLanguage ?? 'pt');
+	let pickingNative = $state(false);
+	let pickingStudy = $state(false);
+
+	function labelOf(raw: string) {
+		const tag = parseLanguage(raw);
+		return tag ? languageLabel(tag, uiLanguage) : raw;
+	}
 	const email = $derived(data.user?.email ?? '');
 	const initial = $derived((email || '?').charAt(0).toUpperCase());
 	const name = $derived(email.split('@')[0] ?? '');
 
 	let newPerDay = $derived(data.newPerDay);
-	let adding = $state<Language | ''>('');
 
 	function countOf(l: Language) {
 		const n = shell?.summary?.languages.find((s) => s.language === l)?.items ?? 0;
@@ -70,22 +105,79 @@
 
 	{#if form?.message}<p class="f-err" role="alert">{form.message}</p>{/if}
 
+	<div class="set-row">
+		<div>
+			<b id="interface-titulo">{T.ui}</b>
+			<span>{T.uiSub}</span>
+		</div>
+		<form
+			class="seg"
+			method="POST"
+			action="?/interface"
+			use:enhance={quiet()}
+			aria-labelledby="interface-titulo"
+		>
+			<input type="hidden" name="voltar" value="/perfil" />
+			{#each UI_LANGUAGES as l (l)}
+				<button name="interface" value={l} aria-pressed={uiLanguage === l} lang={l}
+					>{languageSelfLabel(l)}</button
+				>
+			{/each}
+		</form>
+	</div>
+
+	<section class="set-row langs" id="nativa" aria-labelledby="nativa-titulo">
+		<div>
+			<b id="nativa-titulo">{T.native}</b>
+			<span>{T.nativeSub}</span>
+		</div>
+		<div class="current">
+			{#if native}
+				<span class="code">{native.toUpperCase()}</span>
+				<span class="nm">{languageLabel(native, uiLanguage)}</span>
+				<span class="faint" {...langAttrs(native)}>· {languageSelfLabel(native)}</span>
+			{:else}
+				<span class="faint">{T.nativeNone}</span>
+			{/if}
+		</div>
+		<details class="pick" bind:open={pickingNative}>
+			<summary class="btn btn-soft"><Icon name="pencil" size="sm" />{T.nativeChange}</summary>
+			<div class="pick-box">
+				<LanguagePicker
+					id="nativa-picker"
+					action="?/nativa"
+					name="nativa"
+					ui={uiLanguage}
+					exclude={native ? [native] : []}
+					hidden={{ voltar: '/perfil' }}
+					submit={({ formData }) => {
+						const tag = String(formData.get('nativa') ?? '');
+						pickingNative = false;
+						return afterSave(T.nativeSaved(labelOf(tag)));
+					}}
+				/>
+			</div>
+		</details>
+	</section>
+
 	<section class="set-row langs" id="idiomas" aria-labelledby="idiomas-titulo">
 		<div>
-			<b id="idiomas-titulo">Idiomas</b>
-			<span>Cada idioma tem as próprias palavras e revisões</span>
+			<b id="idiomas-titulo">{T.study}</b>
+			<span>{T.studySub}</span>
 		</div>
-		<ul class="chips" aria-label="Seus idiomas">
-			{#each study as lang (lang)}
-				<li>
-					<span class="code">{lang.toUpperCase()}</span>
-					<span class="nm">{LANGUAGE_LABELS[lang]}</span>
-					<span class="faint">· {countOf(lang)}</span>
-					{#if study.length > 1}
+		{#if study.length === 0}
+			<p class="faint none">{T.studyNone}</p>
+		{:else}
+			<ul class="chips" aria-label={T.studyList}>
+				{#each study as lang (lang)}
+					<li>
+						<span class="code">{lang.toUpperCase()}</span>
+						<span class="nm">{languageLabel(lang, uiLanguage)}</span>
+						<span class="faint">· {countOf(lang)}</span>
 						<form
 							method="POST"
 							action="?/idiomas"
-							use:enhance={quiet(`${LANGUAGE_LABELS[lang]} saiu dos seus idiomas`)}
+							use:enhance={quiet(T.removed(languageLabel(lang, uiLanguage)))}
 						>
 							<input type="hidden" name="voltar" value="/perfil" />
 							{#each study.filter((l) => l !== lang) as keep (keep)}
@@ -93,42 +185,37 @@
 							{/each}
 							<button
 								class="icon-btn"
-								aria-label="Tirar {LANGUAGE_LABELS[lang]}"
-								title="Tirar dos seus idiomas"
+								aria-label={T.removeLabel(languageLabel(lang, uiLanguage))}
+								title={T.removeTitle}
 								onclick={(e) => {
-									const ok = confirm(
-										`Tirar ${LANGUAGE_LABELS[lang]}? As palavras continuam guardadas e voltam se você adicionar o idioma de novo.`
-									);
-									if (!ok) e.preventDefault();
+									if (!confirm(T.removeConfirm(languageLabel(lang, uiLanguage))))
+										e.preventDefault();
 								}}><Icon name="x" size="sm" /></button
 							>
 						</form>
-					{/if}
-				</li>
-			{/each}
-		</ul>
-		{#if addable.length > 0}
-			<form
-				class="add"
-				method="POST"
-				action="?/adicionarIdioma"
-				use:enhance={({ formData }) => {
-					const lang = formData.get('idioma') as Language;
-					adding = '';
-					return afterSave(`${LANGUAGE_LABELS[lang]} adicionado aos seus idiomas`);
-				}}
-			>
-				<input type="hidden" name="voltar" value="/perfil" />
-				<select name="idioma" aria-label="Idioma para adicionar" bind:value={adding} required>
-					<option value="" disabled>Escolha um idioma</option>
-					{#each addable as lang (lang)}
-						<option value={lang}>{LANGUAGE_LABELS[lang]}</option>
-					{/each}
-				</select>
-				<button class="btn btn-soft" disabled={!adding}
-					><Icon name="plus" size="sm" />Adicionar idioma</button
-				>
-			</form>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+		{#if study.length < MAX_STUDY_LANGUAGES}
+			<details class="pick" bind:open={pickingStudy}>
+				<summary class="btn btn-soft"><Icon name="plus" size="sm" />{T.studyAdd}</summary>
+				<div class="pick-box">
+					<LanguagePicker
+						id="estudo-picker"
+						action="?/adicionarIdioma"
+						name="idioma"
+						ui={uiLanguage}
+						exclude={native ? [...study, native] : study}
+						hidden={{ voltar: '/perfil' }}
+						submit={({ formData }) => {
+							const tag = String(formData.get('idioma') ?? '');
+							pickingStudy = false;
+							return afterSave(T.added(labelOf(tag)));
+						}}
+					/>
+				</div>
+			</details>
 		{/if}
 	</section>
 
@@ -273,21 +360,38 @@
 	.chips form {
 		margin-left: auto;
 	}
-	.add {
+	.current {
 		display: flex;
-		gap: 8px;
 		align-items: center;
-	}
-	.add select {
-		height: 36px;
-		padding: 0 10px;
-		border-radius: var(--r-m);
-		background: var(--sunk);
-		box-shadow: inset 0 0 0 1px var(--line);
-		border: 0;
-		color: var(--ink);
-		font: inherit;
+		gap: 10px;
+		flex: 1 1 auto;
 		font-size: 14px;
+	}
+	.current .nm {
+		font-weight: 500;
+	}
+	.none {
+		flex: 1 1 100%;
+		margin: 0;
+		font-size: 13.5px;
+	}
+	.pick summary {
+		list-style: none;
+		cursor: pointer;
+	}
+	.pick summary::-webkit-details-marker {
+		display: none;
+	}
+	.pick[open] summary {
+		background: var(--hover);
+	}
+	.pick-box {
+		margin-top: 8px;
+		width: min(380px, calc(100vw - 48px));
+		padding: 10px;
+		border-radius: var(--r-l);
+		background: var(--raise);
+		box-shadow: var(--sh-card);
 	}
 
 	.stepper {
@@ -336,9 +440,6 @@
 		}
 		.set-row > :last-child {
 			flex-shrink: 0;
-		}
-		.add {
-			flex-wrap: wrap;
 		}
 	}
 </style>

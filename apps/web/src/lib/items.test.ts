@@ -43,8 +43,16 @@ describe('parseItemInput', () => {
 		);
 		expect(r).toEqual({
 			ok: true,
-			value: { lemma: 'give up', sense: 'desistir', language: 'en', sentence: '' }
+			value: { lemma: 'give up', reading: '', sense: 'desistir', language: 'en', sentence: '' }
 		});
+	});
+
+	test('idioma é canonizado e precisa ser de estudo; leitura é opcional', () => {
+		const r = parseItemInput({ lemma: ' 猫 ', reading: ' ねこ ', language: 'JA' }, ['ja', 'pt-BR']);
+		expect(r.ok && r.value).toMatchObject({ language: 'ja', lemma: '猫', reading: 'ねこ' });
+		expect(parseItemInput({ lemma: 'casa', language: 'pt-br' }, ['pt-BR']).ok).toBe(true);
+		const long = parseItemInput({ lemma: '猫', reading: 'ね'.repeat(101), language: 'ja' }, ['ja']);
+		expect(!long.ok && long.errors.reading).toBeString();
 	});
 
 	test('sentido e frase são opcionais', () => {
@@ -89,7 +97,14 @@ describe('parseItemInput', () => {
 	test('erro devolve os valores digitados para o formulário', () => {
 		const r = parseItemInput({ lemma: '', sense: 'oi', language: 'en', sentence: 'x' }, study);
 		expect(r.ok).toBe(false);
-		if (!r.ok) expect(r.values).toEqual({ lemma: '', sense: 'oi', language: 'en', sentence: 'x' });
+		if (!r.ok)
+			expect(r.values).toEqual({
+				lemma: '',
+				reading: '',
+				sense: 'oi',
+				language: 'en',
+				sentence: 'x'
+			});
 	});
 
 	test('valores que não são texto (ex.: File) contam como vazios', () => {
@@ -101,7 +116,7 @@ describe('parseItemEdit', () => {
 	test('normaliza lema, sentido e nota', () => {
 		expect(parseItemEdit({ lemma: ' festa ', sense: ' festa ', note: ' f. ' })).toEqual({
 			ok: true,
-			value: { lemma: 'festa', sense: 'festa', note: 'f.' }
+			value: { lemma: 'festa', reading: '', sense: 'festa', note: 'f.' }
 		});
 	});
 
@@ -153,6 +168,8 @@ describe('parseSaveEntry', () => {
 			entry: {
 				language: 'it',
 				lemma: 'festa',
+				lemma_key: 'festa',
+				reading: '',
 				sense: 'festa',
 				note: '',
 				ipa: 'ˈfɛsta',
@@ -181,7 +198,11 @@ describe('parseSaveEntry', () => {
 	test('encounter.translation: a frase na língua nativa, cortada no limite', () => {
 		const entry = (translation: unknown) => {
 			const r = parseSaveEntry(
-				{ language: 'it', lemma: 'fare finta di', encounter: { sentence: 'Facevo finta di dormire.', translation } },
+				{
+					language: 'it',
+					lemma: 'fare finta di',
+					encounter: { sentence: 'Facevo finta di dormire.', translation }
+				},
 				'stremio'
 			);
 			return r.ok ? r.entry.encounter : undefined;
@@ -195,7 +216,44 @@ describe('parseSaveEntry', () => {
 	test('só language e lemma são obrigatórios; item sem encontro vale', () => {
 		expect(parseSaveEntry({ language: 'ja', lemma: '猫' }, 'stremio')).toEqual({
 			ok: true,
-			entry: { language: 'ja', lemma: '猫', sense: '', note: '', ipa: '', part_of_speech: '' }
+			entry: {
+				language: 'ja',
+				lemma: '猫',
+				lemma_key: '猫',
+				reading: '',
+				sense: '',
+				note: '',
+				ipa: '',
+				part_of_speech: ''
+			}
+		});
+	});
+
+	test('japonês com leitura: a leitura vai junto do lema', () => {
+		const r = parseSaveEntry({ language: 'ja', lemma: '猫', reading: ' ねこ ' }, 'stremio');
+		expect(r.ok && r.entry).toMatchObject({ lemma: '猫', lemma_key: '猫', reading: 'ねこ' });
+	});
+
+	test('alemão: o lema fica como escrito; a chave é minúscula (Haus e haus são o mesmo item)', () => {
+		const a = parseSaveEntry({ language: 'de', lemma: 'Haus' }, 'stremio');
+		const b = parseSaveEntry({ language: 'DE', lemma: 'haus' }, 'stremio');
+		expect(a.ok && a.entry.lemma).toBe('Haus');
+		expect(a.ok && a.entry.lemma_key).toBe('haus');
+		expect(b.ok && b.entry.lemma_key).toBe('haus');
+	});
+
+	test('qualquer tag BCP 47: tétum vale, lixo não; a tag sai canônica', () => {
+		const tet = parseSaveEntry({ language: 'tet', lemma: 'uma' }, 'stremio');
+		expect(tet.ok && tet.entry.language).toBe('tet');
+		const br = parseSaveEntry({ language: 'pt-br', lemma: 'Casa' }, 'stremio');
+		expect(br.ok && br.entry).toMatchObject({
+			language: 'pt-BR',
+			lemma: 'Casa',
+			lemma_key: 'casa'
+		});
+		expect(parseSaveEntry({ language: 'xx!!', lemma: 'a' }, 'stremio')).toEqual({
+			ok: false,
+			error: 'language inválido'
 		});
 	});
 
@@ -222,7 +280,7 @@ describe('parseSaveEntry', () => {
 			return r.ok ? null : r.error;
 		};
 		expect(err(null)).toBe('item inválido');
-		expect(err({ language: 'xx', lemma: 'a' })).toBe('language inválido');
+		expect(err({ language: 'xx!!', lemma: 'a' })).toBe('language inválido');
 		expect(err({ language: 'en', lemma: ' ' })).toBe('lemma vazio');
 		expect(err({ language: 'en', lemma: 'a'.repeat(81) })).toBe('lemma longo demais');
 		expect(err({ language: 'en', lemma: 'a', encounter: { origin: 'tv' } })).toStartWith(

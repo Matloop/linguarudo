@@ -2,7 +2,7 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "linguarudo"
+project_id = "linguetta"
 
 [api]
 enabled = true
@@ -445,5 +445,5 @@ enabled = true
 project_id = "xiutyxhneamvqxmmtnll"
 
 [remotes.production.auth]
-site_url = "https://linguarudo-app.vercel.app"
-additional_redirect_urls = ["https://linguarudo-app.vercel.app/**", "https://linguarudo-*-matloops-projects.vercel.app/**"]
+site_url = "https://linguetta-app.vercel.app"
+additional_redirect_urls = ["https://linguetta-app.vercel.app/**", "https://linguetta-app-*-matloops-projects.vercel.app/**"]

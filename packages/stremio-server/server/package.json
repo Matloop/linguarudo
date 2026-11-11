@@ -1,5 +1,5 @@
 {
-  "name": "@linguarudo/lingoblend-server",
+  "name": "@linguetta/lingoblend-server",
   "version": "0.1.0",
   "private": true,
   "description": "LingoBlend: servidor local de anotações (POST /annotate)",
@@ -13,6 +13,7 @@
     "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
+    "@linguetta/language": "workspace:*",
     "@anthropic-ai/sdk": "^1.8.0"
   }
 }

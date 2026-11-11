@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { DIFFICULTIES, DIFFICULTY_LABELS, type Difficulty } from './gaps.ts';
+	import { formatOffset } from './offset.ts';
 	import type { MusicLanguage } from './wordlists.ts';
 
 	interface Props {
@@ -14,6 +15,11 @@
 		message: string;
 		onstart: () => void;
 		onretry: () => void;
+		/** Quanto o vídeo tem a mais que a faixa, se a música nunca foi sincronizada. */
+		hint?: number | null;
+		onapplyhint?: () => void;
+		onsynchint?: () => void;
+		ondismisshint?: () => void;
 	}
 
 	let {
@@ -25,8 +31,20 @@
 		status,
 		message,
 		onstart,
-		onretry
+		onretry,
+		hint = null,
+		onapplyhint,
+		onsynchint,
+		ondismisshint
 	}: Props = $props();
+
+	const hintText = $derived(
+		hint === null
+			? ''
+			: hint > 0
+				? `Este vídeo tem ${formatOffset(hint).slice(1)} a mais que a música. Pode ser uma intro de clipe.`
+				: `Este vídeo tem ${formatOffset(hint).slice(1)} a menos que a música. Pode ser outra versão.`
+	);
 
 	const current = $derived(counts[difficulty]);
 	let go: HTMLButtonElement | undefined = $state();
@@ -72,6 +90,21 @@
 						: ''}.
 				</span>
 			</p>
+			{#if hint !== null}
+				<div class="dica" data-testid="dica-sincronia">
+					<p>
+						{hintText}
+						<small>A letra pode sair do tempo. Aplique o palpite ou sincronize você mesmo.</small>
+					</p>
+					<div class="dica-bts">
+						<button type="button" class="pri" onclick={onapplyhint}
+							>Aplicar {formatOffset(hint)}</button
+						>
+						<button type="button" onclick={onsynchint}>Sincronizar</button>
+						<button type="button" class="fant" onclick={ondismisshint}>Ignorar</button>
+					</div>
+				</div>
+			{/if}
 			<button class="ir" type="button" bind:this={go} onclick={onstart}>
 				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" /></svg>
 				Começar
@@ -276,6 +309,55 @@
 		stroke-width: 2.2;
 		stroke-linecap: round;
 		stroke-linejoin: round;
+	}
+
+	.dica {
+		margin: 10px 0 0;
+		border: 1.5px solid var(--ouro);
+		border-radius: 14px;
+		padding: 10px 12px;
+		font-size: 14px;
+		font-weight: 650;
+	}
+
+	.dica p {
+		margin: 0;
+	}
+
+	.dica small {
+		display: block;
+		font-weight: 550;
+		color: var(--tinta-suave);
+		margin-top: 2px;
+	}
+
+	.dica-bts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-top: 8px;
+	}
+
+	.dica-bts button {
+		border: 1px solid #0000001f;
+		background: none;
+		border-radius: 10px;
+		padding: 7px 12px;
+		font: inherit;
+		font-size: 13.5px;
+		font-weight: 750;
+		color: var(--verde-escuro);
+	}
+
+	.dica-bts .pri {
+		background: var(--verde);
+		border-color: transparent;
+		color: var(--creme);
+	}
+
+	.dica-bts .fant {
+		border-color: transparent;
+		color: var(--tinta-suave);
 	}
 
 	.nota {

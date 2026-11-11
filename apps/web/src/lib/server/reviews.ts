@@ -20,7 +20,7 @@ type Client = SupabaseClient<Database>;
 const CARD_COLUMNS =
 	'id, kind, due_at, stability, stability_fast, difficulty, state, schedule_status, last_review_at, reps, lapses, scheduled_days, learning_step, created_at';
 
-const CARD_WITH_ITEM = `${CARD_COLUMNS}, items!inner(lemma, sense, ipa, language, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
+const CARD_WITH_ITEM = `${CARD_COLUMNS}, items!inner(lemma, reading, sense, ipa, language, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
 
 /**
  * Cartões revisáveis do usuário: o item está ativo e não foi apagado. Cada um vem
@@ -47,6 +47,7 @@ export type ReviewCardRow = CardRow &
 			lemma: string;
 			sense: string;
 			ipa: string;
+			reading: string;
 			language: string;
 			encounters: {
 				sentence: string;
@@ -85,7 +86,8 @@ export async function toReviewItem(row: ReviewCardRow, now: Date): Promise<Revie
 		lemma: row.items.lemma,
 		sense: row.items.sense,
 		ipa: row.items.ipa,
-		language: row.items.language as Language,
+		reading: row.items.reading,
+		language: row.items.language,
 		sentence: encounter?.sentence ?? '',
 		highlight: encounter?.highlight ?? '',
 		origin: (encounter?.origin as Origin | undefined) ?? null,

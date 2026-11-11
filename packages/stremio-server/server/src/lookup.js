@@ -1,10 +1,11 @@
 // Modo "só língua-alvo": a legenda já está na língua que o usuário estuda.
-//   POST /lookup    { lang, text, sentence }       → { lemma, ipa, pos, meaning, translation }
-//   POST /translate { sourceLang, targetLang?, text } → { translation }
+//   POST /lookup    { lang, nativeLanguage, text, sentence } → { lemma, reading, ipa, pos, meaning, translation }
+//   POST /translate { sourceLang, nativeLanguage, text }     → { translation }
 // Os dois ficam no cache em disco: a mesma fala/seleção não custa de novo.
+import { lemmaKey } from '@linguetta/language';
 import { HttpError } from './errors.js';
 import { lookupKey } from './cache.js';
-import { normalizeLang } from './lang.js';
+import { cleanLemma, requireLanguage, sameLanguage } from './lang.js';
 
 export const MAX_SELECTION = 80;
 export const MAX_SENTENCE = 500;
@@ -13,41 +14,45 @@ const clean = (v) => (typeof v === 'string' ? v.normalize('NFC').trim() : '');
 const oneLine = (v) => clean(v).replace(/\s+/g, ' ');
 
 function body(b) {
-  if (!b || typeof b !== 'object' || Array.isArray(b)) throw new HttpError(400, 'corpo deve ser um objeto JSON');
+  if (!b || typeof b !== 'object' || Array.isArray(b)) throw new HttpError(400, 'invalid_body', 'corpo deve ser um objeto JSON');
   return b;
+}
+
+function requireText(v, max, oneLineOnly) {
+  const text = oneLineOnly ? oneLine(v) : clean(v);
+  if (!text) throw new HttpError(400, 'empty_text', 'text vazio');
+  if (text.length > max) throw new HttpError(400, 'text_too_long', `text com mais de ${max} caracteres`);
+  return text;
 }
 
 export function parseLookupRequest(raw) {
   const b = body(raw);
-  const lang = normalizeLang(b.lang);
-  if (!lang) throw new HttpError(400, 'lang inválido');
-  const text = oneLine(b.text);
-  if (!text) throw new HttpError(400, 'text vazio');
-  if (text.length > MAX_SELECTION) throw new HttpError(400, `text com mais de ${MAX_SELECTION} caracteres`);
+  const lang = requireLanguage(b.lang, 'lang');
+  const nativeLanguage = requireLanguage(b.nativeLanguage, 'nativeLanguage');
+  const text = requireText(b.text, MAX_SELECTION, true);
   const sentence = clean(b.sentence).slice(0, MAX_SENTENCE);
-  return { lang, text, sentence: sentence || text };
+  return { lang, nativeLanguage, text, sentence: sentence || text };
 }
 
 export function parseTranslateRequest(raw) {
   const b = body(raw);
-  const sourceLang = normalizeLang(b.sourceLang);
-  if (!sourceLang) throw new HttpError(400, 'sourceLang inválido');
-  const targetLang = b.targetLang === undefined ? 'pt' : normalizeLang(b.targetLang);
-  if (!targetLang) throw new HttpError(400, 'targetLang inválido');
-  const text = clean(b.text);
-  if (!text) throw new HttpError(400, 'text vazio');
-  if (text.length > MAX_SENTENCE) throw new HttpError(400, `text com mais de ${MAX_SENTENCE} caracteres`);
-  return { sourceLang, targetLang, text };
+  const sourceLang = requireLanguage(b.sourceLang, 'sourceLang');
+  const nativeLanguage = requireLanguage(b.nativeLanguage, 'nativeLanguage');
+  const text = requireText(b.text, MAX_SENTENCE, false);
+  return { sourceLang, nativeLanguage, text };
 }
 
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
-/** Limpa a resposta do provider. O lema cai na seleção (minúscula) quando vem vazio. */
-export function validateLookup(text, raw) {
+/**
+ * Limpa a resposta do provider. O lema mantém a caixa do dicionário ("Haus", "casa"); sem
+ * lema, vale a seleção. Lema todo em maiúsculas desce para minúsculas só em escritas com caixa.
+ */
+export function validateLookup(text, raw, lang) {
   const r = raw && typeof raw === 'object' ? raw : {};
-  const lemma = (str(r.lemma, MAX_SELECTION) || text).replace(/\s+/g, ' ');
   return {
-    lemma: lemma === lemma.toUpperCase() ? lemma.toLowerCase() : lemma,
+    lemma: cleanLemma(str(r.lemma, MAX_SELECTION) || text, lang, MAX_SELECTION),
+    reading: str(r.reading, 120),
     ipa: str(r.ipa, 120),
     pos: str(r.pos, 60),
     meaning: str(r.meaning, 200),
@@ -56,7 +61,7 @@ export function validateLookup(text, raw) {
 }
 
 function needs(provider, method) {
-  if (typeof provider[method] !== 'function') throw new HttpError(501, `provider ${provider.name} não suporta ${method}`);
+  if (typeof provider[method] !== 'function') throw new HttpError(501, 'not_supported', `provider ${provider.name} não suporta ${method}`);
 }
 
 async function cached(cache, key, compute) {
@@ -69,16 +74,16 @@ async function cached(cache, key, compute) {
 
 export async function lookup({ provider, cache }, req) {
   needs(provider, 'lookup');
-  // A seleção entra minúscula na chave: "Facevo" no começo da fala e "facevo" no meio dão o mesmo lema.
-  const key = lookupKey('lookup', provider.name, provider.model, [req.lang, req.text.toLowerCase(), req.sentence]);
-  const out = await cached(cache, key, async () => validateLookup(req.text, await provider.lookup(req)));
+  // A seleção entra pela lemmaKey: "Facevo" no começo da fala e "facevo" no meio dão o mesmo lema.
+  const key = lookupKey('lookup', provider.name, provider.model, [req.lang, req.nativeLanguage, lemmaKey(req.text, req.lang), req.sentence]);
+  const out = await cached(cache, key, async () => validateLookup(req.text, await provider.lookup(req), req.lang));
   return { result: out.value, cached: out.cached };
 }
 
 export async function translate({ provider, cache }, req) {
   needs(provider, 'translate');
-  if (req.sourceLang === req.targetLang) return { translation: req.text, cached: false };
-  const key = lookupKey('translate', provider.name, provider.model, [req.sourceLang, req.targetLang, req.text]);
+  if (sameLanguage(req.sourceLang, req.nativeLanguage)) return { translation: req.text, cached: false };
+  const key = lookupKey('translate', provider.name, provider.model, [req.sourceLang, req.nativeLanguage, req.text]);
   const out = await cached(cache, key, async () => ({ translation: str(await provider.translate(req), MAX_SENTENCE * 2) }));
   return { translation: out.value.translation, cached: out.cached };
 }

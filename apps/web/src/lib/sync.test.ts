@@ -35,6 +35,8 @@ const lines = (name: string) => fixture(name).trimEnd().split('\n');
 type ItemFixture = {
 	id: string;
 	lemma: string;
+	lemmaKey: string;
+	reading?: string;
 	language: string;
 	sense?: string;
 	note?: string;
@@ -56,6 +58,8 @@ function rowFrom(item: ItemFixture): SnapshotItemRow {
 	return {
 		id: item.id,
 		lemma: item.lemma,
+		lemma_key: item.lemmaKey,
+		reading: item.reading ?? '',
 		language: item.language,
 		sense: item.sense ?? '',
 		note: item.note ?? '',
@@ -131,6 +135,32 @@ describe('linha item do snapshot', () => {
 		expect(line.encounters[0]).toEqual({ form: 'f2', at: '2026-11-03T10:00:00.000Z' });
 	});
 
+	test('lema como escrito, lemmaKey do servidor, leitura e formas por chave', () => {
+		const base = rowFrom(JSON.parse(lines('snapshot-full.page2.jsonl')[1]));
+		const haus = JSON.parse(
+			itemLine({
+				...base,
+				lemma: 'Haus',
+				lemma_key: 'haus',
+				language: 'de',
+				forms: ['haus', 'Häuser', 'häuser', 'HAUS']
+			})
+		);
+		expect(haus).toMatchObject({ lemma: 'Haus', lemmaKey: 'haus', forms: ['Häuser'] });
+		expect(haus.reading).toBeUndefined();
+		const neko = JSON.parse(
+			itemLine({
+				...base,
+				lemma: '猫',
+				lemma_key: '猫',
+				reading: 'ねこ',
+				language: 'ja',
+				forms: []
+			})
+		);
+		expect(neko).toMatchObject({ lemma: '猫', lemmaKey: '猫', reading: 'ねこ' });
+	});
+
 	test('nunca passa de 16384 bytes', () => {
 		const base = rowFrom(JSON.parse(lines('snapshot-full.page2.jsonl')[1]));
 		const big = 'ç'.repeat(5000);
@@ -159,7 +189,9 @@ describe('cabeçalho e fim da página', () => {
 			cursor: 'v1.MjAyNi0xMS0xMVQyMTozMDowMi40MTdaOjg4MjEz',
 			serverNow,
 			total: 5,
+			uiLanguage: 'pt',
 			nativeLanguage: 'pt',
+			studyLanguages: ['it', 'en'],
 			newCardsPerDay: 10,
 			timeZone: REVIEW_TIME_ZONE,
 			dayStart: dayStart(serverNow),
@@ -167,6 +199,32 @@ describe('cabeçalho e fim da página', () => {
 			newDoneToday: 1
 		});
 		expect(line).toBe(expected);
+	});
+
+	test('conta sem preferências: nada de padrão em português', () => {
+		const serverNow = new Date('2026-11-11T21:30:02.417Z');
+		const header = JSON.parse(
+			headerLine({
+				language: 'de',
+				cursor: 'v1.x',
+				serverNow,
+				total: 0,
+				uiLanguage: null,
+				nativeLanguage: null,
+				studyLanguages: [],
+				newCardsPerDay: 10,
+				timeZone: REVIEW_TIME_ZONE,
+				dayStart: dayStart(serverNow),
+				nextDayStart: nextDayStart(serverNow),
+				newDoneToday: 0
+			})
+		);
+		expect(header.settings).toMatchObject({
+			uiLanguage: null,
+			nativeLanguage: null,
+			studyLanguages: []
+		});
+		expect(header.deckName).toBe('Linguetta · Deutsch');
 	});
 
 	test('end', () => {
@@ -235,6 +293,8 @@ describe('operações do push', () => {
 		expect(parsed.op.entry).toEqual({
 			language: 'it',
 			lemma: 'bello',
+			lemma_key: 'bello',
+			reading: '',
 			sense: 'bonito',
 			note: 'adjetivo',
 			ipa: '',
@@ -278,6 +338,7 @@ describe('operações do push', () => {
 		expect(seen.ok && seen.op).toMatchObject({
 			type: 'seen',
 			lemma: 'bello',
+			lemmaKey: 'bello',
 			at: '2026-11-11T08:20:00.000Z'
 		});
 	});
@@ -310,7 +371,7 @@ describe('operações do push', () => {
 		expect(errorsOf({ ...base, at: 'ontem' })).toMatchObject({
 			errors: { at: expect.any(String) }
 		});
-		expect(errorsOf({ ...base, language: 'xx' })).toMatchObject({
+		expect(errorsOf({ ...base, language: 'xx!!' })).toMatchObject({
 			errors: { language: expect.any(String) }
 		});
 		expect(errorsOf({ ...base, type: 'delete' })).toEqual({

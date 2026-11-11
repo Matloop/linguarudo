@@ -2,6 +2,7 @@
 // (ou acha o que já existe) com um encontro de origem 'musica' ligado à obra.
 // Frase longa é cortada; lema vazio ou longo e sentido enorme recusam o lote.
 
+import { lemmaKey } from '@linguetta/language';
 import { LIMITS, charLength, normalizeLemma, normalizeText, type SaveEntry } from '../items.ts';
 import type { MusicLanguage } from './wordlists.ts';
 
@@ -74,6 +75,8 @@ export function musicEntries(
 	return words.map((w) => ({
 		language: work.language,
 		lemma: w.lemma,
+		lemma_key: lemmaKey(w.lemma, work.language),
+		reading: '',
 		sense: w.sense,
 		note: '',
 		ipa: '',

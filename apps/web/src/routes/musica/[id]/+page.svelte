@@ -7,10 +7,12 @@
 	import FimDeJogo from '#lib/music/FimDeJogo.svelte';
 	import Inicio from '#lib/music/Inicio.svelte';
 	import Resumo from '#lib/music/Resumo.svelte';
+	import Sincronia from '#lib/music/Sincronia.svelte';
 	import WordCard from '#lib/music/WordCard.svelte';
 	import { DIFFICULTIES, type Difficulty } from '#lib/music/gaps.ts';
 	import { Game, type Command, type GameGapConfig, type GapResult } from '#lib/music/game.ts';
 	import type { LyricLine } from '#lib/music/lrc.ts';
+	import { clampOffset, durationHint, formatOffset, offsetFromMark } from '#lib/music/offset.ts';
 	import { mulberry32 } from '#lib/music/rng.ts';
 	import { buildSession, type Session } from '#lib/music/session.ts';
 	import type { PlayerAdapter } from '#lib/music/youtube.ts';
@@ -52,6 +54,8 @@
 	let player: PlayerAdapter | null = null;
 	let host: HTMLDivElement | undefined = $state();
 	let duration = $state(0);
+	/** Duração da faixa no LRCLIB (s), para o palpite de sincronia. */
+	let trackDuration = $state<number | null>(null);
 
 	async function waitForDuration(p: PlayerAdapter): Promise<number> {
 		for (let i = 0; i < 12; i++) {
@@ -71,7 +75,9 @@
 		try {
 			const res = await fetch(`/musica/letra?${query.join('&')}`);
 			if (res.ok) {
-				lyrics = ((await res.json()) as { lines: LyricLine[] }).lines;
+				const body = (await res.json()) as { lines: LyricLine[]; duration?: number | null };
+				lyrics = body.lines;
+				trackDuration = typeof body.duration === 'number' ? body.duration : null;
 				status = 'ready';
 			} else if (res.status === 404) {
 				status = 'no-lyrics';
@@ -94,6 +100,10 @@
 			player?.destroy();
 			player = await createYoutubePlayer(host, song.youtubeId, {
 				onEnded: () => {
+					if (syncing) {
+						syncPlaying = false;
+						return;
+					}
 					if (game) apply(game.finishNow());
 					sync();
 				},
@@ -160,6 +170,20 @@
 
 	/** Atraso da letra em relação ao vídeo (s). Positivo: a letra anda mais tarde. */
 	let offset = $state(0);
+	/** O que está salvo na obra; null = a pessoa nunca sincronizou esta música. */
+	let savedOffset = $state<number | null>(null);
+	let hintDismissed = $state(false);
+	let loadedSong = '';
+	$effect.pre(() => {
+		if (data.song.id === loadedSong) return;
+		loadedSong = data.song.id;
+		offset = data.song.sync.offset ?? 0;
+		savedOffset = data.song.sync.offset;
+		hintDismissed = data.song.sync.hintDismissed;
+	});
+	const hint = $derived(
+		savedOffset === null && !hintDismissed ? durationHint(duration, trackDuration) : null
+	);
 
 	function apply(commands: Command[]) {
 		for (const c of commands) {
@@ -211,6 +235,7 @@
 			if (!player) return;
 			const t = player.currentTime();
 			clockSeconds = Math.floor(t);
+			if (syncing) syncTime = t;
 			if (duration === 0) duration = player.duration();
 			if (waveFill && duration > 0) {
 				waveFill.style.strokeDashoffset = String(100 - Math.min(1, t / duration) * 100);
@@ -222,7 +247,11 @@
 		}
 
 		const onHidden = () => {
-			if (document.hidden && game?.phase === 'playing') pauseGame();
+			if (!document.hidden) return;
+			if (syncing) {
+				player?.pause();
+				syncPlaying = false;
+			} else if (game?.phase === 'playing') pauseGame();
 		};
 		document.addEventListener('visibilitychange', onHidden);
 
@@ -298,8 +327,158 @@
 
 	let showPt = $state(true);
 
+	// ---------- sincronia da letra ----------
+	async function persistSync(patch: { offset?: number; hintDismissed?: boolean }) {
+		try {
+			const res = await fetch('/musica/sincronia', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ workId: song.id, ...patch })
+			});
+			return res.ok;
+		} catch {
+			return false;
+		}
+	}
+
+	async function saveOffset(message = '') {
+		const value = offset;
+		if (await persistSync({ offset: value })) {
+			savedOffset = value;
+			if (message) say(message, 4200);
+		} else {
+			say('Não deu para salvar a sincronia agora.');
+		}
+	}
+
+	let nudgeTimer: ReturnType<typeof setTimeout> | undefined;
+	/** −/+ da barra: ajusta na hora e salva quando a pessoa para de mexer. */
 	function nudge(delta: number) {
-		offset = Math.round((offset + delta) * 10) / 10;
+		offset = clampOffset(offset + delta);
+		if (syncing) return;
+		clearTimeout(nudgeTimer);
+		nudgeTimer = setTimeout(() => void saveOffset(), 900);
+	}
+
+	function applyHint() {
+		if (hint === null) return;
+		offset = hint;
+		void saveOffset();
+	}
+
+	function dismissHint() {
+		hintDismissed = true;
+		void persistSync({ hintDismissed: true });
+	}
+
+	function syncFromHint() {
+		startGame();
+		openSync();
+	}
+
+	let syncing = $state(false);
+	let syncTarget = $state(0);
+	let syncTime = $state(0);
+	let syncPlaying = $state(false);
+	let syncFeedback = $state('');
+	let syncBefore = { offset: 0, time: 0 };
+
+	function lineAt(lyricTime: number) {
+		const lines = session?.lines ?? [];
+		let found = -1;
+		for (let i = 0; i < lines.length; i++) {
+			if (lines[i].start <= lyricTime) found = i;
+			else break;
+		}
+		return found;
+	}
+
+	function syncSeek(to: number) {
+		player?.seekTo(Math.max(0, to));
+		syncTime = Math.max(0, to);
+	}
+
+	function syncPlay(on: boolean) {
+		if (on) player?.play();
+		else player?.pause();
+		syncPlaying = on;
+	}
+
+	function openSync() {
+		if (!game || !player || !session || syncing) return;
+		if (phase === 'gameover' || phase === 'finished') return;
+		closeCard();
+		clearTimeout(nudgeTimer);
+		if (phase === 'playing' || phase === 'waiting') pauseGame();
+		const now = player.currentTime();
+		syncBefore = { offset, time: now };
+		syncing = true;
+		syncFeedback = '';
+		if (savedOffset === null) {
+			// Nunca ajustada: o que costuma estar errado é a intro, então começa do zero.
+			syncSeek(0);
+			syncTarget = 0;
+		} else {
+			const from = Math.max(0, now - 5);
+			syncSeek(from);
+			const next = session.lines.findIndex((l) => l.start + offset > from);
+			syncTarget = next < 0 ? session.lines.length - 1 : next;
+		}
+		syncPlay(true);
+	}
+
+	function markLine() {
+		if (!player || !session) return;
+		const line = session.lines[syncTarget];
+		if (!line) return;
+		offset = offsetFromMark(player.currentTime(), line.start);
+		syncFeedback = `Pela linha ${syncTarget + 1}: ${formatOffset(offset)}. Confira na próxima e marque de novo se precisar.`;
+		syncTarget = Math.min(syncTarget + 1, session.lines.length);
+	}
+
+	function moveTarget(delta: number) {
+		if (!session) return;
+		syncTarget = Math.max(0, Math.min(session.lines.length - 1, syncTarget + delta));
+	}
+
+	function closeSync(conclude: boolean) {
+		if (!syncing || !game) return;
+		if (!conclude) offset = syncBefore.offset;
+		syncPlay(false);
+		syncing = false;
+		// Volta ao começo da linha em que o jogo estava, já com o deslocamento final, e espera o play.
+		const commands = game.rewindToLine(performance.now());
+		if (commands.length > 0) apply(commands);
+		else player?.seekTo(syncBefore.time);
+		sync();
+		if (conclude)
+			void saveOffset(`Sincronia salva: ${formatOffset(offset)}. Toque play para continuar.`);
+		else say('Ajuste cancelado.');
+	}
+
+	function onSyncKey(e: KeyboardEvent) {
+		const step = e.shiftKey ? 1 : 0.1;
+		const k = e.key;
+		if (k === ' ') {
+			e.preventDefault();
+			markLine();
+		} else if (k === 'p' || k === 'P') syncPlay(!syncPlaying);
+		else if (k === 'ArrowLeft') {
+			e.preventDefault();
+			nudge(-step);
+		} else if (k === 'ArrowRight') {
+			e.preventDefault();
+			nudge(step);
+		} else if (k === 'ArrowUp') {
+			e.preventDefault();
+			moveTarget(-1);
+		} else if (k === 'ArrowDown') {
+			e.preventDefault();
+			moveTarget(1);
+		} else if (k === 'Enter') {
+			e.preventDefault();
+			closeSync(true);
+		} else if (k === 'Escape') closeSync(false);
 	}
 
 	function retry() {
@@ -430,6 +609,10 @@
 	// ---------- teclado ----------
 	function onKeydown(e: KeyboardEvent) {
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
+		if (syncing) {
+			onSyncKey(e);
+			return;
+		}
 		if (e.key === 'Escape') {
 			closeCard();
 			return;
@@ -448,6 +631,7 @@
 		} else if (k === 'r') repeatLine();
 		else if (k === 'v') toggleSpeed();
 		else if (k === 't') showPt = !showPt;
+		else if (k === 's') openSync();
 	}
 
 	function onKeyup(e: KeyboardEvent) {
@@ -473,23 +657,27 @@
 	});
 	const waitSeconds = $derived(waitMs === null ? null : Math.ceil(waitMs / 1000));
 	const estado = $derived(
-		phase === 'waiting' && waitSeconds !== null
-			? `A música espera você · ${waitSeconds}s`
-			: phase === 'paused'
-				? 'Pausado'
-				: 'Tocando'
+		syncing
+			? 'Ajustando a sincronia'
+			: phase === 'waiting' && waitSeconds !== null
+				? `A música espera você · ${waitSeconds}s`
+				: phase === 'paused'
+					? 'Pausado'
+					: 'Tocando'
 	);
 
 	let lettersBox: HTMLDivElement | undefined = $state();
 	let lineEls = $state<HTMLElement[]>([]);
 	let rollY = $state(0);
+	/** Na sincronia o jogo está parado: a linha acesa segue o vídeo com o deslocamento. */
+	const shownLine = $derived(syncing ? lineAt(syncTime - offset) : activeLine);
 	function center() {
-		const el = lineEls[Math.max(0, activeLine)];
+		const el = lineEls[Math.max(0, shownLine)];
 		if (!el || !lettersBox) return;
 		rollY = Math.round(lettersBox.clientHeight * 0.46 - el.offsetTop - el.offsetHeight / 2);
 	}
 	$effect(() => {
-		void activeLine;
+		void shownLine;
 		void session;
 		void showPt;
 		center();
@@ -631,29 +819,41 @@
 								<div
 									class="lin"
 									data-line={i}
-									class:atual={i === activeLine}
-									class:passou={i < activeLine}
+									class:atual={i === shownLine}
+									class:passou={i < shownLine}
+									class:alvo-sinc={syncing && i === syncTarget}
 									bind:this={lineEls[i]}
 								>
-									<p class="txt" {lang}>
-										{#each line.tokens as token, t (t)}
-											{#if token.key === null}{token.text}{:else if gap && gap.token === t && !result}<span
-													class="gap"
-													class:alvo={answerable?.line === i}
-													role="img"
-													aria-label="lacuna"
-												></span>{:else}<button
-													type="button"
-													class="w"
-													class:nobanco={bank.has(token.key)}
-													class:salva={savedNow.has(token.key)}
-													class:ok={result?.ok && gap?.token === t}
-													class:err={result && !result.ok && gap?.token === t}
-													onclick={(e) => openCard(i, t, e.currentTarget)}>{token.text}</button
-												>{/if}
-										{/each}
-									</p>
-									{#if showPt && i === activeLine}
+									{#if syncing}
+										<p class="txt" {lang}>
+											<button
+												type="button"
+												class="lin-alvo"
+												title="Marcar esta linha"
+												onclick={() => (syncTarget = i)}>{line.text}</button
+											>
+										</p>
+									{:else}
+										<p class="txt" {lang}>
+											{#each line.tokens as token, t (t)}
+												{#if token.key === null}{token.text}{:else if gap && gap.token === t && !result}<span
+														class="gap"
+														class:alvo={answerable?.line === i}
+														role="img"
+														aria-label="lacuna"
+													></span>{:else}<button
+														type="button"
+														class="w"
+														class:nobanco={bank.has(token.key)}
+														class:salva={savedNow.has(token.key)}
+														class:ok={result?.ok && gap?.token === t}
+														class:err={result && !result.ok && gap?.token === t}
+														onclick={(e) => openCard(i, t, e.currentTarget)}>{token.text}</button
+													>{/if}
+											{/each}
+										</p>
+									{/if}
+									{#if showPt && !syncing && i === activeLine}
 										{@const known = line.tokens.filter(
 											(tk) => tk.key !== null && bank.get(tk.key)?.sense
 										)}
@@ -671,93 +871,134 @@
 				</div>
 			</div>
 
-			<div class="ctrl">
-				<button class="cb" type="button" onclick={repeatLine} title="Repetir a linha (R)">
-					<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"
-						><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg
-					>
-					<span class="lbl-l">Repetir</span><kbd>R</kbd>
-				</button>
-				<button
-					class="cb"
-					class:on={slow}
-					type="button"
-					onclick={toggleSpeed}
-					aria-pressed={slow}
-					title="Velocidade (V)">{slow ? '0,75×' : '1×'}</button
-				>
-				<button
-					class="cb"
-					class:on={showPt}
-					type="button"
-					onclick={() => (showPt = !showPt)}
-					aria-pressed={showPt}
-					title="Tradução das palavras do seu banco (T)">PT</button
-				>
-				<button
-					class="cb"
-					type="button"
-					onclick={togglePause}
-					aria-label={phase === 'paused' ? 'Continuar' : 'Pausar'}
-					title="Pausar (espaço)"
-				>
-					<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
-						{#if phase === 'paused'}<path d="M7 4l13 8-13 8z" />{:else}<path
-								d="M8 5v14M16 5v14"
-							/>{/if}
-					</svg>
-				</button>
-				<span class="esp"></span>
-				<div
-					class="sync"
-					role="group"
-					aria-label="Sincronia da letra"
-					title="Se a letra aparece cedo ou tarde demais"
-				>
-					<button class="cb" type="button" onclick={() => nudge(-0.5)} aria-label="Letra mais cedo"
-						>−</button
-					>
-					<span class="sync-v">{offset > 0 ? '+' : ''}{offset.toFixed(1).replace('.', ',')}s</span>
-					<button class="cb" type="button" onclick={() => nudge(0.5)} aria-label="Letra mais tarde"
-						>+</button
-					>
-				</div>
-			</div>
-
-			<div class="resp">
-				<div class="resp-cab">
-					<span class="info">
-						{#if totalGaps > 0}Lacuna {Math.max(1, gapNumber)} de {totalGaps}{:else}Sem lacunas{/if}
-					</span>
-					{#if phase === 'waiting' && waitMs !== null}
-						<div class="espera-bar" data-testid="contador">
-							<div class="trilho"><i style:transform="scaleX({waitMs / 10000})"></i></div>
-							<span>{waitSeconds}s</span>
-						</div>
-					{/if}
-					<span class="aviso" class:err={notice.startsWith('Era')} aria-live="polite">{notice}</span
-					>
-				</div>
-				<div class="ops" role="group" aria-label="Escolha a palavra que falta">
-					{#each shownOptions.length > 0 ? shownOptions : ['', '', '', ''] as option, i (i)}
-						{@const state = option ? optionState(option) : ''}
-						<button
-							type="button"
-							class="op"
-							class:vazia={!option}
-							class:certa={state === 'ok'}
-							class:errou={state === 'err'}
-							class:apaga={state === 'dim'}
-							style:--c={OPTION_COLORS[i]}
-							disabled={!option || !answerable}
-							aria-keyshortcuts={String(i + 1)}
-							onclick={() => pick(option)}
+			{#if syncing && session}
+				<Sincronia
+					lines={session.lines}
+					{offset}
+					target={syncTarget}
+					time={syncTime}
+					{duration}
+					playing={syncPlaying}
+					feedback={syncFeedback}
+					onmark={markLine}
+					onnudge={nudge}
+					onzero={() => {
+						offset = 0;
+						syncFeedback = '';
+					}}
+					onrestart={() => {
+						syncSeek(0);
+						syncTarget = 0;
+						syncPlay(true);
+					}}
+					onback={() => syncSeek((player?.currentTime() ?? 0) - 5)}
+					ontoggle={() => syncPlay(!syncPlaying)}
+					oncancel={() => closeSync(false)}
+					onconclude={() => closeSync(true)}
+				/>
+			{:else}
+				<div class="ctrl">
+					<button class="cb" type="button" onclick={repeatLine} title="Repetir a linha (R)">
+						<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"
+							><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg
 						>
-							{#if option}<span class="k">{i + 1}</span>{option}{:else}·{/if}
-						</button>
-					{/each}
+						<span class="lbl-l">Repetir</span><kbd>R</kbd>
+					</button>
+					<button
+						class="cb"
+						class:on={slow}
+						type="button"
+						onclick={toggleSpeed}
+						aria-pressed={slow}
+						title="Velocidade (V)">{slow ? '0,75×' : '1×'}</button
+					>
+					<button
+						class="cb"
+						class:on={showPt}
+						type="button"
+						onclick={() => (showPt = !showPt)}
+						aria-pressed={showPt}
+						title="Tradução das palavras do seu banco (T)">PT</button
+					>
+					<button
+						class="cb"
+						type="button"
+						onclick={togglePause}
+						aria-label={phase === 'paused' ? 'Continuar' : 'Pausar'}
+						title="Pausar (espaço)"
+					>
+						<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
+							{#if phase === 'paused'}<path d="M7 4l13 8-13 8z" />{:else}<path
+									d="M8 5v14M16 5v14"
+								/>{/if}
+						</svg>
+					</button>
+					<span class="esp"></span>
+					<div
+						class="sync"
+						role="group"
+						aria-label="Sincronia da letra"
+						title="Se a letra aparece cedo ou tarde demais"
+					>
+						<button
+							class="cb"
+							type="button"
+							onclick={() => nudge(-0.1)}
+							aria-label="Letra mais cedo">−</button
+						>
+						<button
+							class="cb sync-v"
+							type="button"
+							onclick={openSync}
+							title="Ajustar a sincronia (S)"
+							data-testid="sincronia"
+							><span class="lbl-l">Sincronia</span> <b>{formatOffset(offset)}</b></button
+						>
+						<button
+							class="cb"
+							type="button"
+							onclick={() => nudge(0.1)}
+							aria-label="Letra mais tarde">+</button
+						>
+					</div>
 				</div>
-			</div>
+
+				<div class="resp">
+					<div class="resp-cab">
+						<span class="info">
+							{#if totalGaps > 0}Lacuna {Math.max(1, gapNumber)} de {totalGaps}{:else}Sem lacunas{/if}
+						</span>
+						{#if phase === 'waiting' && waitMs !== null}
+							<div class="espera-bar" data-testid="contador">
+								<div class="trilho"><i style:transform="scaleX({waitMs / 10000})"></i></div>
+								<span>{waitSeconds}s</span>
+							</div>
+						{/if}
+						<span class="aviso" class:err={notice.startsWith('Era')} aria-live="polite"
+							>{notice}</span
+						>
+					</div>
+					<div class="ops" role="group" aria-label="Escolha a palavra que falta">
+						{#each shownOptions.length > 0 ? shownOptions : ['', '', '', ''] as option, i (i)}
+							{@const state = option ? optionState(option) : ''}
+							<button
+								type="button"
+								class="op"
+								class:vazia={!option}
+								class:certa={state === 'ok'}
+								class:errou={state === 'err'}
+								class:apaga={state === 'dim'}
+								style:--c={OPTION_COLORS[i]}
+								disabled={!option || !answerable}
+								aria-keyshortcuts={String(i + 1)}
+								onclick={() => pick(option)}
+							>
+								{#if option}<span class="k">{i + 1}</span>{option}{:else}·{/if}
+							</button>
+						{/each}
+					</div>
+				</div>
+			{/if}
 		</section>
 
 		<aside class="lado">
@@ -812,6 +1053,10 @@
 		message={statusMessage}
 		onstart={startGame}
 		onretry={boot}
+		{hint}
+		onapplyhint={applyHint}
+		onsynchint={syncFromHint}
+		ondismisshint={dismissHint}
 	/>
 {/if}
 
@@ -1353,13 +1598,37 @@
 		font-size: 18px;
 	}
 
-	.sync-v {
-		min-width: 3.6em;
-		text-align: center;
+	.sync .cb.sync-v {
+		min-width: 0;
+		padding: 0 12px;
+		font-size: 13px;
+		font-weight: 750;
+		color: var(--verde-texto);
+	}
+
+	.sync-v b {
 		font:
 			700 12px/1 ui-monospace,
 			monospace;
-		color: var(--verde-texto);
+		color: var(--creme);
+	}
+
+	.lin-alvo {
+		border: 0;
+		background: none;
+		padding: 0 6px;
+		margin: 0;
+		font: inherit;
+		color: inherit;
+		border-radius: 8px;
+	}
+
+	.lin-alvo:hover {
+		background: #ffffff14;
+	}
+
+	.lin.alvo-sinc .txt {
+		color: var(--ouro);
 	}
 
 	/* opções */
@@ -1839,10 +2108,6 @@
 
 		.cb kbd,
 		.lbl-l {
-			display: none;
-		}
-
-		.sync-v {
 			display: none;
 		}
 

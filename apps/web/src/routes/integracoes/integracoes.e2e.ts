@@ -67,7 +67,8 @@ test('gerar token, mostrar uma vez, listar e revogar', async ({ page }) => {
 	const me = await api(page.request, token).get('/api/v1/me');
 	expect(me.status()).toBe(200);
 	expect(await me.json()).toEqual({
-		email: expect.stringMatching(/@linguarudo\.test$/),
+		email: expect.stringMatching(/@linguetta\.test$/),
+		uiLanguage: 'pt',
 		nativeLanguage: 'pt',
 		studyLanguages: ['en', 'it']
 	});

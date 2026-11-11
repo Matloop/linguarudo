@@ -138,6 +138,7 @@
 				active={shell.active}
 				study={shell.studyLanguages}
 				native={shell.nativeLanguage}
+				ui={shell.uiLanguage}
 				summaries={shell.summary?.languages ?? null}
 			/>
 
@@ -220,6 +221,7 @@
 					active={shell.active}
 					study={shell.studyLanguages}
 					native={shell.nativeLanguage}
+					ui={shell.uiLanguage}
 					summaries={shell.summary?.languages ?? null}
 				/>
 			</div>
@@ -264,7 +266,13 @@
 		</nav>
 	</div>
 
-	<SaveDialog language={shell.active} ssrOpen={page.url.searchParams.has('guardar')} />
+	{#if shell.active}
+		<SaveDialog
+			language={shell.active}
+			uiLanguage={shell.uiLanguage}
+			ssrOpen={page.url.searchParams.has('guardar')}
+		/>
+	{/if}
 	<Toast />
 {/if}
 

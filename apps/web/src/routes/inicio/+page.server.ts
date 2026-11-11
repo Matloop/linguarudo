@@ -29,6 +29,19 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	const language = shell.active;
 	const now = new Date();
 	const nowIso = now.toISOString();
+	// Sem idioma de estudo ainda: o início só pede para escolher um (ADR 0004).
+	if (!language) {
+		return {
+			needsLanguage: true as const,
+			next: null,
+			lastItem: null,
+			savedThisWeek: 0,
+			song: null,
+			stremioConnected: false,
+			nextDue: null,
+			now: nowIso
+		};
+	}
 
 	const cards = () =>
 		locals.supabase
@@ -82,6 +95,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	const encounter = fanRow?.items.encounters[0] ?? null;
 
 	return {
+		needsLanguage: false as const,
 		next: fanRow
 			? {
 					lemma: fanRow.items.lemma,

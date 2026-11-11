@@ -229,6 +229,21 @@ export class Game {
 		return this.#seek(this.lines[index].start, now, !wasPlaying);
 	}
 
+	/**
+	 * Depois de ajustar a sincronia (jogo pausado): volta ao início da linha atual e
+	 * continua pausado. Na espera, larga o contador: ao retomar, a linha toca de novo.
+	 */
+	rewindToLine(now: number): Command[] {
+		if (this.phase !== 'paused') return [];
+		const index = this.waitLine ?? this.activeLine;
+		if (index < 0) return [];
+		this.#changed();
+		this.#resumeTo = 'playing';
+		this.waitLine = null;
+		this.activeLine = index;
+		return this.#seek(this.lines[index].start, now, false);
+	}
+
 	/** Fim de jogo → continuar: volta ao início da linha e segue. */
 	continueAfterGameOver(now: number): Command[] {
 		if (this.phase !== 'gameover') return [];

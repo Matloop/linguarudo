@@ -4,61 +4,74 @@
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import type { SubmitFunction } from '$app/forms';
-	import { LANGUAGES, LANGUAGE_LABELS, type Language } from '#lib/languages.ts';
+	import {
+		MAX_STUDY_LANGUAGES,
+		languageLabel,
+		type Language,
+		type UiLanguage
+	} from '#lib/languages.ts';
 	import type { LanguageSummary } from '#lib/server/summary.ts';
 	import Icon from './Icon.svelte';
+	import LanguagePicker from './LanguagePicker.svelte';
 	import { toast } from './app-state.svelte.ts';
 
 	let {
 		active,
 		study,
 		native,
+		ui,
 		summaries,
 		compact = false,
 		id
 	}: {
-		active: Language;
+		active: Language | null;
 		study: Language[];
-		native: Language;
+		native: Language | null;
+		ui: UiLanguage;
 		summaries: LanguageSummary[] | null;
 		compact?: boolean;
 		id: string;
 	} = $props();
 
-	/** Nome do idioma na própria língua, para reconhecer de relance. */
-	const ENDONYMS: Record<Language, string> = {
-		en: 'English',
-		it: 'Italiano',
-		es: 'Español',
-		fr: 'Français',
-		de: 'Deutsch',
-		pt: 'Português',
-		ja: '日本語',
-		ko: '한국어',
-		zh: '中文',
-		nl: 'Nederlands',
-		ru: 'Русский'
-	};
+	const T = {
+		choose: 'Escolher idioma',
+		chooseSub: 'O que você estuda?',
+		switchLabel: (name: string) => `Idioma: ${name}. Trocar idioma`,
+		switchTitle: 'Trocar idioma',
+		yours: 'Seus idiomas',
+		add: 'Adicionar idioma',
+		back: 'Voltar',
+		none: 'Nenhuma palavra ainda',
+		forToday: (n: number) => `${n} para hoje`,
+		words: (n: number) => (n === 1 ? '1 palavra' : `${n} palavras`),
+		added: (name: string) => `${name} adicionado aos seus idiomas`,
+		failed: 'Não deu para trocar agora.',
+		note: 'Cada idioma tem o seu banco e a sua revisão.'
+	} as const;
+
+	const label = (l: Language) => languageLabel(l, ui);
 
 	let open = $state(false);
 	let view = $state<'list' | 'add'>('list');
 	let root: HTMLDetailsElement;
 
 	const back = $derived(page.url.pathname + page.url.search);
-	const addable = $derived(LANGUAGES.filter((l) => l !== native && !study.includes(l)));
-	const summaryOf = (l: Language) => summaries?.find((s) => s.language === l) ?? null;
-	const words = (n: number) => (n === 1 ? '1 palavra' : `${n} palavras`);
+	const canAdd = $derived(study.length < MAX_STUDY_LANGUAGES);
+	const excluded = $derived(native ? [...study, native] : study);
+	const summaryOf = (l: Language | null) => summaries?.find((s) => s.language === l) ?? null;
 
 	function sub(l: Language) {
 		const s = summaryOf(l);
 		if (!s) return '';
-		if (s.items === 0) return 'Nenhuma palavra ainda';
-		return s.toReview > 0 ? `${words(s.items)} · ${s.toReview} para hoje` : words(s.items);
+		if (s.items === 0) return T.none;
+		return s.toReview > 0 ? `${T.words(s.items)} · ${T.forToday(s.toReview)}` : T.words(s.items);
 	}
 	const activeSub = $derived.by(() => {
+		if (!active) return T.chooseSub;
 		const s = summaryOf(active);
-		return !s ? '' : s.items === 0 ? 'Nenhuma palavra ainda' : words(s.items);
+		return !s ? '' : s.items === 0 ? T.none : T.words(s.items);
 	});
+	const activeName = $derived(active ? label(active) : T.choose);
 
 	function close() {
 		open = false;
@@ -73,9 +86,9 @@
 		return async ({ result }) => {
 			if (result.type === 'redirect' || result.type === 'success') {
 				await invalidateAll();
-				if (adding) toast(`${LANGUAGE_LABELS[lang]} adicionado aos seus idiomas`);
+				if (adding) toast(T.added(label(lang)));
 			} else if (result.type === 'failure') {
-				toast(String(result.data?.message ?? 'Não deu para trocar agora.'));
+				toast(String(result.data?.message ?? T.failed));
 			}
 		};
 	};
@@ -95,21 +108,19 @@
 <svelte:window onclick={onWindowClick} onkeydown={onKeydown} />
 
 <details class="lang-wrap" class:compact bind:this={root} bind:open>
-	<summary
-		class="lang"
-		aria-label="Idioma: {LANGUAGE_LABELS[active]}. Trocar idioma"
-		title="Trocar idioma"
-	>
-		<span class="code" data-testid="idioma-ativo">{active.toUpperCase()}</span>
+	<summary class="lang" aria-label={T.switchLabel(activeName)} title={T.switchTitle}>
+		<span class="code" data-testid="idioma-ativo"
+			>{#if active}{active.toUpperCase()}{:else}<Icon name="globe" size="sm" />{/if}</span
+		>
 		<span class="t"
-			><b>{LANGUAGE_LABELS[active]}</b>{#if activeSub}<span>{activeSub}</span>{/if}</span
+			><b>{activeName}</b>{#if activeSub}<span>{activeSub}</span>{/if}</span
 		>
 		<Icon name="down" size="sm" />
 	</summary>
 
 	<div class="menu" {id}>
 		{#if view === 'list'}
-			<div class="mhd"><b>Seus idiomas</b></div>
+			{#if study.length > 0}<div class="mhd"><b>{T.yours}</b></div>{/if}
 			{#each study as l (l)}
 				<form method="POST" action="/perfil?/idioma" use:enhance={submit}>
 					<input type="hidden" name="voltar" value={back} />
@@ -121,13 +132,13 @@
 						aria-checked={l === active}
 					>
 						<span class="code">{l.toUpperCase()}</span>
-						<span class="t"><b>{LANGUAGE_LABELS[l]}</b><span>{sub(l)}</span></span>
+						<span class="t"><b>{label(l)}</b><span>{sub(l)}</span></span>
 						<Icon name="check" size="sm" />
 					</button>
 				</form>
 			{/each}
-			{#if addable.length > 0}
-				<div class="sep"></div>
+			{#if canAdd}
+				{#if study.length > 0}<div class="sep"></div>{/if}
 				<a
 					class="mi add"
 					href={resolve('/perfil#idiomas')}
@@ -137,7 +148,7 @@
 					}}
 				>
 					<span class="code"><Icon name="plus" size="sm" /></span>
-					<span class="t"><b>Adicionar idioma</b></span>
+					<span class="t"><b>{T.add}</b></span>
 					<Icon name="right" size="sm" />
 				</a>
 			{/if}
@@ -146,22 +157,24 @@
 				<button
 					type="button"
 					class="icon-btn mback"
-					aria-label="Voltar"
+					aria-label={T.back}
 					onclick={() => (view = 'list')}><Icon name="right" size="sm flip" /></button
-				><b>Adicionar idioma</b>
+				><b>{T.add}</b>
 			</div>
-			{#each addable as l (l)}
-				<form method="POST" action="/perfil?/adicionarIdioma" use:enhance={submit}>
-					<input type="hidden" name="voltar" value={back} />
-					<button class="mi addable" name="idioma" value={l}>
-						<span class="code">{l.toUpperCase()}</span>
-						<span class="t"><b>{LANGUAGE_LABELS[l]}</b><span>{ENDONYMS[l]}</span></span>
-						<Icon name="plus" size="sm" />
-					</button>
-				</form>
-			{/each}
+			<div class="pick">
+				<LanguagePicker
+					id="{id}-add"
+					action="/perfil?/adicionarIdioma"
+					name="idioma"
+					{ui}
+					exclude={excluded}
+					hidden={{ voltar: back }}
+					{submit}
+					autofocus
+				/>
+			</div>
 			<div class="sep"></div>
-			<div class="note">Cada idioma tem o seu banco e a sua revisão.</div>
+			<div class="note">{T.note}</div>
 		{/if}
 	</div>
 </details>
@@ -263,7 +276,6 @@
 	.mi[aria-checked='true'] > :global(.ic) {
 		opacity: 1;
 	}
-	.mi.addable > :global(.ic),
 	.mi.add > :global(.ic) {
 		opacity: 0.55;
 		color: var(--ink-3);
@@ -292,6 +304,9 @@
 		height: 1px;
 		background: var(--line);
 		margin: 6px 4px;
+	}
+	.pick {
+		padding: 2px 4px 4px;
 	}
 	.note {
 		font-size: 12px;

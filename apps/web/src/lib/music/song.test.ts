@@ -78,8 +78,14 @@ describe('songFromWork', () => {
 			title: 'Canção Falsa',
 			artist: 'Banda Inventada',
 			language: 'it',
-			playedAt: '2026-11-11T10:00:00Z'
+			playedAt: '2026-11-11T10:00:00Z',
+			sync: { offset: null, hintDismissed: false }
 		});
+	});
+
+	test('traz a sincronia salva nas refs', () => {
+		const song = songFromWork({ ...row, refs: { youtube_id: 'AbC123_-xyZ', lyrics_offset: 12.4 } });
+		expect(song?.sync).toEqual({ offset: 12.4, hintDismissed: false });
 	});
 
 	test('sem vídeo ou com idioma fora do jogo, não é música jogável', () => {

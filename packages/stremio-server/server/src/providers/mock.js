@@ -1,7 +1,20 @@
 import { createHash } from 'node:crypto';
 import { PT_IT } from '../dictionary.js';
-import { countWords, tokenize } from '../words.js';
+import { countWords, lemmaKey, segmentWords } from '@linguetta/language';
+import { baseOf, cleanLemma } from '../lang.js';
 import { MAX_PER_CUE } from '../validate.js';
+
+// O dicionário embutido é só PT → IT, com sentidos em português: o mock só atende
+// legenda em português trocada por italiano (blend) ou consulta em italiano, para quem tem
+// português como nativa. Qualquer outro par devolve o formato válido, vazio.
+const isPt = (tag) => typeof tag === 'string' && baseOf(tag) === 'pt';
+const isIt = (tag) => typeof tag === 'string' && baseOf(tag) === 'it';
+
+function tokenize(text) {
+  return segmentWords(text, 'pt')
+    .filter((s) => s.isWord)
+    .map((s) => ({ word: s.segment, start: s.index, end: s.index + s.segment.length }));
+}
 
 const MAX_PHRASE = Math.max(...[...PT_IT.keys()].map((k) => k.split(' ').length));
 
@@ -41,6 +54,7 @@ export function findHits(text) {
           source,
           target: matchCase(source, entry.target),
           lemma: entry.lemma,
+          reading: '',
           ipa: entry.ipa,
           pos: entry.pos,
           meaning: entry.meaning,
@@ -70,30 +84,31 @@ export function createMockProvider() {
   return {
     name: 'mock',
     model: 'mock-dict-v1',
-    // Sem LLM: acha a seleção no dicionário embutido (só IT); o resto volta vazio.
-    async lookup({ lang, text }) {
-      const key = text.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
-      const e = lang === 'it' ? itIndex().get(key) : null;
-      if (!e) return { lemma: key, ipa: '', pos: '', meaning: '', translation: '' };
-      return { lemma: e.lemma, ipa: e.ipa, pos: e.pos, meaning: e.meaning, translation: '' };
+    // Sem LLM: acha a seleção no dicionário embutido (só IT, nativa PT); o resto volta vazio,
+    // com a seleção como lema.
+    async lookup({ lang, nativeLanguage, text }) {
+      const sel = cleanLemma(text, lang);
+      const e = isIt(lang) && isPt(nativeLanguage) ? itIndex().get(lemmaKey(sel, lang)) : null;
+      if (!e) return { lemma: sel, reading: '', ipa: '', pos: '', meaning: '', translation: '' };
+      return { lemma: e.lemma, reading: '', ipa: e.ipa, pos: e.pos, meaning: e.meaning, translation: '' };
     },
     async translate() {
       return '';
     },
-    async annotate({ sourceLang, targetLang, density, texts, preferWords = [] }) {
+    async annotate({ sourceLang, targetLang, nativeLanguage, density, texts, preferWords = [] }) {
       const result = texts.map(() => []);
-      if (sourceLang !== 'pt' || targetLang !== 'it' || !(density > 0)) return result;
+      if (!isPt(sourceLang) || !isIt(targetLang) || !isPt(nativeLanguage) || !(density > 0)) return result;
 
-      const totalWords = texts.reduce((n, t) => n + countWords(t), 0);
+      const totalWords = texts.reduce((n, t) => n + countWords(t, sourceLang), 0);
       let quota = Math.max(1, Math.round(density * totalWords));
-      const prefer = new Set(preferWords);
+      const prefer = new Set(preferWords.map((w) => lemmaKey(w, targetLang)));
       // por cue: candidatos ordenados pelo hash (determinístico, mas "aleatório")
       const perCue = texts.map((t) => findHits(t).sort((a, b) => a.score - b.score));
 
       // 1º as palavras do banco do usuário, depois as novas completam a cota.
       // Em cada fase, rodadas: 1ª escolhe o melhor de cada cue, 2ª o segundo melhor... para espalhar.
       for (const preferred of [true, false]) {
-        const pools = perCue.map((hits) => hits.filter((h) => prefer.has(h.annotation.lemma) === preferred));
+        const pools = perCue.map((hits) => hits.filter((h) => prefer.has(lemmaKey(h.annotation.lemma, targetLang)) === preferred));
         for (let round = 0; round < MAX_PER_CUE && quota > 0; round++) {
           const picks = [];
           pools.forEach((hits, idx) => {

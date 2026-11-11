@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { langName } from '../lang.js';
-import { countWords } from '../words.js';
+import { countWords } from '@linguetta/language';
 import { MAX_PER_CUE } from '../validate.js';
 
 export const DEFAULT_MODEL = 'claude-haiku-5-5';
@@ -25,8 +25,8 @@ export const OUTPUT_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { cue: { type: 'integer' }, source: STR, target: STR, lemma: STR, ipa: STR, pos: STR, meaning: STR, example: STR },
-        required: ['cue', 'source', 'target', 'lemma', 'ipa', 'pos', 'meaning', 'example'],
+        properties: { cue: { type: 'integer' }, source: STR, target: STR, lemma: STR, reading: STR, ipa: STR, pos: STR, meaning: STR, example: STR },
+        required: ['cue', 'source', 'target', 'lemma', 'reading', 'ipa', 'pos', 'meaning', 'example'],
         additionalProperties: false,
       },
     },
@@ -35,34 +35,49 @@ export const OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-// Prompt fixo (sem nada variável) para aproveitar o cache de prompt entre lotes.
-export const SYSTEM = `You help a Brazilian Portuguese speaker learn a new language while watching films. You receive a batch of numbered subtitle cues in a source language. Some words in the cues will be replaced on screen by their translation in the target language, and the viewer can click them to see what they mean. Your job is to choose those words and translate them.
+// Regras genéricas de lema e leitura, comuns ao blend e à consulta (ADR 0004: qualquer idioma).
+const LEMMA_CASE = `Write it the way a dictionary of that language writes its headwords: lowercase, except where the spelling of the language requires capitals (German nouns: "Häuser" -> "Haus"; proper nouns: "Roma", "Tokyo").`;
+const LEMMA_FORM = `Use the citation form of the language: the infinitive for verbs where the language has one (Italian "voglio" -> "volere", Spanish "quiero" -> "querer"), the singular for nouns (German "Kinder" -> "Kind"), the masculine singular for gendered adjectives (French "belles" -> "beau", Russian "новая" -> "новый"), the dictionary form for Japanese verbs and adjectives ("食べました" -> "食べる"), and so on. For languages without inflection (Chinese, Thai, Vietnamese...) return the word as is.`;
+const READING = `the pronunciation in the script learners customarily use when the language is not written in the Latin alphabet: hiragana for Japanese ("食べる" -> "たべる"), pinyin with tone marks for Chinese ("学习" -> "xuéxí"), the standard romanization for Korean, Russian, Greek, Arabic, Hebrew, Hindi, Thai and similar. An empty string for languages written in the Latin alphabet.`;
+
+/**
+ * Prompt de sistema do blend. Só depende do par de idiomas e da língua nativa, então
+ * continua estável entre os lotes do mesmo vídeo (cache de prompt).
+ */
+export function annotateSystem({ sourceLang, targetLang, nativeLanguage }) {
+  const source = langName(sourceLang);
+  const target = langName(targetLang);
+  const native = langName(nativeLanguage);
+  return `You help a speaker of ${native} learn ${target} while watching films. You receive a batch of numbered subtitle cues in ${source}. Some words in the cues will be replaced on screen by their ${target} translation, and the viewer can click them to see what they mean. Your job is to choose those words and translate them.
 
 How to choose:
 - Pick roughly the number of words requested for the batch (it is a target, not a hard rule; fewer is fine if the cues have little useful vocabulary).
-- Prefer vocabulary a learner benefits from: nouns, verbs, adjectives, adverbs, and common multi-word expressions ("de novo", "por favor").
-- Skip proper names, interjections and filler ("ah", "hum", "ei"), numbers, and words that are spelled the same in both languages (they teach nothing).
+- Prefer vocabulary a learner benefits from: nouns, verbs, adjectives, adverbs, and common multi-word expressions (Portuguese "de novo", English "give up", Spanish "por favor").
+- Skip proper names, interjections and filler ("uh", "hum", "ah"), numbers, and words that are spelled the same in both languages (they teach nothing).
 - Spread choices across the batch. At most ${MAX_PER_CUE} per cue; many cues should have none.
 - Do not pick overlapping spans in the same cue.
-- The request may list words the viewer is studying (target-language dictionary forms). When a cue contains a word whose translation is one of them, pick it first; those picks count toward the requested number, and new words fill the rest.
+- The request may list words the viewer is studying (${target} dictionary forms). When a cue contains a word whose translation is one of them, pick it first; those picks count toward the requested number, and new words fill the rest.
 
 How to fill each annotation:
 - cue: the number of the cue it belongs to.
-- source: the word or expression copied character-for-character from that cue, same accents and capitalisation, whole words only (never part of a word). In the cue list, " / " marks a line break and is not part of the text.
-- target: the translation in the target language as it would read in this sentence: matching gender, number, tense, person and capitalisation, so it can replace the source word in place. Use the natural equivalent, which may be more than one word (Portuguese "preciso" -> Italian "ho bisogno").
-- lemma: the dictionary form of target, in lowercase: singular (masculine when the language inflects adjectives) for nouns and adjectives, infinitive for verbs, the whole expression for multi-word expressions (Italian "feste" -> "festa", "voglio" -> "volere", "ho bisogno" -> "avere bisogno").
+- source: the word or expression copied character-for-character from that cue, same accents and capitalisation, whole words only (never part of a word; in languages written without spaces, such as Japanese, Chinese or Thai, a complete word as a dictionary would segment it). In the cue list, " / " marks a line break and is not part of the text.
+- target: the ${target} translation as it would read in this sentence: matching gender, number, tense, person and capitalisation, so it can replace the source word in place. Use the natural equivalent, which may be more than one word (Portuguese "preciso" -> Italian "ho bisogno", English "I need" -> German "ich brauche").
+- lemma: the dictionary form of target. ${LEMMA_CASE} ${LEMMA_FORM} For a multi-word expression, the whole expression in its canonical form (Italian "ho bisogno" -> "avere bisogno").
+- reading: for target, ${READING}
 - ipa: IPA pronunciation of target, between slashes.
-- pos: part of speech of target, written in Portuguese and abbreviated (e.g. "subst. fem. plural", "verbo, 1ª p. sing. presente", "adj. masc.", "adv.", "expr.").
-- meaning: short meaning in Portuguese (2 to 6 words).
-- example: one short, natural sentence in the target language using target (or its base form).`;
+- pos: part of speech of target, written in ${native} and abbreviated the way ${native} dictionaries do (noun with gender and number, verb with person and tense, adjective, adverb, expression).
+- meaning: short meaning in ${native} (2 to 6 words).
+- example: one short, natural ${target} sentence using target (or its base form).`;
+}
 
-export function buildUserMessage({ sourceLang, targetLang, density, texts, preferWords = [] }) {
-  const words = texts.reduce((n, t) => n + countWords(t), 0);
+export function buildUserMessage({ sourceLang, targetLang, nativeLanguage, density, texts, preferWords = [] }) {
+  const words = texts.reduce((n, t) => n + countWords(t, sourceLang), 0);
   const want = Math.max(1, Math.round(density * words));
   const lines = texts.map((t, i) => `[${i + 1}] ${t.replace(/\s*\n\s*/g, ' / ')}`);
   const studying = preferWords.length > 0 ? `Words the viewer is studying (pick these first when they fit): ${preferWords.join(', ')}\n` : '';
   return `Source language: ${langName(sourceLang)} (${sourceLang})
 Target language: ${langName(targetLang)} (${targetLang})
+Viewer's native language: ${langName(nativeLanguage)} (${nativeLanguage})
 The batch has ${texts.length} cues and ${words} words. Pick about ${want} words (density ${density}).
 ${studying}
 Cues:
@@ -93,22 +108,28 @@ export function groupByCue(raw, count) {
 // Consulta de uma palavra/expressão clicada numa legenda que já está na língua-alvo.
 export const LOOKUP_SCHEMA = {
   type: 'object',
-  properties: { lemma: STR, ipa: STR, pos: STR, meaning: STR, translation: STR },
-  required: ['lemma', 'ipa', 'pos', 'meaning', 'translation'],
+  properties: { lemma: STR, reading: STR, ipa: STR, pos: STR, meaning: STR, translation: STR },
+  required: ['lemma', 'reading', 'ipa', 'pos', 'meaning', 'translation'],
   additionalProperties: false,
 };
 
-export const LOOKUP_SYSTEM = `You help a Brazilian Portuguese speaker learn a new language while watching films with subtitles in that language. The viewer selected a word or a multi-word expression in a subtitle line and wants to save it to study.
+export function lookupSystem({ lang, nativeLanguage }) {
+  const target = langName(lang);
+  const native = langName(nativeLanguage);
+  return `You help a speaker of ${native} learn ${target} while watching films with ${target} subtitles. The viewer selected a word or a multi-word expression in a subtitle line and wants to save it to study.
 
 Fill:
-- lemma: the dictionary form of the selection, lowercase (keep capitals only for proper nouns). Singular (masculine when the language inflects adjectives) for nouns and adjectives, infinitive for verbs. For an expression, its canonical form with the verb in the infinitive and pronouns/prepositions it normally takes: Italian "facevo finta di" -> "fare finta di", "ho bisogno" -> "avere bisogno di", "me ne vado" -> "andarsene". If the selection is an elided article or preposition ("dell'", "l'"), give its full form ("di", "il").
+- lemma: the dictionary form of the selection. ${LEMMA_CASE} ${LEMMA_FORM} For an expression, its canonical form with the verb in the citation form and the pronouns/prepositions it normally takes (Italian "facevo finta di" -> "fare finta di", "me ne vado" -> "andarsene"; English "gave up on" -> "give up on"). If the selection is an elided article or preposition (Italian "dell'", French "l'"), give its full form ("di", "le").
+- reading: for the lemma, ${READING}
 - ipa: IPA pronunciation of the lemma, between slashes.
-- pos: part of speech of the lemma, in Portuguese, abbreviated ("subst. fem.", "verbo", "adj.", "adv.", "prep.", "expr.").
-- meaning: the meaning in Brazilian Portuguese as used in this line, 1 to 6 words.
-- translation: a natural Brazilian Portuguese translation of the whole subtitle line. In the line, " / " marks a line break.`;
+- pos: part of speech of the lemma, written in ${native} and abbreviated the way ${native} dictionaries do (noun with gender, verb, adjective, adverb, preposition, expression).
+- meaning: the meaning in ${native} as used in this line, 1 to 6 words.
+- translation: a natural ${native} translation of the whole subtitle line. In the line, " / " marks a line break.`;
+}
 
-export function buildLookupMessage({ lang, text, sentence }) {
+export function buildLookupMessage({ lang, nativeLanguage, text, sentence }) {
   return `Language: ${langName(lang)} (${lang})
+Viewer's native language: ${langName(nativeLanguage)} (${nativeLanguage})
 Subtitle line: ${String(sentence).replace(/\s*\n\s*/g, ' / ')}
 Selection: ${text}`;
 }
@@ -122,8 +143,8 @@ export const TRANSLATE_SCHEMA = {
 
 export const TRANSLATE_SYSTEM = `You translate one film subtitle line at a time for a language learner. Give a natural, faithful translation that keeps the register (slang stays slang). Do not explain or add notes. In the line, " / " marks a line break; keep it where it makes sense.`;
 
-export function buildTranslateMessage({ sourceLang, targetLang, text }) {
-  return `From ${langName(sourceLang)} (${sourceLang}) to ${langName(targetLang)} (${targetLang}):
+export function buildTranslateMessage({ sourceLang, nativeLanguage, text }) {
+  return `From ${langName(sourceLang)} (${sourceLang}) to ${langName(nativeLanguage)} (${nativeLanguage}):
 ${String(text).replace(/\s*\n\s*/g, ' / ')}`;
 }
 
@@ -191,7 +212,7 @@ export function createClaudeProvider({ model = DEFAULT_MODEL, effort = DEFAULT_E
       const data = await retryMalformed(
         () =>
           callJson({
-            system: SYSTEM,
+            system: annotateSystem(req),
             user: buildUserMessage(req),
             schema: OUTPUT_SCHEMA,
             maxTokens: 16000,
@@ -205,7 +226,7 @@ export function createClaudeProvider({ model = DEFAULT_MODEL, effort = DEFAULT_E
     async lookup(req) {
       return retryMalformed(
         () =>
-          callJson({ system: LOOKUP_SYSTEM, user: buildLookupMessage(req), schema: LOOKUP_SCHEMA, maxTokens: 1000, valid: isObj, what: 'a consulta' }),
+          callJson({ system: lookupSystem(req), user: buildLookupMessage(req), schema: LOOKUP_SCHEMA, maxTokens: 1000, valid: isObj, what: 'a consulta' }),
         wrap,
       );
     },

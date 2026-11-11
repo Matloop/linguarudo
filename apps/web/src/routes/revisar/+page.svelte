@@ -14,7 +14,7 @@
 		undoLast,
 		type Grade
 	} from '#lib/review.ts';
-	import { LANGUAGE_LABELS } from '#lib/languages.ts';
+	import { langAttrs, languageInline, pickVoice } from '#lib/languages.ts';
 	import { isTypingTarget, shortcutFor } from '#lib/shortcuts.ts';
 	import { toast } from '#lib/ui/app-state.svelte.ts';
 	import Icon from '#lib/ui/Icon.svelte';
@@ -40,7 +40,10 @@
 	const current = $derived(session.queue[0]);
 	const progress = $derived(sessionProgress(session));
 	const total = $derived(session.answered + session.queue.length);
-	const languageName = $derived(LANGUAGE_LABELS[data.language].toLowerCase());
+	const languageName = $derived(languageInline(data.language, data.uiLanguage));
+	/** Texto no idioma estudado e na língua nativa (lang e dir para leitor de tela e RTL). */
+	const study = $derived(langAttrs(data.language));
+	const native = $derived(data.nativeLanguage ? langAttrs(data.nativeLanguage) : {});
 	const remaining = $derived(
 		data.shell?.summary?.languages.find((l) => l.language === data.language)?.toReview ?? 0
 	);
@@ -67,9 +70,7 @@
 		if (!current || !canSpeak) return;
 		const utterance = new SpeechSynthesisUtterance(current.lemma);
 		utterance.lang = current.language;
-		const voice = speechSynthesis
-			.getVoices()
-			.find((v) => v.lang.toLowerCase().replace('_', '-').startsWith(current.language));
+		const voice = pickVoice(speechSynthesis.getVoices(), current.language);
 		if (voice) utterance.voice = voice;
 		speechSynthesis.cancel();
 		speechSynthesis.speak(utterance);
@@ -185,8 +186,8 @@
 
 {#snippet sentence(underline: boolean)}
 	{#if current?.sentence}
-		<p class="ctx" lang={current.language}>
-			{#each highlightParts(current.sentence, current.highlight || current.lemma) as part, i (i)}
+		<p class="ctx" {...study}>
+			{#each highlightParts(current.sentence, current.highlight || current.lemma, current.language) as part, i (i)}
 				{#if part.hit}<u class:plain={!underline}>{part.text}</u>{:else}{part.text}{/if}
 			{/each}
 		</p>
@@ -247,9 +248,12 @@
 								<div class="mid">
 									{#if current.kind === 'produzir'}
 										<div class="ask">Como se diz em {languageName}?</div>
-										<div class="word">{current.sense}</div>
+										<div class="word" {...native}>{current.sense}</div>
 									{:else}
-										<div class="word" lang={current.language}>{current.lemma}</div>
+										{#if current.reading}<div class="reading" {...study}>
+												{current.reading}
+											</div>{/if}
+										<div class="word" {...study}>{current.lemma}</div>
 										{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
 									{/if}
 								</div>
@@ -259,14 +263,18 @@
 								{@render source()}
 								<div class="mid">
 									{#if current.kind === 'produzir'}
-										<div class="small-w">{current.sense}</div>
-										<div class="tr" lang={current.language}>{current.lemma}</div>
+										<div class="small-w" {...native}>{current.sense}</div>
+										{#if current.reading}<div class="reading" {...study}>
+												{current.reading}
+											</div>{/if}
+										<div class="tr" {...study}>{current.lemma}</div>
 										{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
 									{:else}
 										<div class="small-w">
-											<b lang={current.language}>{current.lemma}</b>{#if current.ipa}&nbsp;· {current.ipa}{/if}
+											{#if current.reading}<span class="rd" {...study}>{current.reading}</span>{/if}
+											<b {...study}>{current.lemma}</b>{#if current.ipa}&nbsp;· {current.ipa}{/if}
 										</div>
-										<div class="tr" class:none={!current.sense}>
+										<div class="tr" class:none={!current.sense} {...current.sense ? native : {}}>
 											{current.sense || 'Sem tradução guardada'}
 										</div>
 									{/if}
@@ -491,6 +499,18 @@
 	.front .ask + .word {
 		font-size: 40px;
 		line-height: 1.15;
+	}
+	/* Leitura (furigana, pinyin) logo acima do lema. */
+	.reading {
+		margin-bottom: 4px;
+		color: var(--ink-3);
+		font: 400 15px/1.3 var(--f-body);
+		letter-spacing: 0.02em;
+	}
+	.rd {
+		display: block;
+		font-size: 12.5px;
+		color: var(--ink-3);
 	}
 	.ipa {
 		margin-top: 10px;

@@ -1,15 +1,15 @@
 // Servidor falso do LRCLIB e do oEmbed do YouTube para os e2e (o app chama os dois pelo servidor,
 // então o Playwright não consegue interceptar). Roda com `bun src/e2e/mock-sources.ts`.
 
-import { LRC, VIDEOS, VIDEO_SECONDS } from './fixtures.ts';
+import { CLIP_EXTRA_SECONDS, LRC, VIDEOS, VIDEO_SECONDS } from './fixtures.ts';
 
 const PORT = 4599;
 
-const record = (title: string, synced: string | null) => ({
+const record = (title: string, synced: string | null, duration = VIDEO_SECONDS) => ({
 	id: 1,
 	trackName: title,
 	artistName: 'Banda Inventada',
-	duration: VIDEO_SECONDS,
+	duration,
 	instrumental: false,
 	plainLyrics: null,
 	syncedLyrics: synced
@@ -17,6 +17,8 @@ const record = (title: string, synced: string | null) => ({
 
 function lyrics(title: string): Response | null {
 	if (title === VIDEOS.ok.title) return Response.json(record(title, LRC));
+	if (title === VIDEOS.clip.title)
+		return Response.json(record(title, LRC, VIDEO_SECONDS - CLIP_EXTRA_SECONDS));
 	if (title === VIDEOS.noLyrics.title) return Response.json(record(title, null));
 	if (title === VIDEOS.down.title) return new Response('boom', { status: 503 });
 	return null;

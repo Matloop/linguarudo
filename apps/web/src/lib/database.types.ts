@@ -116,6 +116,68 @@ export type Database = {
           },
         ]
       }
+      device_pairings: {
+        Row: {
+          client_ip_hash: string | null
+          created_at: string
+          decided_at: string | null
+          device_code_hash: string
+          device_model: string
+          device_name: string
+          expires_at: string
+          firmware: string
+          id: string
+          last_poll_at: string | null
+          poll_interval: number
+          status: string
+          token_id: string | null
+          user_code: string
+          user_id: string | null
+        }
+        Insert: {
+          client_ip_hash?: string | null
+          created_at?: string
+          decided_at?: string | null
+          device_code_hash: string
+          device_model?: string
+          device_name: string
+          expires_at: string
+          firmware?: string
+          id?: string
+          last_poll_at?: string | null
+          poll_interval?: number
+          status?: string
+          token_id?: string | null
+          user_code: string
+          user_id?: string | null
+        }
+        Update: {
+          client_ip_hash?: string | null
+          created_at?: string
+          decided_at?: string | null
+          device_code_hash?: string
+          device_model?: string
+          device_name?: string
+          expires_at?: string
+          firmware?: string
+          id?: string
+          last_poll_at?: string | null
+          poll_interval?: number
+          status?: string
+          token_id?: string | null
+          user_code?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_pairings_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "api_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       encounters: {
         Row: {
           client_id: string | null
@@ -194,8 +256,10 @@ export type Database = {
           language: string
           last_seen_at: string | null
           lemma: string
+          lemma_key: string
           note: string
           part_of_speech: string
+          reading: string
           seen_count: number
           sense: string
           status: string
@@ -210,8 +274,10 @@ export type Database = {
           language: string
           last_seen_at?: string | null
           lemma: string
+          lemma_key: string
           note?: string
           part_of_speech?: string
+          reading?: string
           seen_count?: number
           sense?: string
           status?: string
@@ -226,8 +292,10 @@ export type Database = {
           language?: string
           last_seen_at?: string | null
           lemma?: string
+          lemma_key?: string
           note?: string
           part_of_speech?: string
+          reading?: string
           seen_count?: number
           sense?: string
           status?: string
@@ -277,25 +345,52 @@ export type Database = {
           },
         ]
       }
+      sync_ops: {
+        Row: {
+          client_id: string
+          received_at: string
+          result: Json
+          type: string
+          user_id: string
+        }
+        Insert: {
+          client_id: string
+          received_at?: string
+          result?: Json
+          type: string
+          user_id: string
+        }
+        Update: {
+          client_id?: string
+          received_at?: string
+          result?: Json
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_settings: {
         Row: {
-          native_language: string
+          native_language: string | null
           new_cards_per_day: number
           study_languages: unknown[]
+          ui_language: string
           updated_at: string
           user_id: string
         }
         Insert: {
-          native_language?: string
+          native_language?: string | null
           new_cards_per_day?: number
           study_languages?: unknown[]
+          ui_language?: string
           updated_at?: string
           user_id: string
         }
         Update: {
-          native_language?: string
+          native_language?: string | null
           new_cards_per_day?: number
           study_languages?: unknown[]
+          ui_language?: string
           updated_at?: string
           user_id?: string
         }
@@ -358,12 +453,14 @@ export type Database = {
           forms: string[]
           id: string
           lemma: string
+          lemma_key: string
+          reading: string
           sense: string
           status: string
         }[]
       }
       api_mark_seen: {
-        Args: { p_language: string; p_lemmas: string[]; p_token: string }
+        Args: { p_language: string; p_lemma_keys: string[]; p_token: string }
         Returns: number
       }
       api_me: {
@@ -372,6 +469,7 @@ export type Database = {
           email: string
           native_language: string
           study_languages: string[]
+          ui_language: string
         }[]
       }
       api_save_items: {
@@ -421,7 +519,12 @@ export type Database = {
         Returns: Json
       }
       api_sync_save: {
-        Args: { p_at: string; p_client_id: string; p_entry: Json; p_token: string }
+        Args: {
+          p_at: string
+          p_client_id: string
+          p_entry: Json
+          p_token: string
+        }
         Returns: Json
       }
       api_sync_seen: {
@@ -429,7 +532,7 @@ export type Database = {
           p_at: string
           p_client_id: string
           p_language: string
-          p_lemma: string
+          p_lemma_key: string
           p_token: string
         }
         Returns: Json
@@ -493,6 +596,18 @@ export type Database = {
           lemma: string
         }[]
       }
+      set_lyrics_sync: {
+        Args: { p_hint_dismissed?: boolean; p_offset?: number; p_work: string }
+        Returns: undefined
+      }
+      sync_claim: {
+        Args: { p_client_id: string; p_type: string; p_user: string }
+        Returns: Json
+      }
+      sync_finish: {
+        Args: { p_client_id: string; p_result: Json; p_user: string }
+        Returns: Json
+      }
       sync_pair_decide: {
         Args: { p_approve: boolean; p_user_code: string }
         Returns: string
@@ -534,6 +649,11 @@ export type Database = {
           retry_after: number
           status: string
         }[]
+      }
+      sync_prior: { Args: { p_result: Json }; Returns: Json }
+      sync_token_begin: {
+        Args: { p_token: string }
+        Returns: Record<string, unknown>
       }
       undo_review: {
         Args: {

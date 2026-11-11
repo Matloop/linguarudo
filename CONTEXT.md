@@ -1,4 +1,4 @@
-# Linguarudo
+# Linguetta
 
 O lar do vocabulário do usuário: recolhe itens de tudo que ele lê, assiste e ouve, e faz eles ficarem por revisão em qualquer aparelho.
 
@@ -17,8 +17,10 @@ O lar do vocabulário do usuário: recolhe itens de tudo que ele lê, assiste e 
 
 ## Usuário
 
-- **Idioma de estudo**: idioma que o usuário aprende; cada item pertence a um. _Evite_: língua alvo, lang.
-- **Língua nativa**: língua em que o usuário lê traduções e a interface. _Evite_: idioma base.
+- **Idioma de estudo**: idioma que o usuário aprende (qualquer tag BCP 47); cada item pertence a um. _Evite_: língua alvo, lang.
+- **Língua nativa**: língua em que o usuário lê sentidos e traduções. Qualquer idioma. _Evite_: idioma base.
+- **Idioma da interface**: idioma dos textos do app (PT ou EN por enquanto), separado da língua nativa.
+- **Perfil de idioma**: o que o app sabe de um idioma (escrita, direção, se usa espaços, maiúsculas, elisão, recursos disponíveis). Recurso ausente fica escondido.
 
 ## Prática e conexões
 

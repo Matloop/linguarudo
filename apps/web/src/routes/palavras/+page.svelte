@@ -5,7 +5,7 @@
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { LIMITS } from '#lib/items.ts';
-	import { LANGUAGE_LABELS } from '#lib/languages.ts';
+	import { langAttrs, languageInline, pickVoice } from '#lib/languages.ts';
 	import {
 		GRADE_LABELS,
 		STRENGTH_LABELS,
@@ -40,7 +40,8 @@
 	let drawerEl: HTMLElement | undefined = $state();
 
 	const now = $derived(new Date(data.now));
-	const langName = $derived(LANGUAGE_LABELS[data.language].toLowerCase());
+	const langName = $derived(languageInline(data.language, data.uiLanguage));
+	const study = $derived(langAttrs(data.language));
 	const counts = $derived({
 		todas: data.items.length,
 		hoje: data.items.filter((i) => i.dueToday).length,
@@ -121,6 +122,8 @@
 	function speak(text: string) {
 		const u = new SpeechSynthesisUtterance(text);
 		u.lang = data.language;
+		const voice = pickVoice(speechSynthesis.getVoices(), data.language);
+		if (voice) u.voice = voice;
 		speechSynthesis.cancel();
 		speechSynthesis.speak(u);
 	}
@@ -200,7 +203,8 @@
 {/snippet}
 
 {#snippet sentence(text: string, term: string)}
-	{#each highlightParts(text, term) as part, i (i)}{#if part.hit}<mark>{part.text}</mark
+	{#each highlightParts(text, term, data.language) as part, i (i)}{#if part.hit}<mark
+				>{part.text}</mark
 			>{:else}{part.text}{/if}{/each}
 {/snippet}
 
@@ -285,7 +289,9 @@
 						data-sveltekit-replacestate
 						aria-current={item.id === data.selectedId ? 'true' : undefined}
 					>
-						<span class="w"><b>{item.lemma}</b><span>{item.sense || 'Sem tradução'}</span></span>
+						<span class="w"
+							><b {...study}>{item.lemma}</b><span>{item.sense || 'Sem tradução'}</span></span
+						>
 						<span class="ctx"
 							>{#if enc?.sentence}{@render sentence(
 									enc.sentence,
@@ -353,6 +359,7 @@
 				<label
 					>Palavra<input
 						name="lemma"
+						{...study}
 						value={selected.lemma}
 						maxlength={LIMITS.lemma}
 						required
@@ -360,6 +367,16 @@
 					/></label
 				>
 				{#if editErrors?.lemma}<p class="err" role="alert">{editErrors.lemma}</p>{/if}
+				<label
+					>Leitura <i class="opt">· opcional, como furigana ou pinyin</i><input
+						name="reading"
+						{...study}
+						value={selected.reading}
+						maxlength={LIMITS.reading}
+						aria-invalid={editErrors?.reading ? 'true' : undefined}
+					/></label
+				>
+				{#if editErrors?.reading}<p class="err" role="alert">{editErrors.reading}</p>{/if}
 				<label>Tradução<input name="sense" value={selected.sense} maxlength={LIMITS.sense} /></label
 				>
 				<label
@@ -376,7 +393,8 @@
 			</form>
 		{:else}
 			<div class="dr-body">
-				<h2 class="dr-word">{selected.lemma}</h2>
+				{#if selected.reading}<div class="dr-reading" {...study}>{selected.reading}</div>{/if}
+				<h2 class="dr-word" {...study}>{selected.lemma}</h2>
 				{#if selected.ipa || canSpeak}
 					<div class="dr-ipa">
 						{#if selected.ipa}<span>{selected.ipa}</span>{/if}
@@ -485,6 +503,16 @@
 {/if}
 
 <style>
+	.dr-reading {
+		color: var(--ink-3);
+		font-size: 14px;
+		margin-bottom: -2px;
+	}
+	.opt {
+		font-style: normal;
+		color: var(--ink-3);
+		font-weight: 400;
+	}
 	.tools {
 		display: flex;
 		align-items: center;

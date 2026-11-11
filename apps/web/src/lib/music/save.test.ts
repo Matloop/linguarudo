@@ -72,6 +72,8 @@ describe('musicEntries', () => {
 		expect(first).toEqual({
 			language: 'en',
 			lemma: 'Harbor',
+			lemma_key: 'harbor',
+			reading: '',
 			sense: 'porto',
 			note: '',
 			ipa: '',

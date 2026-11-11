@@ -36,5 +36,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	if (lines.length === 0) {
 		return json({ error: 'sem_letra' }, { status: 404, headers: NO_STORE });
 	}
-	return json({ lines }, { headers: NO_STORE });
+	// A duração da faixa serve para o palpite de sincronia (clipe com intro).
+	const trackDuration = found.status === 'ok' ? found.duration : null;
+	return json({ lines, duration: trackDuration }, { headers: NO_STORE });
 };

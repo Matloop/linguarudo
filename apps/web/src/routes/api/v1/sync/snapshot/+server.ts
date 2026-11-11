@@ -6,7 +6,7 @@ import {
 	syncRpcFailure,
 	syncToken
 } from '#lib/server/sync.ts';
-import { parseLanguage } from '#lib/languages.ts';
+import { parseUiLanguage, parseStudyLanguages, parseLanguage } from '#lib/languages.ts';
 import { dayStart, DEFAULT_NEW_PER_DAY, nextDayStart, REVIEW_TIME_ZONE } from '#lib/review.ts';
 import {
 	decodePageToken,
@@ -22,7 +22,12 @@ import type { RequestHandler } from './$types';
 
 type SnapshotPage = {
 	rateLimited?: number;
-	account?: { native_language: string; new_cards_per_day: number } | null;
+	account?: {
+		ui_language: string | null;
+		native_language: string | null;
+		study_languages: string[] | null;
+		new_cards_per_day: number;
+	} | null;
 	total?: number;
 	newDoneToday?: number;
 	items?: SnapshotItemRow[];
@@ -40,7 +45,8 @@ export const GET: RequestHandler = (event) =>
 		checkProtocol(q.get('protocol'));
 		const token = syncToken(event);
 		const language = parseLanguage(q.get('language'));
-		if (!language) throw new SyncError('bad_request', 'Mande language com um idioma da lista.');
+		if (!language)
+			throw new SyncError('bad_request', 'Mande language com uma tag BCP 47 (it, pt-BR, ...).');
 		const limit = parseLimit(q.get('limit'));
 		const now = new Date();
 
@@ -72,7 +78,10 @@ export const GET: RequestHandler = (event) =>
 				cursor,
 				serverNow: now,
 				total: res.total ?? items.length,
-				nativeLanguage: res.account?.native_language ?? 'pt',
+				// Sem padrões inventados (ADR 0004): o que a conta não tem vai como null/[].
+				uiLanguage: parseUiLanguage(res.account?.ui_language),
+				nativeLanguage: parseLanguage(res.account?.native_language),
+				studyLanguages: parseStudyLanguages(res.account?.study_languages ?? []) ?? [],
 				newCardsPerDay: res.account?.new_cards_per_day ?? DEFAULT_NEW_PER_DAY,
 				timeZone: REVIEW_TIME_ZONE,
 				dayStart: dayStart(now),

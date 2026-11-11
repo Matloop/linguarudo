@@ -12,6 +12,7 @@
 		"account": {
 			"id": "3f6c9a12-8d4e-4b7a-9c2f-1e0d5a6b7c80",
 			"email": "matheus@example.com",
+			"uiLanguage": "pt",
 			"nativeLanguage": "pt",
 			"studyLanguages": ["it", "en"]
 		}

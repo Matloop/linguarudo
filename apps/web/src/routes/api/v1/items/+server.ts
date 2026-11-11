@@ -12,7 +12,7 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async (event) => {
 	const token = requireToken(event);
 	const language = parseLanguage(event.url.searchParams.get('language'));
-	if (!language) error(400, 'Use ?language= com um código de idioma (en, it, ...).');
+	if (!language) error(400, 'Use ?language= com uma tag BCP 47 (en, it, pt-BR, ...).');
 
 	const { data, error: dbError } = await apiClient().rpc('api_items', {
 		p_token: token,
@@ -21,7 +21,7 @@ export const GET: RequestHandler = async (event) => {
 	if (dbError) rpcFailure(dbError);
 
 	const now = new Date();
-	const items = data.map((row) => apiItem(row, now));
+	const items = data.map((row) => apiItem(row, language, now));
 	const preferWords = items.filter((i) => i.prefer).map((i) => i.lemma);
 	return json({ language, items, preferWords });
 };

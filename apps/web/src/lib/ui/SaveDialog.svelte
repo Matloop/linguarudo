@@ -3,16 +3,18 @@
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { SubmitFunction } from '$app/forms';
-	import { LANGUAGE_LABELS, type Language } from '#lib/languages.ts';
+	import { langAttrs, languageLabel, type Language, type UiLanguage } from '#lib/languages.ts';
 	import { LIMITS } from '#lib/items.ts';
 	import Icon from './Icon.svelte';
 	import { toast, ui } from './app-state.svelte.ts';
 
 	let {
 		language,
+		uiLanguage,
 		ssrOpen = false
 	}: {
 		language: Language;
+		uiLanguage: UiLanguage;
 		/** Sem JS, /qualquer-tela?guardar já chega com o diálogo aberto. */
 		ssrOpen?: boolean;
 	} = $props();
@@ -94,7 +96,7 @@
 		<div class="mh">
 			<span class="lang-chip"
 				><span class="code">{language.toUpperCase()}</span><span id="guardar-titulo"
-					>Guardar em {LANGUAGE_LABELS[language]}</span
+					>Guardar em {languageLabel(language, uiLanguage)}</span
 				></span
 			>
 			<button
@@ -108,6 +110,7 @@
 			<input
 				class="f-word"
 				name="lemma"
+				{...langAttrs(language)}
 				bind:this={word}
 				placeholder="Palavra ou expressão"
 				aria-label="Palavra"

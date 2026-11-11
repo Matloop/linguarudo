@@ -5,7 +5,7 @@ const MAILPIT = 'http://127.0.0.1:54324';
 export const SUPABASE_URL = 'http://127.0.0.1:54321';
 
 export function uniqueEmail() {
-	return `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@linguarudo.test`;
+	return `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@linguetta.test`;
 }
 
 async function magicLinkFor(email: string): Promise<string> {
@@ -28,14 +28,38 @@ async function magicLinkFor(email: string): Promise<string> {
 	throw new Error(`nenhum e-mail para ${email}`);
 }
 
-export async function login(page: Page, email = uniqueEmail()) {
+/**
+ * Entra com uma conta nova. A conta nasce sem idioma de estudo (ADR 0004): o início pede
+ * um, e `languages` escolhe o primeiro pelo seletor do início e acrescenta os outros.
+ * O primeiro fica ativo. `[]` deixa a conta sem idioma.
+ */
+export async function login(page: Page, email = uniqueEmail(), languages = ['en', 'it']) {
 	await page.goto('/entrar');
 	await page.getByLabel('E-mail').fill(email);
 	await page.getByRole('button', { name: 'Mandar link' }).click();
 	await expect(page.getByRole('status')).toContainText(`Link enviado para ${email}`);
 	await page.goto(await magicLinkFor(email));
 	await expect(page).toHaveURL(/\/inicio$/);
+	if (languages.length > 0) await chooseLanguages(page, languages);
 	await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
+}
+
+/** Escolhe o primeiro idioma no início e grava os demais pelo perfil, sem mudar o ativo. */
+export async function chooseLanguages(page: Page, [first, ...rest]: string[]) {
+	const picker = page.getByTestId('escolher-idioma');
+	await picker.getByRole('searchbox').fill(first);
+	await picker.locator(`button[value="${first}"]`).first().click();
+	await expect(picker).toHaveCount(0);
+	const origin = new URL(page.url()).origin;
+	const post = async (action: string, form: Record<string, string>) => {
+		const res = await page.request.post(`/perfil?/${action}`, { form, headers: { origin } });
+		expect(res.ok(), `${action} ${JSON.stringify(form)}`).toBe(true);
+	};
+	for (const tag of rest) await post('adicionarIdioma', { idioma: tag, voltar: '/inicio' });
+	if (rest.length > 0) {
+		await post('idioma', { idioma: first, voltar: '/inicio' });
+		await page.reload();
+	}
 }
 
 /** Abre o diálogo Guardar pelo atalho N e guarda a palavra no idioma ativo. */

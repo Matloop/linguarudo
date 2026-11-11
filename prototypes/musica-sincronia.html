@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Linguetta · Sincronia da letra (protótipo)</title>
+<style>
+	:root {
+		--bg: #0b1a12;
+		--panel: #11261a;
+		--panel-2: #1d3b2a;
+		--ink: #f7f1e6;
+		--ink-2: #c9d1c6;
+		--ink-3: #8aa392;
+		--salvia: #8aa392;
+		--salvia-cl: #dfe6dc;
+		--terra: #a8613f;
+		--terra-cl: #f1e2d7;
+		--ouro: #b88a4a;
+		--line: #ffffff14;
+		--line-2: #ffffff26;
+		--r: 12px;
+		--f-head: 'Manrope', 'Inter', system-ui, sans-serif;
+		--f-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+		--mono: ui-monospace, 'SF Mono', Menlo, monospace;
+		--ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+	}
+	* { box-sizing: border-box; }
+	html, body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 var(--f-body); }
+	button { font: inherit; color: inherit; cursor: pointer; }
+	kbd { font: 600 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line-2); border-radius: 4px; color: var(--ink-2); }
+
+	/* barra do protótipo (não faz parte do app) */
+	.proto { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 18px; background: #050d09; border-bottom: 1px dashed #ffffff22; font-size: 12.5px; color: var(--ink-3); }
+	.proto b { color: var(--ouro); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: 11px; }
+	.proto select, .proto button { background: #ffffff0d; border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 8px; color: var(--ink-2); font-size: 12.5px; }
+	.proto label { display: flex; gap: 6px; align-items: center; }
+
+	header.top { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--line); }
+	.back { background: none; border: 0; color: var(--ink-3); font-size: 20px; padding: 0 4px; }
+	.titulo b { font: 700 16px var(--f-head); display: block; }
+	.titulo span { color: var(--ink-3); font-size: 13px; }
+	.esp { flex: 1; }
+	.pontos { font: 800 18px var(--mono); }
+
+	.palco { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; padding: 18px 22px; max-width: 1280px; margin: 0 auto; }
+	@media (max-width: 900px) { .palco { grid-template-columns: 1fr; } }
+
+	/* vídeo simulado */
+	.video { position: relative; aspect-ratio: 16/9; border-radius: var(--r); overflow: hidden; background: #000; }
+	.cena { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity .5s; }
+	.cena.intro { background: repeating-linear-gradient(135deg, #1b1712 0 14px, #221d16 14px 28px); }
+	.cena.intro .rot { color: #d9c7a6; }
+	.cena.musica { background: radial-gradient(circle at 30% 40%, #2a4a37, #0d1d14 70%); }
+	.cena.outro { background: repeating-linear-gradient(45deg, #15131a 0 14px, #1c1922 14px 28px); }
+	.cena .rot { font: 600 14px var(--f-head); letter-spacing: .06em; text-transform: uppercase; color: var(--salvia-cl); opacity: .85; text-align: center; }
+	.cena .rot small { display: block; font: 400 12px var(--f-body); letter-spacing: 0; text-transform: none; opacity: .7; margin-top: 4px; }
+	.queimada { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font: 600 17px var(--f-body); color: #fff; text-shadow: 0 2px 6px #000; padding: 0 20px; min-height: 26px; }
+	.queimada small { display: block; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; opacity: .55; font-weight: 500; }
+	.vtempo { position: absolute; top: 10px; right: 12px; font: 600 12px var(--mono); background: #000a; padding: 3px 7px; border-radius: 5px; }
+	.modo-tag { position: absolute; top: 10px; left: 12px; font: 700 11px var(--f-body); letter-spacing: .08em; text-transform: uppercase; background: var(--ouro); color: #1b140b; padding: 4px 8px; border-radius: 5px; display: none; }
+	.ajustando .modo-tag { display: block; }
+
+	.barra { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+	.ib { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--panel); display: grid; place-items: center; }
+	.ib svg { width: 18px; height: 18px; fill: currentColor; }
+	.tempo { font: 600 13px var(--mono); color: var(--ink-2); }
+	.prog { flex: 1; height: 4px; background: #ffffff14; border-radius: 4px; position: relative; overflow: hidden; }
+	.prog i { position: absolute; inset: 0 auto 0 0; background: var(--salvia); width: 0; }
+	.sync { display: flex; align-items: center; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); height: 40px; overflow: hidden; }
+	.sync button { background: none; border: 0; height: 100%; padding: 0 11px; color: var(--ink-2); }
+	.sync button:hover { background: #ffffff0d; }
+	.sync .abre { display: flex; align-items: center; gap: 7px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); font-size: 13px; }
+	.sync .abre b { font: 700 13px var(--mono); color: var(--ink); }
+
+	/* sugestão */
+	.sug { margin-top: 12px; display: none; gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--r); background: #b88a4a1a; border: 1px solid #b88a4a55; }
+	.sug.on { display: flex; flex-wrap: wrap; }
+	.sug p { margin: 0; flex: 1 1 260px; font-size: 14px; }
+	.sug p small { display: block; color: var(--ink-3); font-size: 12.5px; }
+	.btn { border-radius: 9px; border: 1px solid var(--line-2); background: var(--panel); padding: 8px 13px; font-size: 13.5px; font-weight: 600; }
+	.btn:hover { background: var(--panel-2); }
+	.btn.pri { background: var(--salvia-cl); color: #11261a; border-color: transparent; }
+	.btn.pri:hover { background: #fff; }
+	.btn.fant { background: none; border-color: transparent; color: var(--ink-3); }
+	.btn.fant:hover { color: var(--ink); background: #ffffff0a; }
+
+	/* letra do jogo */
+	.lado { background: var(--panel); border-radius: var(--r); border: 1px solid var(--line); min-height: 520px; display: flex; flex-direction: column; overflow: hidden; }
+	.letra { flex: 1; overflow: hidden; position: relative; padding: 18px 20px; }
+	.rolo { transition: transform .45s var(--ease); }
+	.ln { padding: 9px 0; opacity: .38; transition: opacity .3s; }
+	.ln .it { font: 600 17px var(--f-head); }
+	.ln .pt { font-size: 13px; color: var(--ink-3); }
+	.ln.on { opacity: 1; }
+	.ln.pass { opacity: .22; }
+	.gap { display: inline-block; min-width: 70px; border-bottom: 2px solid var(--terra); color: transparent; }
+	.lado .rodape { padding: 12px 20px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); display: flex; gap: 12px; }
+
+	/* painel de ajuste */
+	.ajuste { display: none; flex-direction: column; flex: 1; min-height: 0; }
+	.ajustando .ajuste { display: flex; }
+	.ajustando .jogo-lado { display: none; }
+	.aj-cab { display: flex; align-items: center; padding: 14px 18px 4px; }
+	.aj-cab h2 { margin: 0; font: 700 16px var(--f-head); flex: 1; }
+	.aj-sub { padding: 0 18px; color: var(--ink-3); font-size: 13px; margin: 0; }
+	.leitura { padding: 14px 18px 6px; display: flex; align-items: baseline; gap: 10px; }
+	.leitura b { font: 800 34px var(--mono); letter-spacing: -.02em; }
+	.leitura span { color: var(--ink-3); font-size: 13px; }
+	.fino { display: flex; gap: 6px; padding: 0 18px; }
+	.fino button { flex: 1; height: 36px; border-radius: 8px; border: 1px solid var(--line-2); background: #ffffff08; font: 600 13px var(--mono); }
+	.fino button:hover { background: #ffffff12; }
+
+	.faixa { margin: 14px 18px 0; }
+	.faixa .tr { position: relative; height: 30px; border-radius: 6px; background: #ffffff0a; overflow: hidden; }
+	.faixa .bloco { position: absolute; top: 6px; bottom: 6px; background: #8aa39233; border-radius: 3px; transition: left .25s var(--ease); }
+	.faixa .mk { position: absolute; top: 4px; bottom: 4px; width: 2px; background: var(--salvia); border-radius: 1px; transition: left .25s var(--ease); }
+	.faixa .mk.alvo { background: var(--ouro); width: 3px; }
+	.faixa .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; }
+	.faixa .leg { display: flex; justify-content: space-between; font: 500 11px var(--mono); color: var(--ink-3); margin-top: 4px; }
+
+	.alvo-card { margin: 14px 18px 0; padding: 14px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line-2); }
+	.alvo-card small { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ouro); font-weight: 700; }
+	.alvo-card .txt { font: 600 17px var(--f-head); margin: 4px 0 12px; }
+	.marcar { width: 100%; height: 54px; border-radius: 10px; border: 0; background: var(--ouro); color: #1b140b; font: 800 16px var(--f-head); display: flex; align-items: center; justify-content: center; gap: 10px; transition: transform .08s; }
+	.marcar:active, .marcar.pulse { transform: scale(.97); }
+	.marcar kbd { border-color: #1b140b55; color: #1b140b; }
+	.fb { min-height: 20px; font-size: 12.5px; color: var(--salvia); margin-top: 8px; }
+
+	.mini { flex: 1; min-height: 120px; overflow-y: auto; margin: 12px 18px 0; border-top: 1px solid var(--line); padding-top: 6px; }
+	.mini .m { display: flex; gap: 10px; padding: 6px 8px; border-radius: 7px; cursor: pointer; font-size: 13.5px; color: var(--ink-3); }
+	.mini .m:hover { background: #ffffff08; }
+	.mini .m .t { font: 500 11.5px var(--mono); width: 52px; flex: none; padding-top: 2px; }
+	.mini .m.on { color: var(--ink); background: #8aa3921f; }
+	.mini .m.alvo { box-shadow: inset 3px 0 0 var(--ouro); color: var(--ink); }
+
+	.nav { display: flex; gap: 6px; padding: 10px 18px 0; }
+	.aj-pe { display: flex; gap: 8px; padding: 12px 18px 14px; border-top: 1px solid var(--line); margin-top: 12px; align-items: center; }
+	.teclas { padding: 6px 18px 0; font-size: 11.5px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+
+	.toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); background: var(--salvia-cl); color: #11261a; padding: 10px 16px; border-radius: 10px; font-weight: 600; font-size: 14px; opacity: 0; transition: all .3s var(--ease); pointer-events: none; }
+	.toast.on { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+
+<div class="proto">
+	<b>Protótipo</b>
+	<label>Vídeo:
+		<select id="cenario">
+			<option value="intro">Clipe com intro de 12,4 s</option>
+			<option value="fim">Clipe com cena longa no fim</option>
+			<option value="aovivo">Versão ao vivo (+6,5 s)</option>
+			<option value="audio">Áudio oficial (quase igual)</option>
+		</select>
+	</label>
+	<button id="esquecer">Esquecer ajuste salvo</button>
+	<label><input type="checkbox" id="bip" checked /> bip no começo real de cada linha</label>
+	<span>As legendas brancas dentro do vídeo mostram o que está sendo cantado de verdade. Os versos são originais.</span>
+</div>
+
+<div id="app">
+	<header class="top">
+		<button class="back" aria-label="Voltar">←</button>
+		<div class="titulo"><b>Porta aperta</b><span>Banda Inventada · italiano</span></div>
+		<span class="esp"></span>
+		<span class="pontos">1.240</span>
+	</header>
+
+	<div class="palco">
+		<div>
+			<div class="video" id="video">
+				<div class="cena intro" id="cIntro"><div class="rot">Cena do clipe<small>diálogo, sem música</small></div></div>
+				<div class="cena musica" id="cMus" style="opacity:0"><div class="rot">♪ música</div></div>
+				<div class="cena outro" id="cOutro" style="opacity:0"><div class="rot">Cena final do clipe<small>sem música</small></div></div>
+				<div class="queimada" id="queimada"></div>
+				<span class="vtempo" id="vtempo">0:00</span>
+				<span class="modo-tag">Ajustando sincronia</span>
+			</div>
+
+			<div class="sug" id="sug">
+				<p id="sugTxt"></p>
+				<button class="btn pri" id="sugAplicar"></button>
+				<button class="btn" id="sugSinc">Sincronizar</button>
+				<button class="btn fant" id="sugIgnorar">Ignorar</button>
+			</div>
+
+			<div class="barra">
+				<button class="ib" id="play" aria-label="Tocar"></button>
+				<span class="tempo" id="tempo">0:00 / 0:00</span>
+				<div class="prog"><i id="progI"></i></div>
+				<div class="sync" title="Sincronia da letra">
+					<button id="menos" aria-label="Letra mais cedo">−</button>
+					<button class="abre" id="abrir" title="Ajustar sincronia (S)">Sincronia <b id="offChip">+0,0 s</b></button>
+					<button id="mais" aria-label="Letra mais tarde">+</button>
+				</div>
+			</div>
+		</div>
+
+		<aside class="lado">
+			<div class="jogo-lado" style="display:flex;flex-direction:column;flex:1;min-height:0">
+				<div class="letra"><div class="rolo" id="rolo"></div></div>
+				<div class="rodape"><span><kbd>Espaço</kbd> pausar</span><span><kbd>S</kbd> sincronia</span></div>
+			</div>
+
+			<div class="ajuste">
+				<div class="aj-cab">
+					<h2>Sincronizar letra</h2>
+					<button class="btn fant" id="xCancel" title="Cancelar (Esc)">✕</button>
+				</div>
+				<p class="aj-sub">O jogo está pausado. Ouça o vídeo e toque quando a linha começar a ser cantada.</p>
+
+				<div class="alvo-card">
+					<small>Próxima linha</small>
+					<div class="txt" id="alvoTxt"></div>
+					<button class="marcar" id="marcar">Começou agora <kbd>Espaço</kbd></button>
+					<div class="fb" id="fb"></div>
+				</div>
+
+				<div class="leitura"><b id="offBig">+0,0 s</b><span id="offExpl"></span></div>
+				<div class="fino">
+					<button data-d="-1">−1 s</button>
+					<button data-d="-0.1">−0,1</button>
+					<button data-d="0.1">+0,1</button>
+					<button data-d="1">+1 s</button>
+				</div>
+
+				<div class="faixa">
+					<div class="tr" id="faixa"></div>
+					<div class="leg"><span>0:00</span><span>a letra sobre o vídeo</span><span id="fimLeg"></span></div>
+				</div>
+
+				<div class="nav">
+					<button class="btn" id="doComeco">⟲ Do começo</button>
+					<button class="btn" id="volta5">−5 s</button>
+					<button class="btn" id="ajPlay">Pausar</button>
+				</div>
+
+				<div class="mini" id="mini"></div>
+				<div class="teclas">
+					<span><kbd>Espaço</kbd> marcar</span><span><kbd>←</kbd><kbd>→</kbd> 0,1 s</span><span><kbd>Shift</kbd> + seta 1 s</span>
+					<span><kbd>↑</kbd><kbd>↓</kbd> trocar linha</span><span><kbd>P</kbd> pausar</span><span><kbd>Enter</kbd> concluir</span><span><kbd>Esc</kbd> cancelar</span>
+				</div>
+
+				<div class="aj-pe">
+					<button class="btn fant" id="zerar">Zerar</button>
+					<span class="esp"></span>
+					<button class="btn" id="cancelar">Cancelar</button>
+					<button class="btn pri" id="concluir">Concluir</button>
+				</div>
+			</div>
+		</aside>
+	</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// Versos originais (nunca letra real). Tempos como numa faixa de álbum que começa em 0.
+const LRC = [
+	[8.0, 'Ho lasciato la luce accesa in cucina', 'Deixei a luz acesa na cozinha', 'luce'],
+	[12.2, 'e il caffè si raffredda sul tavolo', 'e o café esfria na mesa', 'tavolo'],
+	[16.5, 'la città si sveglia piano sotto la pioggia', 'a cidade acorda devagar sob a chuva', 'pioggia'],
+	[21.0, 'ma io resto qui ad aspettare il tuo passo', 'mas eu fico aqui esperando teu passo', 'passo'],
+	[25.4, 'dimmi solo se domani torni', 'só me diz se amanhã você volta', 'domani'],
+	[29.2, 'dimmi solo se domani torni', 'só me diz se amanhã você volta', null],
+	[33.6, 'le strade sanno il tuo nome', 'as ruas sabem teu nome', 'strade'],
+	[37.4, 'e lo ripetono al vento', 'e repetem ao vento', 'vento'],
+	[41.5, 'ho imparato a contare le ore', 'aprendi a contar as horas', 'ore'],
+	[45.6, 'con le dita fredde sul vetro', 'com os dedos frios no vidro', 'vetro'],
+	[50.0, 'dimmi solo se domani torni', 'só me diz se amanhã você volta', null],
+	[54.2, 'e io lascio la porta aperta', 'e eu deixo a porta aberta', 'porta']
+].map(([start, it, pt, gap]) => ({ start, it, pt, gap }));
+const TRACK = 60; // duração da faixa segundo a LRCLIB
+
+const CENARIOS = {
+	intro: { intro: 12.4, outro: 0.6 },
+	fim: { intro: 2.0, outro: 15.0 },
+	aovivo: { intro: 6.5, outro: 9.0 },
+	audio: { intro: 0.3, outro: 0 }
+};
+// O que estaria salvo em works.refs, por vídeo: { lyrics_offset, offset_hint_dismissed }
+const salvo = {};
+
+const $ = (id) => document.getElementById(id);
+const fmtS = (s) => (s >= 0 ? '+' : '−') + Math.abs(s).toFixed(1).replace('.', ',') + ' s';
+const fmtT = (t) => { t = Math.max(0, t); return Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0'); };
+const clamp = (v) => Math.max(-300, Math.min(300, Math.round(v * 10) / 10));
+const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+
+let cen, cenKey, DUR, t = 0, playing = false, last = 0, offset = 0;
+let ajustando = false, antes = null, alvo = 0, ultimoReal = -1;
+
+function carregar(key) {
+	cenKey = key; cen = CENARIOS[key];
+	DUR = cen.intro + TRACK + cen.outro;
+	const s = salvo[key] || {};
+	offset = s.lyrics_offset ?? 0;
+	t = 0; playing = false; ultimoReal = -1;
+	if (ajustando) fecharAjuste(false, true);
+	renderLetra(); renderSug(); tudo();
+}
+
+// ---------- verdade do vídeo (só o protótipo sabe) ----------
+const realStart = (i) => LRC[i].start + cen.intro;
+function linhaReal(tt) {
+	let k = -1;
+	for (let i = 0; i < LRC.length; i++) if (tt >= realStart(i)) k = i;
+	if (k >= 0) { const fim = k + 1 < LRC.length ? realStart(k + 1) : realStart(k) + 4.5; if (tt > fim) return -1; }
+	return k;
+}
+// ---------- letra pelo deslocamento ----------
+function linhaPorOffset(tt) {
+	const tl = tt - offset; let k = -1;
+	for (let i = 0; i < LRC.length; i++) if (tl >= LRC[i].start) k = i;
+	return k;
+}
+
+// ---------- bip ----------
+let ac;
+function bip() {
+	if (!$('bip').checked) return;
+	ac ??= new AudioContext();
+	const o = ac.createOscillator(), g = ac.createGain();
+	o.frequency.value = 660; g.gain.setValueAtTime(0.08, ac.currentTime);
+	g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.18);
+	o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.2);
+}
+
+// ---------- render ----------
+function renderLetra() {
+	$('rolo').innerHTML = LRC.map((l, i) => {
+		const it = l.gap ? l.it.replace(new RegExp('\\b' + l.gap + '\\b'), '<span class="gap">' + l.gap + '</span>') : l.it;
+		return `<div class="ln" data-i="${i}"><div class="it">${it}</div><div class="pt">${l.pt}</div></div>`;
+	}).join('');
+}
+function renderSug() {
+	const s = salvo[cenKey] || {};
+	const delta = Math.round((DUR - TRACK) * 10) / 10;
+	const mostra = s.lyrics_offset === undefined && !s.offset_hint_dismissed && Math.abs(delta) > 2 && !ajustando;
+	$('sug').classList.toggle('on', mostra);
+	$('sugTxt').innerHTML = `Este vídeo tem ${delta.toFixed(1).replace('.', ',')} s a mais que a música. Pode ser uma intro de clipe.<small>A letra pode aparecer adiantada. Aplique o palpite ou sincronize você mesmo.</small>`;
+	$('sugAplicar').textContent = 'Aplicar ' + fmtS(delta);
+	$('sugAplicar').onclick = () => { offset = clamp(delta); salvar('Sincronia salva: ' + fmtS(offset)); renderSug(); tudo(); };
+}
+function tudo() {
+	// vídeo
+	const naIntro = t < cen.intro, noFim = t > cen.intro + TRACK;
+	$('cIntro').style.opacity = naIntro ? 1 : 0;
+	$('cOutro').style.opacity = noFim ? 1 : 0;
+	$('cMus').style.opacity = !naIntro && !noFim ? 1 : 0;
+	const r = linhaReal(t);
+	$('queimada').innerHTML = r >= 0 ? `<small>cantando agora</small>${LRC[r].it}` : '';
+	if (playing && r !== ultimoReal && r >= 0) bip();
+	ultimoReal = r;
+	$('vtempo').textContent = fmtT(t);
+	$('tempo').textContent = fmtT(t) + ' / ' + fmtT(DUR);
+	$('progI').style.width = (t / DUR) * 100 + '%';
+	$('play').innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+	$('offChip').textContent = fmtS(offset);
+
+	// letra do jogo
+	const k = linhaPorOffset(t);
+	const lns = $('rolo').children;
+	for (let i = 0; i < lns.length; i++) lns[i].className = 'ln' + (i === k ? ' on' : i < k ? ' pass' : '');
+	const el = lns[Math.max(0, k)];
+	if (el) $('rolo').style.transform = `translateY(${Math.round(200 - el.offsetTop)}px)`;
+
+	if (ajustando) tudoAjuste(k);
+}
+function tudoAjuste(k) {
+	$('offBig').textContent = fmtS(offset);
+	$('offExpl').textContent = Math.abs(offset) < 0.05 ? 'letra no tempo da faixa original'
+		: offset > 0 ? 'a letra entra mais tarde no vídeo' : 'a letra entra mais cedo no vídeo';
+	$('alvoTxt').textContent = LRC[alvo]?.it ?? 'Fim da letra. Toque numa linha abaixo para marcar outra.';
+	$('marcar').disabled = !LRC[alvo];
+	$('ajPlay').textContent = playing ? 'Pausar' : 'Tocar';
+	// faixa
+	const pos = (s) => Math.max(-5, Math.min(105, (s / DUR) * 100)) + '%';
+	const a = LRC[0].start + offset, b = LRC.at(-1).start + 4.5 + offset;
+	$('faixa').innerHTML = `<div class="bloco" style="left:${pos(a)};width:${((b - a) / DUR) * 100}%"></div>` +
+		LRC.map((l, i) => `<div class="mk${i === alvo ? ' alvo' : ''}" style="left:${pos(l.start + offset)}"></div>`).join('') +
+		`<div class="ph" style="left:${pos(t)}"></div>`;
+	$('fimLeg').textContent = fmtT(DUR);
+	// mini
+	const ms = $('mini').children;
+	for (let i = 0; i < ms.length; i++) {
+		ms[i].className = 'm' + (i === k ? ' on' : '') + (i === alvo ? ' alvo' : '');
+		ms[i].firstChild.textContent = fmtT(LRC[i].start + offset);
+	}
+}
+
+// ---------- relógio ----------
+function loop(now) {
+	if (playing) {
+		t = Math.min(DUR, t + (now - last) / 1000);
+		if (t >= DUR) playing = false;
+		tudo();
+	}
+	last = now;
+	requestAnimationFrame(loop);
+}
+requestAnimationFrame((n) => { last = n; loop(n); });
+
+function setPlaying(v) { playing = v; ultimoReal = linhaReal(t); tudo(); }
+
+// ---------- salvar (simula works.refs) ----------
+let toastT;
+function toast(msg) { $('toast').textContent = msg; $('toast').classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => $('toast').classList.remove('on'), 1800); }
+function salvar(msg) { salvo[cenKey] = { ...(salvo[cenKey] || {}), lyrics_offset: offset }; if (msg) toast(msg); }
+let deb;
+function salvarDepois() { clearTimeout(deb); deb = setTimeout(() => salvar('Sincronia salva: ' + fmtS(offset)), 900); }
+
+// ---------- modo de ajuste ----------
+function abrirAjuste() {
+	if (ajustando) return;
+	antes = { t, offset, playing };
+	ajustando = true;
+	$('app').classList.add('ajustando');
+	$('sug').classList.remove('on');
+	$('mini').innerHTML = LRC.map((l, i) => `<div class="m" data-i="${i}"><span class="t"></span><span>${l.it}</span></div>`).join('');
+	$('fb').textContent = '';
+	const nunca = (salvo[cenKey] || {}).lyrics_offset === undefined;
+	if (nunca) { t = 0; alvo = 0; }
+	else { t = Math.max(0, t - 5); alvo = Math.max(0, LRC.findIndex((l) => l.start + offset > t)); if (alvo < 0) alvo = 0; }
+	setPlaying(true);
+}
+function fecharAjuste(concluir, silencioso) {
+	if (!ajustando) return;
+	if (!concluir) offset = antes.offset;
+	else salvar();
+	ajustando = false;
+	$('app').classList.remove('ajustando');
+	// volta ao começo da linha em que o jogo estava, já com o deslocamento final
+	const k = (() => { const tl = antes.t - antes.offset; let k = -1; LRC.forEach((l, i) => { if (tl >= l.start) k = i; }); return k; })();
+	t = k >= 0 ? Math.max(0, LRC[k].start + offset - 0.4) : antes.t;
+	setPlaying(false);
+	renderSug();
+	if (!silencioso) toast(concluir ? 'Sincronia salva: ' + fmtS(offset) + '. Toque play para continuar.' : 'Ajuste cancelado');
+}
+function marcar() {
+	if (!ajustando || !LRC[alvo]) return;
+	offset = clamp(t - LRC[alvo].start);
+	$('fb').textContent = `Pela linha ${alvo + 1}: ${fmtS(offset)}. Confira na próxima e toque de novo se precisar.`;
+	$('marcar').classList.add('pulse'); setTimeout(() => $('marcar').classList.remove('pulse'), 120);
+	alvo = Math.min(alvo + 1, LRC.length);
+	tudo();
+}
+function fino(d) { offset = clamp(offset + d); tudo(); if (!ajustando) salvarDepois(); }
+
+// ---------- eventos ----------
+$('cenario').onchange = (e) => carregar(e.target.value);
+$('esquecer').onclick = () => { delete salvo[cenKey]; carregar(cenKey); toast('Ajuste apagado'); };
+$('play').onclick = () => setPlaying(!playing);
+$('abrir').onclick = abrirAjuste;
+$('menos').onclick = () => fino(-0.1);
+$('mais').onclick = () => fino(0.1);
+$('sugSinc').onclick = abrirAjuste;
+$('sugIgnorar').onclick = () => { salvo[cenKey] = { ...(salvo[cenKey] || {}), offset_hint_dismissed: true }; renderSug(); };
+$('marcar').onclick = marcar;
+document.querySelectorAll('.fino button').forEach((b) => (b.onclick = () => fino(+b.dataset.d)));
+$('doComeco').onclick = () => { t = 0; alvo = 0; setPlaying(true); };
+$('volta5').onclick = () => { t = Math.max(0, t - 5); tudo(); };
+$('ajPlay').onclick = () => setPlaying(!playing);
+$('mini').onclick = (e) => { const m = e.target.closest('.m'); if (m) { alvo = +m.dataset.i; tudo(); } };
+$('zerar').onclick = () => { offset = 0; $('fb').textContent = ''; tudo(); };
+$('cancelar').onclick = () => fecharAjuste(false);
+$('xCancel').onclick = () => fecharAjuste(false);
+$('concluir').onclick = () => fecharAjuste(true);
+
+document.addEventListener('keydown', (e) => {
+	if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+	const passo = e.shiftKey ? 1 : 0.1;
+	if (ajustando) {
+		if (e.code === 'Space') { e.preventDefault(); marcar(); }
+		else if (e.key === 'p' || e.key === 'P') setPlaying(!playing);
+		else if (e.key === 'ArrowLeft') { e.preventDefault(); fino(-passo); }
+		else if (e.key === 'ArrowRight') { e.preventDefault(); fino(passo); }
+		else if (e.key === 'ArrowUp') { e.preventDefault(); alvo = Math.max(0, alvo - 1); tudo(); }
+		else if (e.key === 'ArrowDown') { e.preventDefault(); alvo = Math.min(LRC.length - 1, alvo + 1); tudo(); }
+		else if (e.key === 'Enter') { e.preventDefault(); fecharAjuste(true); }
+		else if (e.key === 'Escape') fecharAjuste(false);
+	} else {
+		if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+		else if (e.key === 's' || e.key === 'S') abrirAjuste();
+	}
+});
+
+carregar('intro');
+</script>
+</body>
+</html>

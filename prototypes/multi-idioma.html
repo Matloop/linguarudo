@@ -1,0 +1,228 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+  .wrap{display:flex;flex-direction:column;gap:28px}
+  h2{margin:0 0 4px;font-size:17px}
+  .sub{margin:0 0 12px;color:var(--muted-foreground);font-size:13px;line-height:1.5}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .col > .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:6px}
+  .before .lbl{color:var(--destructive)} .after .lbl{color:var(--success)}
+  .note{font-size:12px;line-height:1.45;color:var(--muted-foreground);margin-top:8px}
+  .note b{color:var(--foreground);font-weight:600}
+  code{font-family:var(--font-mono);font-size:11.5px}
+  pre{margin:0;font-family:var(--font-mono);font-size:11.5px;line-height:1.5;background:var(--code-background);border:1px solid var(--border);border-radius:var(--radius);padding:12px;white-space:pre-wrap}
+  .del{color:var(--destructive)} .add{color:var(--success)}
+
+  /* app mock */
+  .app{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;font-size:13px}
+  .app .row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+  .chip{display:inline-block;border:1px solid var(--border);border-radius:99px;padding:2px 9px;margin:2px;font-size:12px}
+  .search{border:1px solid var(--ring);border-radius:8px;padding:6px 9px;margin:6px 0;color:var(--muted-foreground)}
+  .opt{padding:4px 2px;font-size:12.5px}
+  .opt small{color:var(--muted-foreground)}
+  .card{text-align:center;padding:18px 8px}
+  .card .reading{font-size:13px;color:var(--muted-foreground)}
+  .card .lemma{font-size:30px;font-weight:600;margin:2px 0}
+  .card .sense{font-size:13px;color:var(--muted-foreground)}
+  .err{color:var(--destructive);font-size:12px}
+
+  /* stremio mock */
+  .video{position:relative;border-radius:var(--radius);height:190px;overflow:hidden;
+    background:linear-gradient(160deg,#2b3542,#11161c 70%)}
+  .subs{position:absolute;left:0;right:0;bottom:16px;text-align:center;font-size:19px;color:#fff;text-shadow:0 1px 3px #000;padding:0 10px}
+  .w{padding:0 1px;border-radius:3px}
+  .w.hl{background:rgba(255,214,90,.35);outline:1px solid rgba(255,214,90,.8)}
+  .w.blob{background:rgba(255,80,80,.25);outline:1px dashed rgba(255,120,120,.9)}
+  .pop{position:absolute;left:50%;transform:translateX(-50%);bottom:58px;background:#f6f1e7;color:#1d2a20;border-radius:10px;padding:9px 12px;font-size:12px;width:210px;box-shadow:0 6px 20px rgba(0,0,0,.4);text-align:left}
+  .pop .t{font-size:16px;font-weight:600}
+  .pop .r{color:#5b6b5f;font-size:11.5px}
+  .pop .btn{margin-top:6px;display:inline-block;background:#2f5d3a;color:#fff;border-radius:6px;padding:2px 8px;font-size:11px}
+  .pop.bad{background:#3a1f1f;color:#ffd6d6}
+  .tagv{position:absolute;top:8px;left:10px;font-size:10.5px;color:#cfd8e3;opacity:.8;font-family:var(--font-mono)}
+
+  /* e-ink mock */
+  .eink{background:#e8e6df;color:#1a1a1a;border-radius:14px;border:10px solid #2a2a2a;padding:12px 14px;height:250px;font-family:Georgia,serif;font-size:14px;line-height:1.7;position:relative;overflow:hidden}
+  .eink .hdr{font-family:var(--font-sans);font-size:10px;color:#555;display:flex;justify-content:space-between;border-bottom:1px solid #999;padding-bottom:3px;margin-bottom:6px}
+  .eink .sel{background:#1a1a1a;color:#e8e6df;padding:0 2px}
+  .eink .tofu{font-family:var(--font-mono);font-size:11px;letter-spacing:1px}
+  .eink .sheet{position:absolute;left:0;right:0;bottom:0;background:#f4f2ec;border-top:2px solid #1a1a1a;padding:8px 12px;font-family:var(--font-sans);font-size:12px}
+  .eink .sheet b{font-size:16px}
+  .eink .fc{text-align:center;margin-top:22px}
+  .eink .fc .big{font-size:40px}
+  .eink .fc .rd{font-size:13px;color:#444}
+  .eink .btns{display:flex;justify-content:space-around;margin-top:20px;font-family:var(--font-sans);font-size:11px}
+  .eink .btns span{border:1.5px solid #1a1a1a;border-radius:5px;padding:3px 7px}
+
+  .open{background:var(--warning-surface);border:1px solid var(--warning);border-radius:var(--radius);padding:12px 14px;font-size:13px;line-height:1.5}
+  .open ol{margin:6px 0 0;padding-left:18px}
+  .open li{margin:3px 0}
+</style></head><body>
+<div class="wrap">
+
+<!-- 1 PERFIL -->
+<section>
+  <h2>1 · App web: Perfil</h2>
+  <p class="sub">Hoje são 11 idiomas fixos, a nativa vem presa em PT e a interface só existe em PT. Depois, cada um dos três eixos tem a sua configuração.</p>
+  <div class="pair">
+    <div class="col before"><div class="lbl">Antes</div>
+      <div class="app">
+        <div class="row"><span>Estudo</span><span><span class="chip">Inglês</span><span class="chip">Italiano</span></span></div>
+        <div style="padding-top:8px;font-size:12px;color:var(--muted-foreground)">+ Adicionar: Espanhol · Francês · Alemão · Japonês · Coreano · Chinês · Holandês · Russo · Português</div>
+        <div class="note">Não aparece nada sobre a língua nativa nem sobre a interface. Para quem estuda grego ou árabe, o app não serve.</div>
+      </div>
+    </div>
+    <div class="col after"><div class="lbl">Depois</div>
+      <div class="app">
+        <div class="row"><span>Interface</span><span class="chip">Português ▾</span></div>
+        <div class="row"><span>Língua nativa</span><span class="chip">Português ▾</span></div>
+        <div class="row" style="border:0"><span>Estudo</span><span><span class="chip">日本語</span><span class="chip">Deutsch</span><span class="chip">+</span></span></div>
+        <div class="search">gre|</div>
+        <div class="opt">Grego <small>· Ελληνικά · el</small></div>
+        <div class="opt">Grego antigo <small>· grc</small></div>
+        <div class="opt"><small>Não achou? Digite um código (ex.: <code>tet</code>, <code>la</code>)</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 REVISAR -->
+<section>
+  <h2>2 · App web: Revisar</h2>
+  <p class="sub">O lema deixa de ser forçado para minúscula e ganha um campo de leitura.</p>
+  <div class="pair">
+    <div class="col before"><div class="lbl">Antes</div>
+      <div class="app card">
+        <div class="lemma">haus</div>
+        <div class="sense">casa</div>
+        <div class="note" style="text-align:left">O alemão perde a maiúscula do substantivo. Em japonês, <b>食べる</b> aparece sem leitura, e quem quiser o furigana tem que escrever na nota.</div>
+      </div>
+    </div>
+    <div class="col after"><div class="lbl">Depois</div>
+      <div class="app card">
+        <div class="reading">たべる</div>
+        <div class="lemma" lang="ja">食べる</div>
+        <div class="sense">comer</div>
+        <div class="note" style="text-align:left"><b>Haus</b> continua "Haus". A chave interna <code>lemma_key = "haus"</code> evita duplicatas. O <code>reading</code> fica acima do lema, e o <code>ipa</code> continua opcional.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 STREMIO -->
+<section>
+  <h2>3 · Stremio (fork LingoBlend): modo Só língua-alvo</h2>
+  <p class="sub">Legenda japonesa de um anime. Hoje a palavra é o que fica entre espaços, e o japonês não tem espaços.</p>
+  <div class="pair">
+    <div class="col before"><div class="lbl">Antes</div>
+      <div class="video">
+        <div class="tagv">regex \p{L}+ · lang=ja</div>
+        <div class="pop bad"><div class="t">私は毎朝パンを食べます</div>A frase inteira foi tratada como uma palavra, e salvar foi recusado (lema &gt; 80 ou "frase não é item").</div>
+        <div class="subs"><span class="w blob">私は毎朝パンを食べます</span></div>
+      </div>
+      <div class="note">O blend também não funciona: <code>findWholeWord</code> exige que não haja letra colada nos lados, e o servidor descarta toda anotação em ja e zh.</div>
+    </div>
+    <div class="col after"><div class="lbl">Depois</div>
+      <div class="video">
+        <div class="tagv">Intl.Segmenter('ja') · native=pt</div>
+        <div class="pop"><div class="r">たべます → lema</div><div class="t">食べる <span class="r">たべる</span></div>comer · verbo<br><span class="btn">Salvar no banco</span></div>
+        <div class="subs" lang="ja"><span class="w">私</span><span class="w">は</span><span class="w">毎朝</span><span class="w">パン</span><span class="w">を</span><span class="w hl">食べ</span><span class="w hl">ます</span></div>
+      </div>
+      <div class="note">Cada pedaço é clicável. O clique pede ao <code>/lookup</code> com <code>nativeLanguage</code>, e o LLM responde na língua nativa do usuário (aqui PT; para um usuário hispânico, em ES).</div>
+    </div>
+  </div>
+  <div class="pair" style="margin-top:12px">
+    <div class="col before"><div class="lbl">Antes · árabe</div>
+      <div class="video">
+        <div class="tagv">sem dir</div>
+        <div class="subs" style="direction:ltr;unicode-bidi:bidi-override">.أنا أحب القهوة <span style="font-size:13px;opacity:.7">(pontuação troca de lado)</span></div>
+      </div>
+    </div>
+    <div class="col after"><div class="lbl">Depois · árabe</div>
+      <div class="video">
+        <div class="tagv">lang=ar dir=rtl (do perfil do idioma)</div>
+        <div class="subs" lang="ar" dir="rtl"><span class="w">أنا</span> <span class="w hl">أحب</span> <span class="w">القهوة</span>.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 CROSSPOINT -->
+<section>
+  <h2>4 · E-reader (fork do CrossPoint, X4 Pro)</h2>
+  <p class="sub">O firmware é C++ num microcontrolador. Ele não tem <code>Intl.Segmenter</code>, e as fontes ficam no cartão SD. Esta é a parte que muda mais.</p>
+  <div class="pair">
+    <div class="col before"><div class="lbl">Antes · lendo livro em japonês</div>
+      <div class="eink">
+        <div class="hdr"><span>こころ · 夏目漱石</span><span>12%</span></div>
+        <span class="tofu">□□□□□□□□□□□□<br>□□□□□□□□□□□□□<br>□□□□□□□□□</span>
+        <div class="sheet">A seleção vai até o próximo espaço e pega a linha toda.<br><span style="color:#8a1f1f">Sync: lema salvo em minúscula e a <code>work.language</code> do EPUB descartada se estiver fora da lista.</span></div>
+      </div>
+      <div class="note">Sem fonte CJK aparecem quadrados. A seleção usa espaço para delimitar a palavra, e o contrato de sync só aceita os 11 códigos e compara por <code>lower(lemma)</code>.</div>
+    </div>
+    <div class="col after"><div class="lbl">Depois · lendo + flashcard</div>
+      <div class="eink">
+        <div class="hdr"><span>こころ · 夏目漱石</span><span>12%</span></div>
+        <div lang="ja">先生と私。私はその人を常に<span class="sel">先生</span>と呼んでいた。</div>
+        <div class="sheet"><b>先生</b> せんせい<br>professor, mestre · <u>salvar</u><br><span style="color:#555">Salvo na fila do SD com language=ja e reading.</span></div>
+      </div>
+      <div class="note">Fonte CJK no SD. A seleção é por caractere, com arrastar para estender (o mesmo gesto do Só língua-alvo). Na falta de segmentador no aparelho, o servidor normaliza o lema no sync.</div>
+    </div>
+  </div>
+  <div class="pair" style="margin-top:12px">
+    <div class="col before"><div class="lbl">Antes · flashcard</div>
+      <div class="eink"><div class="hdr"><span>Flashcards · Italiano</span><span>8 hoje</span></div>
+        <div class="fc"><div class="big">haus</div><div class="rd">&nbsp;</div></div>
+        <div class="btns"><span>Errei</span><span>Difícil</span><span>Bom</span><span>Fácil</span></div></div>
+    </div>
+    <div class="col after"><div class="lbl">Depois · flashcard</div>
+      <div class="eink"><div class="hdr"><span>Flashcards · 日本語</span><span>8 hoje</span></div>
+        <div class="fc"><div class="rd">たべる</div><div class="big">食べる</div></div>
+        <div class="btns"><span>Errei</span><span>Difícil</span><span>Bom</span><span>Fácil</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 CONTRATO -->
+<section>
+  <h2>5 · Contrato /v1/sync (o que trafega entre os três)</h2>
+  <div class="pair">
+    <div class="col before"><div class="lbl">Antes</div>
+<pre>{
+  "language": "it",      <span class="del">// 1 de 11, ISO 639-1</span>
+  "lemma": "haus",       <span class="del">// minúscula forçada</span>
+  "ipa": "",
+  ...
+}
+settings: {
+  "nativeLanguage": "pt",       <span class="del">// default fixo</span>
+  "studyLanguages": ["en","it"] <span class="del">// default fixo</span>
+}</pre>
+    </div>
+    <div class="col after"><div class="lbl">Depois</div>
+<pre>{
+  "language": "ja",        <span class="add">// qualquer BCP 47 canônico</span>
+  "lemma": "食べる",        <span class="add">// como escrito</span>
+  "lemmaKey": "食べる",     <span class="add">// NFC + lower(lang)</span>
+  "reading": "たべる",      <span class="add">// novo</span>
+  "ipa": "",
+  ...
+}
+settings: {
+  "uiLanguage": "pt",       <span class="add">// novo</span>
+  "nativeLanguage": "pt",   <span class="add">// do navegador</span>
+  "studyLanguages": ["ja","de"]
+}</pre>
+    </div>
+  </div>
+</section>
+
+<div class="open"><b>O que estes mockups revelaram e ainda não foi decidido</b>
+  <ol>
+    <li><b>Fontes no e-reader:</b> como as fontes de escritas não latinas (CJK, árabe, devanágari…) chegam ao aparelho.</li>
+    <li><b>Seleção no e-reader</b> em idiomas sem espaço: caractere mais arrastar, um dicionário no aparelho ou o servidor resolvendo no sync.</li>
+    <li><b>RTL no e-reader:</b> se o renderizador do CrossPoint suporta bidi.</li>
+    <li><b>Quem calcula <code>lemmaKey</code></b>: se o cliente manda a chave ou só o servidor calcula, já que o firmware não tem as regras de caixa do ICU.</li>
+  </ol>
+</div>
+
+</div>
+</body></html>

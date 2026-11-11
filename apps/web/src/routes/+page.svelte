@@ -7,7 +7,7 @@
 
 	let { data }: PageProps = $props();
 
-	const REPO = 'https://github.com/Matloop/linguarudo';
+	const REPO = 'https://github.com/Matloop/linguetta';
 	const titulo = 'Linguetta · Aprenda com o que você já assiste, ouve e lê';
 	const descricao =
 		'Guarde a palavra com a frase em que você a encontrou. O Linguetta traz de volta no dia certo.';

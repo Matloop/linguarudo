@@ -2,6 +2,7 @@
 // ts-fsrs, para não pesar no navegador; o agendamento fica em server/scheduler.ts.
 
 import type { CardKind, Origin } from './items.ts';
+import { findWord } from '@linguetta/language';
 import type { Language } from './languages.ts';
 
 /** Fuso que define o "dia" dos limites de cartões novos. Único ponto do código. */
@@ -290,19 +291,21 @@ export interface TextPart {
 	hit: boolean;
 }
 
-/** Quebra o contexto em pedaços, marcando onde a palavra aparece (sem diferenciar caixa). */
-export function highlightParts(context: string, term: string): TextPart[] {
-	const needle = term.toLocaleLowerCase();
-	const hay = context.toLocaleLowerCase();
-	// toLocaleLowerCase pode mudar o tamanho (raro); aí não destaca para não cortar errado.
-	if (!needle || hay.length !== context.length) return [{ text: context, hit: false }];
-
+/**
+ * Quebra o contexto em pedaços, marcando cada ocorrência da palavra ou expressão como
+ * trecho inteiro pelas fronteiras de palavra do idioma (findWord: caixa e NFC/NFD não
+ * importam; acentos sim).
+ */
+export function highlightParts(context: string, term: string, language: Language): TextPart[] {
 	const parts: TextPart[] = [];
 	let from = 0;
-	for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, from)) {
+	while (from < context.length) {
+		const hit = findWord(context.slice(from), term, language);
+		if (!hit || hit.length === 0) break;
+		const at = from + hit.index;
 		if (at > from) parts.push({ text: context.slice(from, at), hit: false });
-		parts.push({ text: context.slice(at, at + needle.length), hit: true });
-		from = at + needle.length;
+		parts.push({ text: context.slice(at, at + hit.length), hit: true });
+		from = at + hit.length;
 	}
 	if (from < context.length) parts.push({ text: context.slice(from), hit: false });
 	return parts.length ? parts : [{ text: context, hit: false }];
@@ -322,6 +325,8 @@ export interface ReviewItem {
 	sense: string;
 	/** Pronúncia guardada no item; vazia se não há. */
 	ipa: string;
+	/** Leitura (furigana, pinyin), mostrada acima do lema; vazia se não há. */
+	reading: string;
 	language: Language;
 	/** Frase do encontro mais recente; vazia se o item não tem encontro. */
 	sentence: string;

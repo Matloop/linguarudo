@@ -102,21 +102,26 @@ describe('parseSaveBody', () => {
 });
 
 describe('parseSeenBody', () => {
-	test('normaliza e tira duplicatas', () => {
+	test('o servidor calcula as chaves (lemmaKey) e tira duplicatas', () => {
 		expect(parseSeenBody({ language: 'it', lemmas: [' Festa', 'festa', 'giorno', '', 3] })).toEqual(
-			{ language: 'it', lemmas: ['festa', 'giorno'] }
+			{ language: 'it', lemmaKeys: ['festa', 'giorno'] }
 		);
-	});
-
-	test('aceita qualquer idioma da lista', () => {
-		expect(parseSeenBody({ language: 'ja', lemmas: ['猫'] })).toEqual({
-			language: 'ja',
-			lemmas: ['猫']
+		expect(parseSeenBody({ language: 'DE', lemmas: ['Haus', 'haus'] })).toEqual({
+			language: 'de',
+			lemmaKeys: ['haus']
 		});
 	});
 
-	test('recusa idioma desconhecido, lista ausente ou grande demais', () => {
-		expect(parseSeenBody({ language: 'xx', lemmas: ['a'] })).toBeNull();
+	test('aceita qualquer tag BCP 47', () => {
+		expect(parseSeenBody({ language: 'ja', lemmas: ['猫'] })).toEqual({
+			language: 'ja',
+			lemmaKeys: ['猫']
+		});
+		expect(parseSeenBody({ language: 'tet', lemmas: ['uma'] })?.language).toBe('tet');
+	});
+
+	test('recusa idioma inválido, lista ausente ou grande demais', () => {
+		expect(parseSeenBody({ language: 'xx!!', lemmas: ['a'] })).toBeNull();
 		expect(parseSeenBody({ language: 'it' })).toBeNull();
 		const many = Array.from({ length: API_LIMITS.seenBatch + 1 }, (_, i) => `w${i}`);
 		expect(parseSeenBody({ language: 'it', lemmas: many })).toBeNull();
@@ -128,6 +133,8 @@ describe('apiItem', () => {
 	const row = {
 		id: 'i1',
 		lemma: 'aspettare',
+		lemma_key: 'aspettare',
+		reading: '',
 		sense: 'esperar',
 		status: 'ativo',
 		cards: [
@@ -137,9 +144,11 @@ describe('apiItem', () => {
 	};
 
 	test('item com cartões em camelCase, prefer e dominado', () => {
-		expect(apiItem(row, now)).toEqual({
+		expect(apiItem(row, 'it', now)).toEqual({
 			id: 'i1',
 			lemma: 'aspettare',
+			lemmaKey: 'aspettare',
+			reading: '',
 			sense: 'esperar',
 			status: 'ativo',
 			mastered: false,
@@ -153,24 +162,41 @@ describe('apiItem', () => {
 	});
 
 	test('forms: grafias vistas, só strings', () => {
-		expect(apiItem({ ...row, forms: ['aspetto', 'aspettavo'] }, now).forms).toEqual([
+		expect(apiItem({ ...row, forms: ['aspetto', 'aspettavo'] }, 'it', now).forms).toEqual([
 			'aspetto',
 			'aspettavo'
 		]);
-		expect(apiItem({ ...row, forms: ['ok', 3, null] }, now).forms).toEqual(['ok']);
-		expect(apiItem({ ...row, forms: null }, now).forms).toEqual([]);
+		expect(apiItem({ ...row, forms: ['ok', 3, null] }, 'it', now).forms).toEqual(['ok']);
+		expect(apiItem({ ...row, forms: null }, 'it', now).forms).toEqual([]);
+	});
+
+	test('forms: como escritas, uma por chave, sem a do próprio lema', () => {
+		const haus = { ...row, lemma: 'Haus', lemma_key: 'haus' };
+		expect(
+			apiItem({ ...haus, forms: ['haus', 'Häuser', 'häuser', 'HAUS'] }, 'de', now).forms
+		).toEqual(['Häuser']);
+	});
+
+	test('leitura volta junto (japonês)', () => {
+		const neko = { ...row, lemma: '猫', lemma_key: '猫', reading: 'ねこ' };
+		expect(apiItem(neko, 'ja', now)).toMatchObject({
+			lemma: '猫',
+			lemmaKey: '猫',
+			reading: 'ねこ'
+		});
+		expect(apiItem({ ...neko, reading: null }, 'ja', now).reading).toBe('');
 	});
 
 	test('cards fora do formato viram lista vazia', () => {
-		expect(apiItem({ ...row, cards: null }, now).cards).toEqual([]);
-		expect(apiItem({ ...row, cards: [{ kind: 'x' }] }, now).cards).toEqual([]);
+		expect(apiItem({ ...row, cards: null }, 'it', now).cards).toEqual([]);
+		expect(apiItem({ ...row, cards: [{ kind: 'x' }] }, 'it', now).cards).toEqual([]);
 	});
 
 	test('dominado quando todos os cartões estão estáveis', () => {
 		const cards = [
 			{ kind: 'reconhecer', state: 2, due_at: '2027-06-01T00:00:00Z', stability: 120 }
 		];
-		const out = apiItem({ ...row, cards }, now);
+		const out = apiItem({ ...row, cards }, 'it', now);
 		expect(out.mastered).toBe(true);
 		expect(out.prefer).toBe(false);
 	});
@@ -199,6 +225,7 @@ describe('apiSaveResults', () => {
 					id: 'i1',
 					language: 'it',
 					lemma: 'aspettare',
+					lemmaKey: 'aspettare',
 					created: true,
 					encounterId: 'e1',
 					card: { state: 0, dueAt: '2026-11-11T12:00:00Z' }

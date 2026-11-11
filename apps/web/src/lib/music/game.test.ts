@@ -303,6 +303,40 @@ describe('repetir a linha', () => {
 	});
 });
 
+describe('voltar à linha depois de ajustar a sincronia', () => {
+	test('pausado tocando: volta ao início da linha e continua pausado', () => {
+		const game = started();
+		game.tick(7, 10);
+		game.pause(20);
+		expect(game.rewindToLine(30)).toEqual([{ type: 'seek', to: 6 }]);
+		expect(game.phase).toBe('paused');
+		expect(game.resume(40)).toEqual([{ type: 'play' }]);
+		expect(game.phase).toBe('playing');
+	});
+
+	test('pausado na espera: larga o contador e a linha toca de novo ao retomar', () => {
+		const game = started();
+		game.tick(7, 10);
+		game.tick(10.1, 20);
+		expect(game.phase).toBe('waiting');
+		game.pause(30);
+		game.rewindToLine(40);
+		expect(game.waitRemainingMs(50)).toBeNull();
+		expect(game.resume(60)).toEqual([{ type: 'play' }]);
+		expect(game.activeLine).toBe(1);
+		expect(game.answerable?.line).toBe(1);
+	});
+
+	test('antes da primeira linha ou fora da pausa não faz nada', () => {
+		const game = started();
+		game.pause(10);
+		expect(game.rewindToLine(20)).toEqual([]);
+		const playing = started();
+		playing.tick(7, 10);
+		expect(playing.rewindToLine(20)).toEqual([]);
+	});
+});
+
 describe('fim', () => {
 	test('com tudo respondido, o jogo termina logo depois da última linha', () => {
 		const game = started();

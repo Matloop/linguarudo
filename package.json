@@ -1,9 +1,10 @@
 {
-  "name": "linguarudo",
+  "name": "linguetta",
   "private": true,
   "type": "module",
   "workspaces": [
     "apps/*",
+    "packages/language",
     "packages/stremio-server/server",
     "packages/stremio-server/devaddon"
   ],

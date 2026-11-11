@@ -157,7 +157,7 @@ async function applySeen(token: string, op: Extract<SyncOp, { type: 'seen' }>): 
 		p_token: token,
 		p_client_id: op.clientId,
 		p_language: op.language,
-		p_lemma: op.lemma,
+		p_lemma_key: op.lemmaKey,
 		p_at: op.at
 	});
 	if (error) syncRpcFailure(error);

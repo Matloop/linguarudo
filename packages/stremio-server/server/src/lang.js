@@ -1,47 +1,59 @@
-// Normaliza códigos de idioma (ISO 639-1, 639-2/B, 639-2/T, tags BCP 47, códigos do OpenSubtitles)
-// para ISO 639-1 em minúsculas. Retorna null se a entrada não parecer um idioma.
+// Idiomas como tags BCP 47 canônicas (ADR 0004). Tudo vem de @linguetta/language;
+// aqui ficam só os atalhos que o servidor usa em vários lugares.
+import { canonicalLanguage, languageName, languageProfile, lemmaKey } from '@linguetta/language';
+import { HttpError } from './errors.js';
 
-const ALIASES = {
-  // português (pob = português do Brasil no OpenSubtitles, pb/pt-br idem)
-  por: 'pt', pob: 'pt', pb: 'pt', portuguese: 'pt', 'português': 'pt', portugues: 'pt',
-  ita: 'it', italian: 'it', italiano: 'it',
-  eng: 'en', english: 'en', 'inglês': 'en',
-  spa: 'es', spanish: 'es', 'español': 'es', espanol: 'es', 'espanhol': 'es', spl: 'es', spn: 'es',
-  fra: 'fr', fre: 'fr', french: 'fr', 'français': 'fr', 'francês': 'fr',
-  deu: 'de', ger: 'de', german: 'de', deutsch: 'de', 'alemão': 'de',
-  nld: 'nl', dut: 'nl', dutch: 'nl',
-  cat: 'ca', glg: 'gl', eus: 'eu', baq: 'eu',
-  ron: 'ro', rum: 'ro', pol: 'pl', ces: 'cs', cze: 'cs', slk: 'sk', slo: 'sk',
-  hun: 'hu', fin: 'fi', swe: 'sv', nor: 'no', nob: 'nb', nno: 'nn', dan: 'da', isl: 'is', ice: 'is',
-  ell: 'el', gre: 'el', tur: 'tr', rus: 'ru', ukr: 'uk', bul: 'bg', srp: 'sr', hrv: 'hr', scc: 'sr', scr: 'hr',
-  slv: 'sl', bos: 'bs', mkd: 'mk', mac: 'mk', sqi: 'sq', alb: 'sq', lit: 'lt', lav: 'lv', est: 'et',
-  ara: 'ar', heb: 'he', fas: 'fa', per: 'fa', hin: 'hi', ben: 'bn', urd: 'ur',
-  zho: 'zh', chi: 'zh', zht: 'zh', zhe: 'zh', jpn: 'ja', kor: 'ko', tha: 'th', vie: 'vi',
-  ind: 'id', msa: 'ms', may: 'ms', tgl: 'tl', fil: 'tl',
-  lat: 'la', epo: 'eo',
-  // códigos antigos de 2 letras
-  iw: 'he', in: 'id', ji: 'yi',
-};
-
+/**
+ * Tag BCP 47 canônica ou null. Aceita ISO 639-1/2/3, qualquer caixa, `_` e os códigos do
+ * OpenSubtitles ('pob' → 'pt-BR', 'zht' → 'zh-Hant'). Escrita e região são preservadas.
+ */
 export function normalizeLang(input) {
-  if (typeof input !== 'string') return null;
-  const raw = input.trim().toLowerCase();
-  if (!raw) return null;
-  if (ALIASES[raw]) return ALIASES[raw];
-  // "pt-BR", "pt_br", "por-BR", "it-IT" → primeira subtag
-  const primary = raw.split(/[-_]/)[0];
-  if (ALIASES[primary]) return ALIASES[primary];
-  if (/^[a-z]{2}$/.test(primary)) return primary;
-  if (/^[a-z]{3}$/.test(primary)) return primary; // 639-2/3 desconhecido: repassa como está
-  return null;
+  return canonicalLanguage(input);
 }
 
-const NAMES = {
-  pt: 'Portuguese (Brazilian)', it: 'Italian', en: 'English', es: 'Spanish', fr: 'French',
-  de: 'German', nl: 'Dutch', ro: 'Romanian', pl: 'Polish', ru: 'Russian', ja: 'Japanese',
-  zh: 'Chinese', ko: 'Korean', tr: 'Turkish', el: 'Greek', ca: 'Catalan', sv: 'Swedish',
-};
+/** Nome do idioma em inglês para os prompts ('ja' → 'Japanese'); cai na própria tag. */
+export function langName(tag) {
+  return languageName(tag, 'en');
+}
 
-export function langName(code) {
-  return NAMES[code] ?? code;
+/** Mesmo idioma para fins de tradução: mesma subtag base e mesma escrita ('pt-BR' = 'pt-PT', 'zh-Hans' ≠ 'zh-Hant'). */
+export function sameLanguage(a, b) {
+  if (a === b) return true;
+  const pa = languageProfile(a);
+  const pb = languageProfile(b);
+  return pa.base === pb.base && pa.script === pb.script;
+}
+
+/** Subtag base ('pt' em 'pt-BR'). */
+export function baseOf(tag) {
+  return languageProfile(tag).base;
+}
+
+/**
+ * Lema limpo: NFC, espaços colapsados, até `max` caracteres. A caixa fica como o dicionário
+ * escreve ("Haus", "Roma", "casa"); só um lema todo em maiúsculas (legenda gritada) desce
+ * para minúsculas, e só em escritas com caixa.
+ */
+export function cleanLemma(raw, lang, max = 80) {
+  const lemma = String(raw ?? '').normalize('NFC').trim().replace(/\s+/g, ' ').slice(0, max);
+  const cased = languageProfile(lang).cased;
+  if (cased && [...lemma].length > 1 && lemma === lemma.toUpperCase() && lemma !== lemma.toLowerCase()) {
+    return lemmaKey(lemma, lang);
+  }
+  return lemma;
+}
+
+const snake = (field) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+
+/**
+ * Campo de idioma obrigatório de um pedido HTTP → tag canônica. Ausente: 400
+ * `missing_<campo>`; inválido: 400 `invalid_<campo>` (ex.: missing_native_language).
+ */
+export function requireLanguage(value, field) {
+  if (value === undefined || value === null || (typeof value === 'string' && !value.trim())) {
+    throw new HttpError(400, `missing_${snake(field)}`, `${field} ausente`);
+  }
+  const tag = canonicalLanguage(value);
+  if (!tag) throw new HttpError(400, `invalid_${snake(field)}`, `${field} inválido (use uma tag BCP 47)`);
+  return tag;
 }

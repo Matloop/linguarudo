@@ -4,16 +4,16 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import {
   LOOKUP_SCHEMA,
-  LOOKUP_SYSTEM,
   OUTPUT_SCHEMA,
   ProviderError,
-  SYSTEM,
   TRANSLATE_SCHEMA,
   TRANSLATE_SYSTEM,
   buildLookupMessage,
   buildTranslateMessage,
   buildUserMessage,
+  annotateSystem,
   groupByCue,
+  lookupSystem,
   retryMalformed,
 } from './claude.js';
 
@@ -100,18 +100,19 @@ const isObj = (d) => d && typeof d === 'object' && !Array.isArray(d);
 
 /** options: { model, bin, run } (run é injetável para testes) */
 export function createClaudeCodeProvider({ model = DEFAULT_CLI_MODEL, bin = 'claude', run = runCli } = {}) {
-  const annotateArgs = buildArgs(model, SYSTEM, OUTPUT_SCHEMA);
-  const lookupArgs = buildArgs(model, LOOKUP_SYSTEM, LOOKUP_SCHEMA);
+  // O prompt de sistema depende dos idiomas do pedido (ADR 0004); a tradução usa um fixo.
   const translateArgs = buildArgs(model, TRANSLATE_SYSTEM, TRANSLATE_SCHEMA);
 
   return {
     name: 'claude-code',
     model,
     async annotate(req) {
+      const annotateArgs = buildArgs(model, annotateSystem(req), OUTPUT_SCHEMA);
       const data = await retryMalformed(async () => parseResult(await run(bin, annotateArgs, buildUserMessage(req))));
       return groupByCue(data.annotations, req.texts.length);
     },
     async lookup(req) {
+      const lookupArgs = buildArgs(model, lookupSystem(req), LOOKUP_SCHEMA);
       return retryMalformed(async () => parseResult(await run(bin, lookupArgs, buildLookupMessage(req)), isObj));
     },
     async translate(req) {

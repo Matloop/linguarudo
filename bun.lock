@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "linguarudo",
+      "name": "linguetta",
     },
     "apps/web": {
       "name": "web",
@@ -11,6 +11,7 @@
       "dependencies": {
         "@fontsource-variable/inter": "^5.3.0",
         "@fontsource-variable/manrope": "^5.3.0",
+        "@linguetta/language": "workspace:*",
         "@supabase/ssr": "^0.12.7",
         "@supabase/supabase-js": "^2.119.0",
         "ts-fsrs": "^6.0.0",
@@ -36,14 +37,19 @@
         "vite": "^8.3.0",
       },
     },
+    "packages/language": {
+      "name": "@linguetta/language",
+      "version": "0.1.0",
+    },
     "packages/stremio-server/devaddon": {
-      "name": "@linguarudo/lingoblend-devaddon",
+      "name": "@linguetta/lingoblend-devaddon",
     },
     "packages/stremio-server/server": {
-      "name": "@linguarudo/lingoblend-server",
+      "name": "@linguetta/lingoblend-server",
       "version": "0.1.0",
       "dependencies": {
         "@anthropic-ai/sdk": "^1.8.0",
+        "@linguetta/language": "workspace:*",
       },
     },
   },
@@ -102,9 +108,11 @@
 
     "@keyv/serialize": ["@keyv/serialize@1.1.1", "", {}, "sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA=="],
 
-    "@linguarudo/lingoblend-devaddon": ["@linguarudo/lingoblend-devaddon@workspace:packages/stremio-server/devaddon"],
+    "@linguetta/language": ["@linguetta/language@workspace:packages/language"],
 
-    "@linguarudo/lingoblend-server": ["@linguarudo/lingoblend-server@workspace:packages/stremio-server/server"],
+    "@linguetta/lingoblend-devaddon": ["@linguetta/lingoblend-devaddon@workspace:packages/stremio-server/devaddon"],
+
+    "@linguetta/lingoblend-server": ["@linguetta/lingoblend-server@workspace:packages/stremio-server/server"],
 
     "@mapbox/node-pre-gyp": ["@mapbox/node-pre-gyp@2.0.3", "", { "dependencies": { "consola": "^3.2.3", "detect-libc": "^2.0.0", "https-proxy-agent": "^7.0.5", "node-fetch": "^2.6.7", "nopt": "^8.0.0", "semver": "^7.5.3", "tar": "^7.4.0" }, "bin": { "node-pre-gyp": "bin/node-pre-gyp" } }, "sha512-uwPAhccfFJlsfCxMYTwOdVfOz3xqyj8xYL3zJj8f0pb30tLohnnFPhLuqp4/qoEz8sNxe4SESZedcBojRefIzg=="],
 
