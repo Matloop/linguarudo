@@ -27,7 +27,7 @@
 		border-radius: var(--r-m);
 		background: var(--toast-bg);
 		color: var(--toast-ink);
-		font-size: 13.5px;
+		font-size: 15px;
 		box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.35);
 		opacity: 0;
 		transform: translateY(8px);

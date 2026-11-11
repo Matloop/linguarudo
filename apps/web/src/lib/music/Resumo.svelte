@@ -158,7 +158,8 @@
 		position: fixed;
 		inset: 0;
 		z-index: 50;
-		background: #073026f2;
+		background: var(--scrim);
+		backdrop-filter: blur(6px);
 		display: grid;
 		place-items: center;
 		padding: 20px;
@@ -166,29 +167,34 @@
 	}
 
 	.cartao {
-		background: var(--creme);
-		color: var(--verde-escuro);
-		border-radius: 28px;
-		padding: 22px 26px 20px;
+		background: var(--raise);
+		color: var(--ink);
+		border-radius: 16px;
+		box-shadow: var(--sh-pop);
+		padding: 26px 26px 20px;
 		width: 100%;
 		max-width: 600px;
 		text-align: center;
-		animation: surge 0.3s;
+		animation: surge 0.3s var(--ease);
 		margin: auto;
+	}
+
+	:global(.tema-escuro) .cartao {
+		background: var(--raise-2);
 	}
 
 	@keyframes surge {
 		from {
 			opacity: 0;
-			transform: translateY(8px) scale(0.97);
+			transform: translateY(8px) scale(0.98);
 		}
 	}
 
 	.simbolo {
 		width: 44px;
 		height: 48px;
-		margin: 4px auto 12px;
-		color: var(--verde);
+		margin: 4px auto 14px;
+		color: var(--ink);
 	}
 
 	.simbolo :global(svg) {
@@ -211,62 +217,60 @@
 	}
 
 	h2 {
-		margin: 4px 0 2px;
-		font-size: 28px;
-		color: var(--verde);
+		margin: 4px 0 4px;
+		font: 600 30px/1.2 var(--f-head);
+		letter-spacing: -0.02em;
 	}
 
 	.sub {
 		margin: 0;
-		color: var(--tinta-suave);
-		font-weight: 600;
+		color: var(--ink-2);
+		text-wrap: pretty;
 	}
 
 	.stats {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		gap: 10px;
-		margin: 18px 0 16px;
+		gap: 8px;
+		margin: 20px 0 16px;
 	}
 
 	.stat {
-		background: #fff;
-		border-radius: 16px;
-		padding: 12px 8px;
-		border: 1.5px solid var(--linha);
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
+		border-radius: var(--r-l);
+		padding: 14px 8px 12px;
 	}
 
 	.stat b {
 		display: block;
-		font-size: 26px;
-		color: var(--verde);
-		line-height: 1.15;
+		font: 600 28px/1.15 var(--f-head);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.stat span {
-		font-size: 13px;
-		color: var(--tinta-suave);
-		font-weight: 650;
+		font-size: 14px;
+		color: var(--ink-2);
 	}
 
 	.stat.err b {
-		color: var(--coral-escuro);
+		color: var(--terra-ink);
 	}
 
 	.stat.sal b {
-		color: #a86f22;
+		color: var(--gold-ink);
 	}
 
 	.grupo {
 		text-align: left;
-		margin-top: 12px;
+		margin-top: 14px;
 	}
 
 	.grupo h3 {
 		margin: 0;
-		font-size: 14px;
-		font-weight: 850;
-		color: var(--verde);
+		font-size: 15px;
+		font-weight: 500;
+		color: var(--ink);
 		display: flex;
 		align-items: baseline;
 		gap: 8px;
@@ -274,9 +278,9 @@
 	}
 
 	.grupo h3 small {
-		font-weight: 650;
-		color: var(--tinta-suave);
-		font-size: 13px;
+		font-weight: 400;
+		color: var(--ink-3);
+		font-size: 14px;
 	}
 
 	.chips {
@@ -290,50 +294,48 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		background: #fff;
-		border: 1.5px solid var(--linha);
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
 		border-radius: 99px;
-		padding: 4px 12px;
-		font-weight: 750;
-		font-size: 15px;
+		padding: 5px 12px;
+		font-weight: 500;
+		font-size: 16px;
 	}
 
 	.chip em {
 		font-style: normal;
-		font-weight: 600;
-		color: var(--tinta-suave);
-		font-size: 13px;
+		font-weight: 400;
+		color: var(--ink-2);
+		font-size: 14px;
 	}
 
 	.chip.err {
-		background: var(--coral-claro);
-		border-color: #f3c3be;
+		background: var(--terra-soft);
 	}
 
 	.chip.sal {
-		background: var(--creme-escuro);
-		border-color: #ebd3a8;
+		background: var(--gold-soft);
 	}
 
 	.chip.nobk {
-		background: var(--salvia-claro);
-		border-color: #c7d9c0;
+		background: var(--ok-soft);
 	}
 
 	.chip .mini {
-		font-size: 11px;
-		font-weight: 850;
-		color: var(--verde);
-		background: #fff;
-		border-radius: 6px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ink-2);
+		background: var(--sunk);
+		border-radius: 4px;
 		padding: 1px 6px;
 	}
 
 	.chip.vazio {
 		background: none;
-		border-style: dashed;
-		color: var(--tinta-suave);
-		font-weight: 600;
+		box-shadow: none;
+		border: 1.5px dashed var(--line-2);
+		color: var(--ink-3);
+		font-weight: 400;
 	}
 
 	.placar {
@@ -341,29 +343,29 @@
 		justify-content: center;
 		flex-wrap: wrap;
 		gap: 4px 14px;
-		font-size: 13px;
-		color: var(--tinta-suave);
-		font-weight: 700;
-		margin: 14px 0 0;
+		font-size: 14.5px;
+		color: var(--ink-3);
+		margin: 16px 0 0;
 	}
 
 	.placar b {
-		color: var(--verde);
+		color: var(--ink);
+		font-weight: 600;
 	}
 
 	.mensagem {
 		min-height: 1.4em;
 		margin: 6px 0 0;
-		font-size: 14px;
-		font-weight: 700;
-		color: var(--verde);
+		font-size: 15px;
+		font-weight: 500;
+		color: var(--ok-ink);
 	}
 
 	.acoes {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 10px;
-		margin-top: 8px;
+		gap: 8px;
+		margin-top: 10px;
 	}
 
 	.acoes button {
@@ -372,42 +374,45 @@
 		justify-content: center;
 		gap: 8px;
 		border: 0;
-		border-radius: 16px;
-		padding: 14px 10px;
-		font-weight: 850;
-		font-size: 16px;
+		border-radius: var(--r-m);
+		height: 46px;
+		padding: 0 12px;
+		font: 500 16px/1 var(--f-body);
+		transition: background-color 0.18s var(--ease);
 	}
 
 	.coral {
-		background: var(--coral);
-		color: var(--verde-escuro);
-		box-shadow: 0 4px 0 var(--coral-escuro);
+		background: var(--primary);
+		color: var(--on-primary);
+	}
+
+	.coral:hover:not(:disabled) {
+		background: var(--primary-hover);
 	}
 
 	.coral:disabled {
-		background: var(--salvia-claro);
-		box-shadow: none;
-		color: var(--tinta-suave);
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--ink-3);
 		cursor: default;
 	}
 
 	.verde {
-		background: var(--verde);
-		color: var(--creme);
-		box-shadow: 0 4px 0 var(--verde-escuro);
+		background: var(--soft-bg);
+		box-shadow: var(--sh-card);
+		color: var(--ink);
 	}
 
-	.acoes button:active:not(:disabled) {
-		transform: translateY(3px);
-		box-shadow: none;
+	.verde:hover {
+		background: var(--soft-hover);
 	}
 
 	svg {
-		width: 20px;
-		height: 20px;
+		width: 19px;
+		height: 19px;
 		fill: none;
 		stroke: currentColor;
-		stroke-width: 2.2;
+		stroke-width: 1.7;
 		stroke-linecap: round;
 		stroke-linejoin: round;
 		flex: none;
@@ -415,15 +420,15 @@
 
 	.voltar {
 		display: inline-block;
-		margin-top: 12px;
-		font-size: 14px;
-		font-weight: 750;
-		color: var(--tinta-suave);
+		margin-top: 14px;
+		font-size: 15px;
+		font-weight: 500;
+		color: var(--ink-2);
 	}
 
 	@media (max-width: 520px) {
 		.cartao {
-			padding: 18px 16px;
+			padding: 20px 16px;
 		}
 
 		.acoes {
@@ -431,7 +436,7 @@
 		}
 
 		.stat b {
-			font-size: 22px;
+			font-size: 24px;
 		}
 	}
 </style>

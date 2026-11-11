@@ -310,9 +310,12 @@ export type Database = {
           client_id: string | null
           duration_ms: number | null
           id: string
+          interval_days: number | null
+          last_interval_days: number | null
           rating: number
           received_at: string
           reviewed_at: string
+          state_before: number | null
           user_id: string
         }
         Insert: {
@@ -320,9 +323,12 @@ export type Database = {
           client_id?: string | null
           duration_ms?: number | null
           id?: string
+          interval_days?: number | null
+          last_interval_days?: number | null
           rating: number
           received_at?: string
           reviewed_at: string
+          state_before: number | null
           user_id: string
         }
         Update: {
@@ -330,9 +336,12 @@ export type Database = {
           client_id?: string | null
           duration_ms?: number | null
           id?: string
+          interval_days?: number | null
+          last_interval_days?: number | null
           rating?: number
           received_at?: string
           reviewed_at?: string
+          state_before?: number | null
           user_id?: string
         }
         Relationships: [
@@ -371,25 +380,34 @@ export type Database = {
       }
       user_settings: {
         Row: {
+          day_start_hour: number
+          desired_retention: number
           native_language: string | null
           new_cards_per_day: number
           study_languages: unknown[]
+          time_zone: string | null
           ui_language: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          day_start_hour?: number
+          desired_retention?: number
           native_language?: string | null
           new_cards_per_day?: number
           study_languages?: unknown[]
+          time_zone?: string | null
           ui_language?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          day_start_hour?: number
+          desired_retention?: number
           native_language?: string | null
           new_cards_per_day?: number
           study_languages?: unknown[]
+          time_zone?: string | null
           ui_language?: string
           updated_at?: string
           user_id?: string
@@ -540,7 +558,7 @@ export type Database = {
       api_sync_snapshot: {
         Args: {
           p_after: string
-          p_day_start: string
+          p_day_start?: string
           p_language: string
           p_limit: number
           p_token: string
@@ -554,6 +572,7 @@ export type Database = {
         Args: {
           p_card_id: string
           p_client_id?: string
+          p_duration_ms?: number
           p_expected_reps: number
           p_next: Json
           p_rating: number
@@ -562,8 +581,12 @@ export type Database = {
         }
         Returns: string
       }
+      review_day_start: {
+        Args: { p_hour: number; p_now?: string; p_time_zone: string }
+        Returns: string
+      }
       review_counts: {
-        Args: { p_day_start: string }
+        Args: { p_day_start: string; p_language?: string }
         Returns: {
           due_now: number
           new_available: number

@@ -113,7 +113,7 @@
 		gap: 10px;
 		color: var(--ink);
 		text-decoration: none;
-		font: 600 18px var(--f-head);
+		font: 600 19.5px var(--f-head);
 		letter-spacing: -0.02em;
 	}
 	.brand :global(.mark) {
@@ -129,13 +129,13 @@
 	}
 	h1 {
 		margin: 0;
-		font: 600 26px var(--f-head);
+		font: 600 28px var(--f-head);
 		letter-spacing: -0.03em;
 	}
 	.sub {
 		margin: 6px 0 24px;
 		color: var(--ink-2);
-		font-size: 14.5px;
+		font-size: 16px;
 		line-height: 1.5;
 	}
 	form {
@@ -145,7 +145,7 @@
 	}
 	label {
 		font-weight: 500;
-		font-size: 13.5px;
+		font-size: 15px;
 		color: var(--ink-2);
 	}
 	input[type='email'] {
@@ -157,7 +157,7 @@
 		box-shadow: inset 0 0 0 1px var(--line);
 		color: var(--ink);
 		font: inherit;
-		font-size: 16px;
+		font-size: 17.5px;
 	}
 	input[type='email']:focus {
 		outline: none;
@@ -183,7 +183,7 @@
 		gap: 10px;
 		margin: 20px 0 14px;
 		color: var(--ink-3);
-		font-size: 13px;
+		font-size: 14.5px;
 	}
 	.ou::before,
 	.ou::after {
@@ -195,7 +195,7 @@
 		border-radius: var(--r-m);
 		padding: 12px 14px;
 		margin: 0 0 16px;
-		font-size: 14px;
+		font-size: 15.5px;
 		line-height: 1.5;
 	}
 	.aviso.ok {
@@ -212,6 +212,6 @@
 	.erro-campo {
 		margin: 0;
 		color: var(--terra-ink);
-		font-size: 13.5px;
+		font-size: 15px;
 	}
 </style>

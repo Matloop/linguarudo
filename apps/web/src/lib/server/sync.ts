@@ -167,6 +167,8 @@ async function applySeen(token: string, op: Extract<SyncOp, { type: 'seen' }>): 
 type ReviewTarget = {
 	card: CardRowJson & { item_id: string; kind: string };
 	sense: string | null;
+	/** Retenção desejada da conta (user_settings). */
+	desired_retention?: number | null;
 	logs: { rating: Grade; reviewed_at: string }[];
 };
 
@@ -189,10 +191,12 @@ async function applyReview(token: string, op: ReviewOp, now: Date): Promise<OpRe
 
 		const card = data.card;
 		const row: CardRow & CardSeed = { ...card, id: card.id, created_at: card.created_at };
-		const { next, intervalDays } = await scheduleReview(row, data.logs ?? [], {
-			rating: op.rating,
-			reviewed_at: reviewedAt
-		});
+		const { next, intervalDays } = await scheduleReview(
+			row,
+			data.logs ?? [],
+			{ rating: op.rating, reviewed_at: reviewedAt },
+			data.desired_retention ?? undefined
+		);
 		const unlock = unlocksProduce({ kind: 'reconhecer', sense: data.sense ?? '', intervalDays });
 		const result = {
 			status: 'applied',

@@ -30,6 +30,10 @@
 	let pending = $state(false);
 	let hit = $state<Grade | null>(null);
 	let message = $state<string | null>(null);
+	/** Palavra que acabou de virar sanguessuga (8 lapsos, depois a cada 4). */
+	let leech = $state<{ itemId: string; lemma: string; lapses: number } | null>(null);
+	/** Quando o cartão atual apareceu, para a duração da revisão (estatísticas). */
+	let shownAt = 0;
 	let canSpeak = $state(false);
 
 	let rateForm: HTMLFormElement | undefined = $state();
@@ -38,6 +42,9 @@
 	let grades: HTMLElement | undefined = $state();
 
 	const current = $derived(session.queue[0]);
+	$effect(() => {
+		if (current?.cardId) shownAt = Date.now();
+	});
 	const progress = $derived(sessionProgress(session));
 	const total = $derived(session.answered + session.queue.length);
 	const languageName = $derived(languageInline(data.language, data.uiLanguage));
@@ -95,15 +102,17 @@
 		e.preventDefault();
 	}
 
-	const submitRate: SubmitFunction = ({ cancel, submitter }) => {
+	const submitRate: SubmitFunction = ({ cancel, submitter, formData }) => {
 		if (pending) return cancel();
 		pending = true;
 		message = null;
+		if (shownAt) formData.set('durationMs', String(Date.now() - shownAt));
 		hit = Number(submitter?.getAttribute('value')) as Grade;
 		return async ({ result }) => {
 			pending = false;
 			if (result.type === 'success' && result.data && 'item' in result.data) {
 				const { item, logId, rating } = result.data;
+				if (result.data.leech) leech = result.data.leech;
 				session = answerItem(session, {
 					rating: rating as Grade,
 					logId,
@@ -237,6 +246,23 @@
 				>
 			</span>
 		</div>
+
+		{#if leech}
+			<div class="leech" role="status">
+				<Icon name="leaf" size="sm" />
+				<p>
+					<b>“{leech.lemma}” está teimosa.</b> Você errou {leech.lapses} vezes depois de aprender. Uma
+					frase nova ou uma nota costuma resolver.
+				</p>
+				<a class="btn btn-soft" href={resolve(`/palavras?item=${leech.itemId}`)}>Abrir palavra</a>
+				<button
+					class="icon-btn"
+					type="button"
+					aria-label="Fechar aviso"
+					onclick={() => (leech = null)}><Icon name="x" size="sm" /></button
+				>
+			</div>
+		{/if}
 
 		{#if current}
 			<div class="rv-stage">
@@ -397,7 +423,7 @@
 		gap: 24px;
 	}
 	.rv-top .l {
-		font: 500 14px var(--f-body);
+		font: 500 15.5px var(--f-body);
 		color: var(--ink-2);
 		display: flex;
 		align-items: center;
@@ -408,7 +434,7 @@
 		justify-content: flex-end;
 		align-items: center;
 		gap: 10px;
-		font: 500 13px var(--f-body);
+		font: 500 14.5px var(--f-body);
 		font-variant-numeric: tabular-nums;
 		color: var(--ink-3);
 	}
@@ -473,7 +499,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 7px;
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 		min-width: 0;
 	}
@@ -487,39 +513,39 @@
 		min-height: 0;
 	}
 	.word {
-		font: 600 56px/1.05 var(--f-head);
+		font: 600 60.5px/1.05 var(--f-head);
 		letter-spacing: -0.035em;
 		overflow-wrap: anywhere;
 	}
 	.ask {
-		font-size: 14px;
+		font-size: 15.5px;
 		color: var(--ink-3);
 		margin-bottom: 12px;
 	}
 	.front .ask + .word {
-		font-size: 40px;
+		font-size: 43px;
 		line-height: 1.15;
 	}
 	/* Leitura (furigana, pinyin) logo acima do lema. */
 	.reading {
 		margin-bottom: 4px;
 		color: var(--ink-3);
-		font: 400 15px/1.3 var(--f-body);
+		font: 400 16.5px/1.3 var(--f-body);
 		letter-spacing: 0.02em;
 	}
 	.rd {
 		display: block;
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 	}
 	.ipa {
 		margin-top: 10px;
 		color: var(--ink-3);
-		font: 400 15px var(--f-body);
+		font: 400 16.5px var(--f-body);
 	}
 	.ctx {
 		text-align: center;
-		font-size: 15.5px;
+		font-size: 17px;
 		line-height: 1.55;
 		color: var(--ink-2);
 		max-width: 460px;
@@ -536,21 +562,21 @@
 		box-shadow: none;
 	}
 	.small-w {
-		font: 400 14px var(--f-body);
+		font: 400 15.5px var(--f-body);
 		color: var(--ink-3);
 	}
 	.small-w b {
-		font: 600 15px var(--f-head);
+		font: 600 16.5px var(--f-head);
 		color: var(--ink-2);
 	}
 	.tr {
-		font: 600 38px/1.15 var(--f-head);
+		font: 600 41px/1.15 var(--f-head);
 		letter-spacing: -0.03em;
 		margin-top: 8px;
 		overflow-wrap: anywhere;
 	}
 	.tr.none {
-		font-size: 22px;
+		font-size: 24px;
 		color: var(--ink-3);
 	}
 
@@ -610,10 +636,10 @@
 		cursor: default;
 	}
 	.gbtn b {
-		font: 500 15px/1.2 var(--f-body);
+		font: 500 16.5px/1.2 var(--f-body);
 	}
 	.gbtn span {
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 	}
 	.gbtn kbd {
@@ -622,11 +648,11 @@
 		right: 7px;
 		min-width: 18px;
 		height: 18px;
-		font-size: 10.5px;
+		font-size: 12px;
 	}
 	.rv-hint {
 		text-align: center;
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 		display: flex;
 		gap: 16px;
@@ -653,13 +679,13 @@
 	}
 	.done h2 {
 		margin: 0;
-		font: 600 44px/1.1 var(--f-head);
+		font: 600 47.5px/1.1 var(--f-head);
 		letter-spacing: -0.035em;
 	}
 	.done p {
 		color: var(--ink-2);
 		margin: 12px 0 36px;
-		font-size: 16px;
+		font-size: 17.5px;
 		text-wrap: pretty;
 	}
 	.sum {
@@ -677,12 +703,12 @@
 	}
 	.sum b {
 		display: block;
-		font: 600 30px/1 var(--f-head);
+		font: 600 32.5px/1 var(--f-head);
 		font-variant-numeric: tabular-nums;
 		letter-spacing: -0.02em;
 	}
 	.sum span {
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 		display: inline-flex;
 		align-items: center;
@@ -697,7 +723,7 @@
 		background: var(--g);
 	}
 	.tomorrow {
-		font-size: 13px;
+		font-size: 14.5px;
 		color: var(--ink-3);
 		margin-bottom: 24px;
 	}
@@ -707,6 +733,28 @@
 		justify-content: center;
 	}
 
+	.leech {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin: 0 auto 14px;
+		max-width: 640px;
+		padding: 10px 12px 10px 14px;
+		border-radius: var(--r-m);
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--ink-2);
+		font-size: 15px;
+	}
+	.leech p {
+		margin: 0;
+		flex: 1;
+		min-width: 0;
+	}
+	.leech b {
+		color: var(--ink);
+		font-weight: 600;
+	}
 	.aviso {
 		position: fixed;
 		left: 50%;
@@ -717,7 +765,7 @@
 		border-radius: var(--r-m);
 		background: var(--toast-bg);
 		color: var(--toast-ink);
-		font-size: 14px;
+		font-size: 15.5px;
 	}
 	.undo {
 		position: fixed;
@@ -765,16 +813,16 @@
 			padding: 16px 20px 22px;
 		}
 		.word {
-			font-size: 44px;
+			font-size: 47.5px;
 		}
 		.front .ask + .word {
-			font-size: 32px;
+			font-size: 34.5px;
 		}
 		.ctx {
-			font-size: 15px;
+			font-size: 16.5px;
 		}
 		.tr {
-			font-size: 31px;
+			font-size: 33.5px;
 		}
 		.rv-acts {
 			margin-top: 18px;
@@ -793,13 +841,13 @@
 			display: none;
 		}
 		.gbtn b {
-			font-size: 14.5px;
+			font-size: 16px;
 		}
 		.rv-hint {
 			display: none;
 		}
 		.done h2 {
-			font-size: 34px;
+			font-size: 36.5px;
 		}
 		.sum {
 			grid-template-columns: repeat(4, minmax(0, 1fr));

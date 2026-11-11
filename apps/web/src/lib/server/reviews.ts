@@ -6,10 +6,13 @@ import type { Database } from '#lib/database.types.ts';
 import { formatWorkSource, type CardKind, type Origin } from '#lib/items.ts';
 import type { Language } from '#lib/languages.ts';
 import {
+	DEFAULT_CLOCK,
+	DEFAULT_RETENTION,
 	dayStart,
 	formatWhen,
 	nextAvailableAt,
 	reviewCount,
+	type DayClock,
 	type ReviewCounts,
 	type ReviewItem
 } from '#lib/review.ts';
@@ -18,7 +21,7 @@ import { previewIntervals, type CardRow, type CardSeed, type LogEntry } from './
 type Client = SupabaseClient<Database>;
 
 const CARD_COLUMNS =
-	'id, kind, due_at, stability, stability_fast, difficulty, state, schedule_status, last_review_at, reps, lapses, scheduled_days, learning_step, created_at';
+	'id, item_id, kind, due_at, stability, stability_fast, difficulty, state, schedule_status, last_review_at, reps, lapses, scheduled_days, learning_step, created_at';
 
 const CARD_WITH_ITEM = `${CARD_COLUMNS}, items!inner(lemma, reading, sense, ipa, language, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
 
@@ -42,6 +45,7 @@ export function reviewableCards(supabase: Client, userId: string, language?: Lan
 
 export type ReviewCardRow = CardRow &
 	CardSeed & {
+		item_id: string;
 		kind: CardKind;
 		items: {
 			lemma: string;
@@ -75,10 +79,15 @@ export async function loadLogs(supabase: Client, cardId: string) {
 	return data as (LogEntry & { id: string })[];
 }
 
-export async function toReviewItem(row: ReviewCardRow, now: Date): Promise<ReviewItem> {
+export async function toReviewItem(
+	row: ReviewCardRow,
+	now: Date,
+	retention = DEFAULT_RETENTION
+): Promise<ReviewItem> {
 	const encounter = row.items.encounters[0] ?? null;
 	return {
 		cardId: row.id,
+		itemId: row.item_id,
 		kind: row.kind,
 		reps: row.reps,
 		state: row.state,
@@ -92,7 +101,7 @@ export async function toReviewItem(row: ReviewCardRow, now: Date): Promise<Revie
 		highlight: encounter?.highlight ?? '',
 		origin: (encounter?.origin as Origin | undefined) ?? null,
 		sourceDetail: encounter ? formatWorkSource(encounter.works, encounter.position) : '',
-		intervals: await previewIntervals(row, now)
+		intervals: await previewIntervals(row, now, retention)
 	};
 }
 
@@ -102,9 +111,13 @@ export interface ReviewSummary extends ReviewCounts {
 	next: string | null;
 }
 
-export async function fetchReviewSummary(supabase: Client, now: Date): Promise<ReviewSummary> {
+export async function fetchReviewSummary(
+	supabase: Client,
+	now: Date,
+	clock: DayClock = DEFAULT_CLOCK
+): Promise<ReviewSummary> {
 	const { data, error } = await supabase
-		.rpc('review_counts', { p_day_start: dayStart(now).toISOString() })
+		.rpc('review_counts', { p_day_start: dayStart(now, clock).toISOString() })
 		.single();
 	if (error || !data) throw new Error(`review_counts: ${error?.message}`);
 
@@ -114,8 +127,12 @@ export async function fetchReviewSummary(supabase: Client, now: Date): Promise<R
 		newDoneToday: data.new_done_today,
 		newLimit: data.new_limit
 	};
-	const nextAt = nextAvailableAt({ ...counts, now, nextDueAt: data.next_due_at });
-	return { ...counts, count: reviewCount(counts), next: nextAt ? formatWhen(nextAt, now) : null };
+	const nextAt = nextAvailableAt({ ...counts, now, nextDueAt: data.next_due_at }, clock);
+	return {
+		...counts,
+		count: reviewCount(counts),
+		next: nextAt ? formatWhen(nextAt, now, clock.timeZone) : null
+	};
 }
 
 /** Erros de record_review/undo_review, em PT. */

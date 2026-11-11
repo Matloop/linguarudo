@@ -29,7 +29,8 @@
 		| 'settings'
 		| 'bookmark'
 		| 'globe'
-		| 'archive';
+		| 'archive'
+		| 'chart';
 </script>
 
 <script lang="ts">

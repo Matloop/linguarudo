@@ -11,7 +11,9 @@
 	const decided = $derived(form && 'decided' in form ? form.decided : null);
 	const message = $derived(form && 'message' in form ? form.message : null);
 	const askedAgo = $derived(
-		data.pairing && data.now ? formatAgo(new Date(data.pairing.createdAt), new Date(data.now)) : ''
+		data.pairing && data.now
+			? formatAgo(new Date(data.pairing.createdAt), new Date(data.now), data.shell?.clock.timeZone)
+			: ''
 	);
 
 	const submit: SubmitFunction = ({ action }) => {
@@ -143,7 +145,7 @@
 	}
 	h1 {
 		margin: 0;
-		font: 600 22px/1.3 var(--f-head);
+		font: 600 24px/1.3 var(--f-head);
 		letter-spacing: -0.015em;
 		text-wrap: balance;
 	}
@@ -154,7 +156,7 @@
 	.lead {
 		margin: 10px 0 0;
 		color: var(--ink-2);
-		font-size: 14px;
+		font-size: 15.5px;
 		text-wrap: pretty;
 	}
 	.lead b {
@@ -174,7 +176,7 @@
 		align-items: baseline;
 		gap: 16px;
 		padding: 10px 0;
-		font-size: 13.5px;
+		font-size: 15px;
 	}
 	.facts div + div {
 		border-top: 1px solid var(--line);
@@ -189,18 +191,18 @@
 		text-align: right;
 	}
 	.ucode {
-		font: 600 15px var(--f-mono);
+		font: 600 16.5px var(--f-mono);
 		letter-spacing: 0.12em;
 	}
 	.hint {
 		margin: 10px 0 0;
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 	}
 	.erro {
 		margin: 12px 0 0;
 		color: var(--terra-ink);
-		font-size: 13.5px;
+		font-size: 15px;
 	}
 	.acts {
 		display: flex;
@@ -223,7 +225,7 @@
 		gap: 4px;
 	}
 	.campo span {
-		font-size: 12px;
+		font-size: 13.5px;
 		font-weight: 500;
 		color: var(--ink-3);
 	}
@@ -235,7 +237,7 @@
 		background: var(--sunk);
 		box-shadow: inset 0 0 0 1px var(--line);
 		color: var(--ink);
-		font: 600 15px var(--f-mono);
+		font: 600 16.5px var(--f-mono);
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 	}

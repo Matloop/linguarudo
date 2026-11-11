@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { resolve } from '$app/paths';
 	import { REVIEW_TIME_ZONE, formatAgo } from '#lib/review.ts';
 	import { toast } from '#lib/ui/app-state.svelte.ts';
 	import Icon from '#lib/ui/Icon.svelte';
@@ -10,12 +11,49 @@
 	let creating = $state(false);
 	let revoking = $state<string | null>(null);
 	let copied = $state(false);
+	let openTv = $state(false);
+	let openEr = $state(false);
 
 	const newToken = $derived(form?.action === 'create' && 'token' in form ? form.token : null);
 	const message = $derived(form && 'message' in form ? form.message : null);
 	const connected = $derived(data.tokens.length > 0);
 	const paired = $derived(data.devices.length > 0);
 	const now = $derived(new Date(data.now));
+	const timeZone = $derived(data.shell?.clock.timeZone ?? REVIEW_TIME_ZONE);
+
+	// Token novo: a linha do Stremio abre mostrando ele.
+	$effect(() => {
+		if (newToken) openTv = true;
+	});
+
+	const SOURCES = [
+		{ key: 'tv', label: 'Stremio' },
+		{ key: 'mu', label: 'Música' },
+		{ key: 'mao', label: 'À mão' },
+		{ key: 'er', label: 'E-reader' }
+	] as const;
+
+	const sources = $derived(
+		SOURCES.map((s) => ({ ...s, n: data.sources?.[s.key] ?? 0 })).filter((s) => s.n > 0)
+	);
+	const total = $derived(sources.reduce((sum, s) => sum + s.n, 0));
+
+	const lastSync = $derived(
+		data.devices.reduce<string | null>(
+			(max, d) => (d.last_used_at && (!max || d.last_used_at > max) ? d.last_used_at : max),
+			null
+		)
+	);
+
+	const erStatus = $derived.by(() => {
+		const n = data.devices.length;
+		const sync = lastSync ? `sincronizou ${ago(lastSync)}` : 'ainda não sincronizou';
+		return `${n} ${n === 1 ? 'aparelho' : 'aparelhos'} · ${sync}`;
+	});
+
+	function ago(iso: string) {
+		return formatAgo(new Date(iso), now, timeZone);
+	}
 
 	const submitCreate: SubmitFunction = () => {
 		creating = true;
@@ -48,164 +86,186 @@
 		copied = true;
 		toast('Token copiado');
 	}
-
-	const dateFormat = new Intl.DateTimeFormat('pt-BR', {
-		timeZone: REVIEW_TIME_ZONE,
-		day: '2-digit',
-		month: 'short',
-		hour: '2-digit',
-		minute: '2-digit',
-		hourCycle: 'h23'
-	});
-
-	function when(iso: string | null) {
-		return iso ? dateFormat.format(new Date(iso)) : 'nunca';
-	}
 </script>
 
 <svelte:head>
 	<title>Integrações · Linguetta</title>
 </svelte:head>
 
-<div class="ph">
+<header class="ph">
 	<div>
 		<h1>Integrações</h1>
-		<p>
-			Seu banco de palavras recebe o que você encontra em cada lugar. Tudo cai na mesma revisão.
-		</p>
+		<p>Conecte os lugares onde você encontra palavras.</p>
 	</div>
-</div>
+</header>
 
-<div class="intg">
-	<section class="tile lift ig stremio" aria-labelledby="stremio-titulo">
-		<div class="ig-h">
-			<span class="ig-logo tv"><Icon name="tv" /></span>
-			{#if connected}<span class="status">Conectado</span>{:else}<span class="soon-tag"
-					>Não conectado</span
-				>{/if}
+{#if total > 0}
+	<section class="origem" aria-labelledby="origem-titulo">
+		<div class="origem-top">
+			<b id="origem-titulo">De onde vieram suas palavras</b><span>{total} no total</span>
 		</div>
-		<h2 class="ig-t" id="stremio-titulo">Stremio</h2>
-		<span class="ig-s">Pelo addon LingoBlend</span>
-		<p>
-			Toque numa palavra da legenda. Ela chega com a frase e o episódio, e o LingoBlend traz
-			primeiro as palavras que você está aprendendo.
-		</p>
-		<div class="ig-stats">
-			<span><b>{data.stremio.words}</b> {data.stremio.words === 1 ? 'palavra' : 'palavras'}</span>
-			{#if data.stremio.last}<span>Última: {formatAgo(new Date(data.stremio.last.at), now)}</span
-				>{/if}
+		<div class="barra" aria-hidden="true">
+			{#each sources as s (s.key)}
+				<i style:flex={s.n} style:background="var(--src-{s.key})"></i>
+			{/each}
 		</div>
-		{#if data.stremio.last}
-			<div class="ig-last">
-				<Icon name="tv" size="sm" /><span
-					><b>{data.stremio.last.lemma}</b>{#if data.stremio.last.source}
-						· {data.stremio.last.source}{/if}</span
-				>
+		<div class="leg">
+			{#each sources as s (s.key)}
+				<span><i style:background="var(--src-{s.key})"></i>{s.label} <b>{s.n}</b></span>
+			{/each}
+		</div>
+	</section>
+{/if}
+
+{#if message}<p class="erro" role="alert">{message}</p>{/if}
+
+<div class="fontes">
+	<section class="fonte" class:aberta={openTv} aria-labelledby="stremio-titulo">
+		<div class="fonte-row">
+			<span class="f-ic"><Icon name="tv" /></span>
+			<div class="f-t">
+				<b id="stremio-titulo">Stremio</b>
+				{#if connected}
+					<span class="on"
+						>Conectado{#if data.stremio.last}
+							· última palavra {ago(data.stremio.last.at)}{/if}</span
+					>
+				{:else}
+					<span>Legendas viram palavras no seu banco</span>
+				{/if}
 			</div>
-		{/if}
-
-		{#if newToken}
-			<div class="novo" role="status">
-				<p><strong>Copie agora.</strong> Este token não aparece de novo.</p>
-				<div class="token">
-					<input
-						readonly
-						value={newToken}
-						aria-label="Token gerado"
-						onfocus={(e) => e.currentTarget.select()}
-					/>
-					<button type="button" class="btn btn-soft sm" onclick={copy}>
-						{copied ? 'Copiado' : 'Copiar'}
-					</button>
-				</div>
-			</div>
-		{/if}
-
-		{#if message}<p class="erro" role="alert">{message}</p>{/if}
-
-		<section class="tokens" aria-labelledby="tokens-titulo">
-			<h3 id="tokens-titulo">Tokens ativos</h3>
-			{#if data.tokens.length === 0}
-				<p class="vazio">Nenhum token ainda.</p>
-			{:else}
-				<ul>
-					{#each data.tokens as t (t.id)}
-						<li class:saindo={revoking === t.id}>
-							<div class="texto">
-								<p class="nome">{t.label} <code>…{t.token_hint}</code></p>
-								<p class="meta">
-									Criado em {when(t.created_at)} · Último uso: {when(t.last_used_at)}
-								</p>
-							</div>
-							<form method="POST" action="?/revoke" use:enhance={submitRevoke}>
-								<input type="hidden" name="id" value={t.id} />
-								<button
-									class="btn btn-ghost sm"
-									type="submit"
-									aria-label={`Revogar ${t.label} …${t.token_hint}`}
-								>
-									Revogar
-								</button>
-							</form>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
-
-		<form method="POST" action="?/create" use:enhance={submitCreate} class="gerar">
-			<label class="campo">
-				<span>Nome <i>· opcional</i></span>
-				<input name="label" maxlength="60" placeholder="Stremio" autocomplete="off" />
-			</label>
-			<button class="btn btn-primary" type="submit" disabled={creating}>
-				<Icon name="refresh" size="sm" />{creating ? 'Gerando…' : 'Gerar token'}
+			<button
+				type="button"
+				class="btn {connected ? 'btn-soft' : 'btn-primary'}"
+				aria-expanded={openTv}
+				aria-controls="stremio-corpo"
+				onclick={() => (openTv = !openTv)}
+			>
+				{connected ? 'Gerenciar' : 'Conectar'}
 			</button>
-		</form>
-
-		<details class="como">
-			<summary>Como conectar</summary>
-			<ol class="steps">
-				<li><span><b>Gere um token</b>Aqui em cima. Ele aparece uma vez só.</span></li>
-				<li><span><b>Abra o menu da língua</b>No player do Stremio, no botão IT/EN.</span></li>
-				<li><span><b>Cole o token</b>No campo do token. Pronto: as palavras chegam aqui.</span></li>
-			</ol>
-		</details>
+		</div>
+		{#if openTv}
+			<div class="f-body" id="stremio-corpo">
+				{#if newToken || !connected}
+					<ol class="passos">
+						{#if newToken}
+							<li class="feito">
+								<div class="pt" role="status">
+									<b>Token gerado</b><span>Copie agora: ele aparece uma vez só.</span>
+									<div class="token">
+										<input
+											readonly
+											value={newToken}
+											aria-label="Token gerado"
+											onfocus={(e) => e.currentTarget.select()}
+										/>
+										<button type="button" class="btn btn-soft btn-sm" onclick={copy}>
+											{copied ? 'Copiado' : 'Copiar'}
+										</button>
+									</div>
+								</div>
+							</li>
+						{:else}
+							<li>
+								<div class="pt">
+									<b>Gere um token</b>
+									<form method="POST" action="?/create" use:enhance={submitCreate} class="gerar">
+										<input
+											name="label"
+											maxlength="60"
+											placeholder="Nome (opcional)"
+											aria-label="Nome"
+											autocomplete="off"
+										/>
+										<button class="btn btn-primary btn-sm" type="submit" disabled={creating}>
+											{creating ? 'Gerando…' : 'Gerar token'}
+										</button>
+									</form>
+								</div>
+							</li>
+						{/if}
+						<li>
+							<div class="pt">
+								<b>Cole no LingoBlend</b><span>No player do Stremio, menu IT/EN → Token.</span>
+							</div>
+						</li>
+					</ol>
+				{/if}
+				{#if connected}
+					<ul class="lista" class:sep={newToken} aria-label="Tokens ativos">
+						{#each data.tokens as t (t.id)}
+							<li class:saindo={revoking === t.id}>
+								<div class="n">
+									<b>{t.label}</b><code>…{t.token_hint}</code>
+									<small>{t.last_used_at ? `Usado ${ago(t.last_used_at)}` : 'Nunca usado'}</small>
+								</div>
+								<form method="POST" action="?/revoke" use:enhance={submitRevoke}>
+									<input type="hidden" name="id" value={t.id} />
+									<button
+										class="btn btn-ghost btn-sm"
+										type="submit"
+										aria-label={`Revogar ${t.label} …${t.token_hint}`}
+									>
+										Revogar
+									</button>
+								</form>
+							</li>
+						{/each}
+					</ul>
+					<form method="POST" action="?/create" use:enhance={submitCreate} class="f-foot">
+						<button class="btn btn-soft btn-sm" type="submit" disabled={creating}>
+							<Icon name="plus" size="sm" />{creating ? 'Gerando…' : 'Novo token'}
+						</button>
+					</form>
+				{/if}
+			</div>
+		{/if}
 	</section>
 
-	<section class="tile ig" class:soon={!paired} aria-labelledby="ereader-titulo">
-		<div class="ig-h">
-			<span class="ig-logo"><Icon name="bookmark" /></span>
-			{#if paired}<span class="status">Pareado</span>{:else}<span class="soon-tag">Não pareado</span
-				>{/if}
-		</div>
-		<h2 class="ig-t" id="ereader-titulo">E-reader</h2>
-		<span class="ig-s">CrossNext</span>
-		<p>
-			Salve uma palavra do blend enquanto lê. Ela chega com a frase e o capítulo, e a revisão do
-			aparelho entra na mesma fila.
-		</p>
-
-		<section class="tokens" aria-labelledby="aparelhos-titulo">
-			<h3 id="aparelhos-titulo">Aparelhos</h3>
-			{#if data.devices.length === 0}
-				<p class="vazio">Nenhum aparelho pareado.</p>
+	<section class="fonte" class:aberta={openEr} aria-labelledby="ereader-titulo">
+		<div class="fonte-row">
+			<span class="f-ic"><Icon name="bookmark" /></span>
+			<div class="f-t">
+				<b id="ereader-titulo">E-reader</b>
+				{#if paired}
+					<span class="on">{erStatus}</span>
+				{:else}
+					<span>Leia no X4 e salve palavras no seu banco</span>
+				{/if}
+			</div>
+			{#if paired}
+				<button
+					type="button"
+					class="btn btn-soft"
+					aria-expanded={openEr}
+					aria-controls="ereader-corpo"
+					onclick={() => (openEr = !openEr)}
+				>
+					Gerenciar
+				</button>
 			{:else}
-				<ul>
+				<a class="btn btn-primary" href={resolve('/parear')}>Parear</a>
+			{/if}
+		</div>
+		{#if openEr && paired}
+			<div class="f-body" id="ereader-corpo">
+				<ul class="lista" aria-label="Aparelhos">
 					{#each data.devices as d (d.id)}
 						<li class:saindo={revoking === d.id}>
-							<div class="texto">
-								<p class="nome">{d.label} <code>…{d.token_hint}</code></p>
-								<p class="meta">
-									{#if d.model}{d.model} ·
-									{/if}Última sincronização: {when(d.last_used_at)}
-								</p>
+							<div class="n">
+								<b>{d.label}</b><code>…{d.token_hint}</code>
+								<small
+									>{#if d.model}{d.model} ·
+									{/if}{d.last_used_at
+										? `Sincronizou ${ago(d.last_used_at)}`
+										: 'Ainda não sincronizou'}</small
+								>
 							</div>
 							<form method="POST" action="?/revoke" use:enhance={submitRevoke}>
 								<input type="hidden" name="id" value={d.id} />
 								<input type="hidden" name="kind" value="aparelho" />
 								<button
-									class="btn btn-ghost sm"
+									class="btn btn-ghost btn-sm"
 									type="submit"
 									aria-label={`Revogar aparelho ${d.label} …${d.token_hint}`}
 								>
@@ -215,173 +275,234 @@
 						</li>
 					{/each}
 				</ul>
-			{/if}
-		</section>
-
-		<details class="como">
-			<summary>Como parear</summary>
-			<ol class="steps">
-				<li><span><b>No aparelho</b>Abra Linguetta e escolha Parear. Aparece um código.</span></li>
-				<li>
-					<span
-						><b>Aqui no app</b>Leia o QR ou abra <a href="/parear">a página de pareamento</a> e digite
-						o código.</span
+				<div class="f-foot">
+					<a class="btn btn-soft btn-sm" href={resolve('/parear')}
+						><Icon name="plus" size="sm" />Parear outro</a
 					>
-				</li>
-				<li><span><b>Aprove</b>O aparelho sincroniza sozinho quando tiver Wi-Fi.</span></li>
-			</ol>
-		</details>
+				</div>
+			</div>
+		{/if}
 	</section>
 
-	<section class="tile ig soon" aria-labelledby="anki-titulo">
-		<div class="ig-h">
-			<span class="ig-logo"><Icon name="archive" /></span><span class="soon-tag">Em breve</span>
+	<section class="fonte breve" aria-labelledby="anki-titulo">
+		<div class="fonte-row">
+			<span class="f-ic"><Icon name="archive" /></span>
+			<div class="f-t"><b id="anki-titulo">Anki</b><span>Exportar baralhos</span></div>
+			<span class="tag">Em breve</span>
 		</div>
-		<h2 class="ig-t" id="anki-titulo">Anki</h2>
-		<span class="ig-s">Baralhos</span>
-		<p>Suas palavras no Anki, com a frase e a tradução.</p>
 	</section>
 </div>
 
-<section class="how-int">
-	<h2>Como o banco junta tudo</h2>
-	<ol class="steps row">
-		<li><span><b>Você encontra</b>No Stremio, numa música ou à mão.</span></li>
-		<li><span><b>Guarda com a frase</b>A palavra entra no banco do idioma certo.</span></li>
-		<li><span><b>Revisa num lugar só</b>Tudo cai na mesma fila, no dia certo.</span></li>
-	</ol>
-</section>
-
 <style>
-	.intg {
-		display: grid;
-		grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
-		gap: 14px;
-		align-items: start;
+	.origem {
+		margin: 4px 0 36px;
 	}
-	.ig {
-		padding: 22px;
+	.origem-top {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		margin-bottom: 12px;
+	}
+	.origem-top b {
+		font: 600 15px var(--f-body);
+	}
+	.origem-top span {
+		color: var(--ink-3);
+		font-size: 14.5px;
+		font-variant-numeric: tabular-nums;
+	}
+	.barra {
+		display: flex;
+		height: 10px;
+		border-radius: 99px;
+		overflow: hidden;
+		gap: 3px;
+	}
+	.barra i {
+		display: block;
+		height: 100%;
+		border-radius: 3px;
+	}
+	.leg {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px 20px;
+		margin-top: 12px;
+		font-size: 14.5px;
+		color: var(--ink-2);
+	}
+	.leg span {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.leg i {
+		width: 8px;
+		height: 8px;
+		border-radius: 2px;
+	}
+	.leg b {
+		color: var(--ink);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.erro {
+		margin: 0 0 14px;
+		color: var(--terra-ink);
+	}
+
+	.fontes {
 		display: flex;
 		flex-direction: column;
+		gap: 10px;
 	}
-	.ig-h {
-		display: flex;
-		justify-content: space-between;
+	.fonte {
+		background: var(--raise);
+		border-radius: var(--r-l);
+		box-shadow: var(--sh-card);
+		overflow: hidden;
+	}
+	:global(.tema-escuro) .fonte {
+		background: var(--tile);
+	}
+	.fonte-row {
+		display: grid;
+		grid-template-columns: 44px 1fr auto;
 		align-items: center;
-		margin-bottom: 18px;
+		gap: 16px;
+		padding: 16px 18px;
 	}
-	.ig-logo {
-		width: 40px;
-		height: 40px;
-		border-radius: var(--r-m);
+	.f-ic {
+		width: 44px;
+		height: 44px;
+		border-radius: 10px;
 		display: grid;
 		place-items: center;
-		background: var(--tile);
+		background: var(--sunk);
 		box-shadow: inset 0 0 0 1px var(--line);
 		color: var(--ink-2);
 	}
-	.ig-logo.tv {
-		background: var(--primary);
-		color: var(--on-primary);
+	.f-ic :global(.ic) {
+		width: 21px;
+		height: 21px;
+	}
+	.f-t {
+		min-width: 0;
+	}
+	.f-t b {
+		display: block;
+		font: 600 18px/1.3 var(--f-head);
+		letter-spacing: -0.01em;
+	}
+	.f-t span {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 14.5px;
+		color: var(--ink-3);
+	}
+	.f-t .on {
+		color: var(--ok-ink);
+	}
+	.f-t .on::before {
+		content: '';
+		flex: none;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: currentColor;
+	}
+	.fonte.breve {
+		background: none;
+		box-shadow: inset 0 0 0 1px var(--line);
+	}
+	.fonte.breve .f-t b {
+		color: var(--ink-2);
+	}
+	.fonte.breve .f-ic {
+		color: var(--ink-3);
+	}
+	.tag {
+		font-size: 13.5px;
+		font-weight: 500;
+		color: var(--ink-3);
+		padding: 3px 9px;
+		border-radius: 99px;
+		box-shadow: inset 0 0 0 1px var(--line-2);
+	}
+
+	.f-body {
+		padding: 4px 18px 20px 78px;
+		animation: abre 0.3s var(--ease);
+	}
+	@keyframes abre {
+		from {
+			opacity: 0;
+			transform: translateY(-4px);
+		}
+	}
+	.btn-sm {
+		height: 32px;
+		padding: 0 12px;
+		font-size: 14.5px;
+	}
+
+	.passos {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		counter-reset: p;
+	}
+	.passos li {
+		counter-increment: p;
+		display: grid;
+		grid-template-columns: 26px 1fr;
+		gap: 12px;
+		align-items: start;
+	}
+	.passos li::before {
+		content: counter(p);
+		width: 26px;
+		height: 26px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		font: 600 13.5px var(--f-head);
+		box-shadow: inset 0 0 0 1px var(--line-2);
+		color: var(--ink-2);
+	}
+	.passos li.feito::before {
+		content: '✓';
+		background: var(--ok-soft);
+		color: var(--ok-ink);
 		box-shadow: none;
 	}
-	.ig-t {
-		margin: 0;
-		font: 600 18px/1.25 var(--f-head);
-		letter-spacing: -0.01em;
+	.pt {
+		padding-top: 2px;
+		min-width: 0;
+	}
+	.pt > b {
 		display: block;
+		font-weight: 500;
 	}
-	.ig-s {
-		font-size: 13px;
+	.pt > span {
 		color: var(--ink-3);
+		font-size: 14.5px;
 	}
-	.ig p {
-		margin: 12px 0 0;
-		color: var(--ink-2);
-		font-size: 13.5px;
-		text-wrap: pretty;
-	}
-	.ig-stats {
-		display: flex;
-		gap: 16px;
-		margin-top: 16px;
-		font-size: 12.5px;
-		color: var(--ink-3);
-		align-items: baseline;
-	}
-	.ig-stats b {
-		font: 600 15px var(--f-head);
-		color: var(--ink);
-		margin-right: 2px;
-	}
-	.ig-last {
+	.token,
+	.gerar {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin-top: 14px;
-		padding: 9px 12px;
-		border-radius: var(--r-m);
-		background: var(--sunk);
-		box-shadow: inset 0 0 0 1px var(--line);
-		font-size: 13px;
-		color: var(--ink-3);
-		min-width: 0;
-	}
-	.ig-last span {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.ig-last b {
-		color: var(--ink);
-		font-weight: 500;
-	}
-	.status {
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--ink-2);
-	}
-	.status::before {
-		content: '';
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--salvia);
-	}
-	.soon-tag {
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--ink-3);
-		padding: 2px 8px;
-		border-radius: 4px;
-		box-shadow: inset 0 0 0 1px var(--line-2);
-	}
-	.soon .ig-t {
-		color: var(--ink-2);
-	}
-	.soon .ig-logo {
-		color: var(--ink-3);
-	}
-	.como a {
-		color: var(--accent-ink);
-		text-decoration: underline;
-		text-underline-offset: 2px;
-	}
-
-	.novo {
-		margin-top: 16px;
-	}
-	.novo p {
-		margin: 0 0 8px;
+		margin-top: 10px;
+		max-width: 460px;
 	}
 	.token {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 5px 5px 5px 12px;
+		padding: 5px 5px 5px 14px;
 		border-radius: var(--r-m);
 		background: var(--sunk);
 		box-shadow: inset 0 0 0 1px var(--line);
@@ -393,100 +514,16 @@
 		background: none;
 		outline: none;
 		font:
-			500 13px ui-monospace,
-			'SF Mono',
+			500 14.5px ui-monospace,
 			Menlo,
 			monospace;
-		color: var(--ink-2);
-	}
-	.sm {
-		height: 30px;
-		padding: 0 12px;
-		font-size: 13px;
-	}
-	.erro {
-		color: var(--terra-ink) !important;
-	}
-
-	.tokens {
-		margin-top: 20px;
-		border-top: 1px solid var(--line);
-		padding-top: 14px;
-	}
-	.tokens h3 {
-		margin: 0 0 6px;
-		font: 500 12.5px var(--f-body);
-		color: var(--ink-3);
-	}
-	.tokens .vazio {
-		margin: 4px 0 0;
-		color: var(--ink-3);
-	}
-	.tokens ul {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-	}
-	.tokens li {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 8px 0;
-		transition: opacity 0.2s;
-	}
-	.tokens li + li {
-		border-top: 1px solid var(--line);
-	}
-	.tokens li.saindo {
-		opacity: 0.4;
-	}
-	.tokens .texto p {
-		margin: 0;
-	}
-	.tokens .nome {
-		font-weight: 500;
 		color: var(--ink);
-		font-size: 14px;
+		text-overflow: ellipsis;
 	}
-	.tokens code {
-		font:
-			500 12.5px ui-monospace,
-			'SF Mono',
-			Menlo,
-			monospace;
-		color: var(--ink-3);
-	}
-	.tokens .meta {
-		font-size: 12.5px;
-		color: var(--ink-3);
-		margin-top: 2px;
-	}
-	.gerar {
-		display: flex;
-		align-items: flex-end;
-		gap: 10px;
-		margin-top: 16px;
-		flex-wrap: wrap;
-	}
-	.campo {
+	.gerar input {
 		flex: 1;
-		min-width: 160px;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-	.campo span {
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--ink-3);
-	}
-	.campo i {
-		font-style: normal;
-		font-weight: 400;
-	}
-	.campo input {
-		height: 36px;
+		min-width: 0;
+		height: 32px;
 		padding: 0 12px;
 		border: 0;
 		border-radius: var(--r-m);
@@ -494,80 +531,64 @@
 		box-shadow: inset 0 0 0 1px var(--line);
 		color: var(--ink);
 		font: inherit;
-		font-size: 14px;
-	}
-	.como {
-		margin-top: 18px;
-	}
-	.como summary {
-		cursor: pointer;
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--ink-2);
-	}
-	.como .steps {
-		margin-top: 14px;
+		font-size: 14.5px;
 	}
 
-	.steps {
-		list-style: none;
+	.lista {
 		margin: 0;
 		padding: 0;
-		counter-reset: s;
+		list-style: none;
+	}
+	.lista.sep {
+		margin-top: 16px;
+		border-top: 1px solid var(--line);
+	}
+	.lista li {
 		display: flex;
-		flex-direction: column;
-		gap: 16px;
-	}
-	.steps li {
-		counter-increment: s;
-		display: grid;
-		grid-template-columns: 26px 1fr;
+		align-items: center;
 		gap: 12px;
-		font-size: 13.5px;
-		color: var(--ink-2);
+		padding: 10px 0;
+		transition: opacity 0.2s;
 	}
-	.steps li::before {
-		content: counter(s);
-		width: 24px;
-		height: 24px;
-		border-radius: 50%;
-		display: grid;
-		place-items: center;
-		font: 600 12px var(--f-head);
-		box-shadow: inset 0 0 0 1px var(--line-2);
-		color: var(--ink-2);
+	.lista li + li {
+		border-top: 1px solid var(--line);
 	}
-	.steps b {
-		color: var(--ink);
+	.lista li.saindo {
+		opacity: 0.4;
+	}
+	.lista .n {
+		flex: 1;
+		min-width: 0;
+	}
+	.lista .n b {
 		font-weight: 500;
+	}
+	.lista .n code {
+		font:
+			500 13.5px ui-monospace,
+			Menlo,
+			monospace;
+		color: var(--ink-3);
+		margin-left: 6px;
+	}
+	.lista .n small {
 		display: block;
-	}
-	.how-int {
-		margin-top: 40px;
-	}
-	.how-int h2 {
-		margin: 0 0 18px;
-		font: 500 13px var(--f-body);
+		font-size: 14px;
 		color: var(--ink-3);
 	}
-	.steps.row {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 20px;
+	.f-foot {
+		display: flex;
+		gap: 8px;
+		margin-top: 12px;
 	}
 
-	@media (max-width: 1100px) {
-		.intg {
-			grid-template-columns: 1fr 1fr;
-		}
-		.stremio {
-			grid-column: 1 / -1;
-		}
-	}
 	@media (max-width: 768px) {
-		.intg,
-		.steps.row {
-			grid-template-columns: 1fr;
+		.fonte-row {
+			gap: 12px;
+			padding: 14px;
+		}
+		.f-body {
+			padding: 4px 14px 18px;
 		}
 	}
 </style>

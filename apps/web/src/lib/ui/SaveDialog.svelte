@@ -232,14 +232,14 @@
 		border-radius: var(--r-s);
 		background: var(--tile);
 		box-shadow: inset 0 0 0 1px var(--line);
-		font-size: 12.5px;
+		font-size: 14px;
 		font-weight: 500;
 		color: var(--ink-2);
 	}
 	.lang-chip .code {
 		width: 20px;
 		height: 20px;
-		font-size: 9px;
+		font-size: 10.5px;
 		border-radius: 4px;
 		box-shadow: none;
 		background: var(--sunk);
@@ -252,7 +252,7 @@
 		border: 0;
 		outline: none;
 		background: none;
-		font: 600 30px/1.2 var(--f-head);
+		font: 600 32.5px/1.2 var(--f-head);
 		letter-spacing: -0.025em;
 		padding: 8px 0 6px;
 	}
@@ -274,7 +274,7 @@
 	}
 	.field label {
 		display: block;
-		font-size: 12px;
+		font-size: 13.5px;
 		font-weight: 500;
 		color: var(--ink-3);
 		margin-bottom: 2px;
@@ -291,7 +291,7 @@
 		background: none;
 		padding: 0;
 		resize: none;
-		font-size: 15px;
+		font-size: 16.5px;
 		line-height: 1.5;
 	}
 	.field input::placeholder,
@@ -309,7 +309,7 @@
 		border-top: 1px solid var(--line);
 	}
 	.mf .hint {
-		font-size: 12.5px;
+		font-size: 14px;
 		color: var(--ink-3);
 		display: flex;
 		align-items: center;
@@ -321,7 +321,7 @@
 	}
 	.f-err {
 		color: var(--terra-ink);
-		font-size: 12.5px;
+		font-size: 14px;
 		height: 0;
 		overflow: hidden;
 		transition: height 0.2s;
@@ -344,7 +344,7 @@
 			flex: 1;
 		}
 		.f-word {
-			font-size: 27px;
+			font-size: 29px;
 		}
 	}
 </style>

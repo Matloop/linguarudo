@@ -9,7 +9,13 @@ import {
 	addStudyLanguage,
 	parseTheme
 } from '#lib/prefs.ts';
-import { DEFAULT_NEW_PER_DAY } from '#lib/review.ts';
+import {
+	DEFAULT_NEW_PER_DAY,
+	DEFAULT_RETENTION,
+	isTimeZone,
+	MAX_RETENTION,
+	MIN_RETENTION
+} from '#lib/review.ts';
 import { loadSettings } from '#lib/server/settings.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -33,7 +39,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const [{ data: settings }, { count: tokens }] = await Promise.all([
 		locals.supabase
 			.from('user_settings')
-			.select('new_cards_per_day')
+			.select('new_cards_per_day, desired_retention')
 			.eq('user_id', user.id)
 			.maybeSingle(),
 		locals.supabase
@@ -44,6 +50,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 	return {
 		newPerDay: settings?.new_cards_per_day ?? DEFAULT_NEW_PER_DAY,
 		maxNewPerDay: MAX_NEW_PER_DAY,
+		// Em pontos percentuais inteiros (90), como o stepper mostra.
+		retention: Math.round((settings?.desired_retention ?? DEFAULT_RETENTION) * 100),
+		minRetention: Math.round(MIN_RETENTION * 100),
+		maxRetention: Math.round(MAX_RETENTION * 100),
 		stremioConnected: (tokens ?? 0) > 0
 	};
 };
@@ -155,6 +165,56 @@ export const actions: Actions = {
 			.update({ new_cards_per_day: n })
 			.eq('user_id', user.id);
 		if (dbError) return fail(500, { message: 'Não deu para salvar agora.' });
+		back(form);
+	},
+
+	retencao: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		const form = await request.formData();
+		const pct = Number(form.get('retencao'));
+		const min = Math.round(MIN_RETENTION * 100);
+		const max = Math.round(MAX_RETENTION * 100);
+		if (!Number.isInteger(pct) || pct < min || pct > max) {
+			return fail(400, { message: `Escolha uma retenção de ${min}% a ${max}%.` });
+		}
+		const { error: dbError } = await locals.supabase
+			.from('user_settings')
+			.update({ desired_retention: pct / 100 })
+			.eq('user_id', user.id);
+		if (dbError) return fail(500, { message: 'Não deu para salvar agora.' });
+		back(form);
+	},
+
+	virada: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		const form = await request.formData();
+		const hour = Number(form.get('virada'));
+		if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+			return fail(400, { message: 'Escolha uma hora de 0 a 23.' });
+		}
+		const { error: dbError } = await locals.supabase
+			.from('user_settings')
+			.update({ day_start_hour: hour })
+			.eq('user_id', user.id);
+		if (dbError) return fail(500, { message: 'Não deu para salvar agora.' });
+		back(form);
+	},
+
+	/** Fuso escolhido no perfil ou detectado pelo navegador na primeira visita (so_se_vazio). */
+	fuso: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		const form = await request.formData();
+		const zone = form.get('fuso')?.toString() ?? '';
+		if (!isTimeZone(zone)) {
+			return fail(400, { message: 'Fuso horário desconhecido.' });
+		}
+		let query = locals.supabase
+			.from('user_settings')
+			.update({ time_zone: zone })
+			.eq('user_id', user.id);
+		if (form.get('so_se_vazio')) query = query.is('time_zone', null);
+		const { error: dbError } = await query;
+		if (dbError) return fail(400, { message: 'Não deu para salvar esse fuso.' });
 		back(form);
 	}
 };

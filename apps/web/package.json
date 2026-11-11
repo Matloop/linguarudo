@@ -41,11 +41,12 @@
 		"vite": "^8.3.0"
 	},
 	"dependencies": {
-		"@linguetta/language": "workspace:*",
 		"@fontsource-variable/inter": "^5.3.0",
 		"@fontsource-variable/manrope": "^5.3.0",
+		"@linguetta/language": "workspace:*",
 		"@supabase/ssr": "^0.12.7",
 		"@supabase/supabase-js": "^2.119.0",
+		"@tanstack/charts": "1.5.0",
 		"ts-fsrs": "^6.0.0"
 	}
 }

@@ -130,8 +130,9 @@
 
 <style>
 	.sinc {
-		background: var(--verde);
-		border-radius: 24px;
+		background: var(--panel);
+		box-shadow: var(--sh-panel);
+		border-radius: var(--r-l);
 		padding: 16px 18px;
 		display: flex;
 		flex-direction: column;
@@ -140,13 +141,13 @@
 
 	.cab h2 {
 		margin: 0;
-		font-size: 16px;
+		font: 600 17px/1.3 var(--f-head);
 	}
 
 	.cab p {
 		margin: 2px 0 0;
-		font-size: 13px;
-		color: var(--verde-texto);
+		font-size: 14.5px;
+		color: var(--ink-2);
 	}
 
 	.corpo {
@@ -156,66 +157,65 @@
 	}
 
 	.alvo {
-		background: var(--verde-escuro);
-		border: 1px solid #ffffff1f;
-		border-radius: 16px;
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
+		border-radius: var(--r-l);
 		padding: 12px 14px;
 	}
 
 	.alvo small {
-		font-size: 11px;
-		font-weight: 850;
-		letter-spacing: 0.08em;
+		font-size: 12.5px;
+		font-weight: 500;
+		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: var(--ouro);
+		color: var(--gold-ink);
 	}
 
 	.alvo .txt {
-		margin: 4px 0 10px;
-		font-size: 17px;
-		font-weight: 750;
-		line-height: 1.3;
+		margin: 4px 0 12px;
+		font: 600 18.5px/1.3 var(--f-head);
 	}
 
 	.marcar {
 		width: 100%;
-		height: 50px;
+		height: 48px;
 		border: 0;
-		border-radius: 12px;
-		background: var(--ouro);
-		color: #1b140b;
-		font: inherit;
-		font-size: 16px;
-		font-weight: 850;
+		border-radius: var(--r-m);
+		background: var(--primary);
+		color: var(--on-primary);
+		font: 500 16.5px/1 var(--f-body);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: 10px;
-		transition: transform 0.08s;
+		transition:
+			transform 0.08s,
+			background-color 0.18s;
+	}
+
+	.marcar:hover:not(:disabled) {
+		background: var(--primary-hover);
 	}
 
 	.marcar:active {
-		transform: scale(0.97);
+		transform: scale(0.98);
 	}
 
 	.marcar:disabled {
 		opacity: 0.4;
 	}
 
-	.marcar kbd,
-	.teclas kbd {
-		font: 700 11px/1 var(--fonte);
-		border: 1px solid currentColor;
-		border-radius: 5px;
-		padding: 2px 5px;
-		opacity: 0.7;
+	.marcar kbd {
+		background: var(--kbd-on-primary);
+		color: var(--kbd-on-primary-ink);
+		box-shadow: none;
 	}
 
 	.fb {
 		min-height: 18px;
 		margin: 8px 0 0;
-		font-size: 12.5px;
-		color: var(--salvia-cl);
+		font-size: 14px;
+		color: var(--ok-ink);
 	}
 
 	.ajuste {
@@ -233,15 +233,14 @@
 	}
 
 	.leitura b {
-		font:
-			800 30px/1.1 ui-monospace,
-			monospace;
+		font: 600 32px/1.1 var(--f-head);
+		font-variant-numeric: tabular-nums;
 		letter-spacing: -0.02em;
 	}
 
 	.leitura span {
-		font-size: 13px;
-		color: var(--verde-texto);
+		font-size: 14.5px;
+		color: var(--ink-2);
 	}
 
 	.fino {
@@ -252,31 +251,34 @@
 	.fino button,
 	.bt {
 		border: 0;
-		border-radius: 10px;
-		background: #ffffff12;
-		color: inherit;
+		border-radius: var(--r-m);
+		background: var(--soft-bg);
+		box-shadow: var(--sh-card);
+		color: var(--ink);
 		font: inherit;
-		font-weight: 750;
-		font-size: 13px;
+		font-weight: 500;
+		font-size: 14.5px;
 		height: 36px;
 		padding: 0 12px;
+		transition: background-color 0.15s;
 	}
 
 	.fino button {
 		flex: 1;
-		font-family: ui-monospace, monospace;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.fino button:hover,
 	.bt:hover {
-		background: #ffffff1f;
+		background: var(--soft-hover);
 	}
 
 	.tr {
 		position: relative;
 		height: 28px;
-		border-radius: 8px;
-		background: #ffffff0d;
+		border-radius: var(--r-s);
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
 		overflow: hidden;
 	}
 
@@ -287,7 +289,7 @@
 	.bloco {
 		top: 6px;
 		bottom: 6px;
-		background: #b5ddaa33;
+		background: var(--ok-soft);
 		border-radius: 3px;
 		transition: left 0.25s;
 	}
@@ -297,30 +299,29 @@
 		bottom: 4px;
 		width: 2px;
 		margin-left: -1px;
-		background: var(--salvia-cl);
+		background: var(--ok-ink);
 		transition: left 0.25s;
 	}
 
 	.mk.on {
 		width: 3px;
-		background: var(--ouro);
+		background: var(--gold-ink);
 	}
 
 	.ph {
 		top: 0;
 		bottom: 0;
 		width: 2px;
-		background: #fff;
+		background: var(--ink);
 	}
 
 	.leg {
 		display: flex;
 		justify-content: space-between;
 		margin-top: 4px;
-		font:
-			500 11px ui-monospace,
-			monospace;
-		color: #9db8a6;
+		font-size: 12.5px;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-3);
 	}
 
 	.pe {
@@ -336,29 +337,36 @@
 
 	.bt.fant {
 		background: none;
-		color: var(--verde-texto);
+		box-shadow: none;
+		color: var(--ink-2);
+	}
+
+	.bt.fant:hover {
+		background: var(--hover);
+		color: var(--ink);
 	}
 
 	.bt.pri {
-		background: var(--creme);
-		color: var(--verde);
+		background: var(--primary);
+		box-shadow: none;
+		color: var(--on-primary);
 	}
 
 	.bt.pri:hover {
-		background: #fff;
+		background: var(--primary-hover);
 	}
 
 	.teclas {
 		margin: 0;
-		font-size: 12px;
-		color: #9db8a6;
-		line-height: 1.8;
+		font-size: 13.5px;
+		color: var(--ink-3);
+		line-height: 2;
 	}
 
 	@media (max-width: 860px) {
 		.sinc {
 			margin: 0 -12px;
-			border-radius: 22px 22px 0 0;
+			border-radius: var(--r-l) var(--r-l) 0 0;
 			padding: 12px 12px calc(14px + env(safe-area-inset-bottom));
 		}
 
@@ -374,7 +382,7 @@
 		}
 
 		.leitura b {
-			font-size: 24px;
+			font-size: 26px;
 		}
 	}
 

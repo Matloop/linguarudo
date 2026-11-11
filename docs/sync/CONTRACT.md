@@ -324,8 +324,8 @@ end
   "serverNow": "2026-11-11T21:30:02.417Z",
   "deckName": "Linguetta · Italiano",
   "total": 5,
-  "settings": { "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"], "newCardsPerDay": 10, "timeZone": "America/Sao_Paulo", "utcOffsetMinutes": -180 },
-  "today": { "dayStart": "2026-11-11T03:00:00.000Z", "nextDayStart": "2026-11-12T03:00:00.000Z", "newDoneToday": 1 },
+  "settings": { "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"], "newCardsPerDay": 10, "timeZone": "America/Sao_Paulo", "utcOffsetMinutes": -180, "dayStartHour": 4 },
+  "today": { "dayStart": "2026-11-11T07:00:00.000Z", "nextDayStart": "2026-11-12T07:00:00.000Z", "newDoneToday": 1 },
   "fsrs": { "tsFsrs": "6.0.0", "version": "FSRS-7", "desiredRetention": 0.9, "enableFuzz": true,
             "learningSteps": ["1m", "10m"], "relearningSteps": ["10m"], "maximumInterval": 36500 }
 }
@@ -335,9 +335,9 @@ end
 - `deckName`: "Linguetta · " + nome do idioma na língua da interface (`uiLanguage`); sem `uiLanguage`, o nome do idioma nele mesmo ("Linguetta · Deutsch").
 - `settings.uiLanguage`, `settings.nativeLanguage`, `settings.studyLanguages`: como no `account` do pareamento, sem padrão (`null`, `null`, `[]` numa conta sem preferências).
 - `total`: linhas `item` + `del` somadas em todas as páginas (para a barra de progresso; pode diferir um pouco do recebido).
-- `settings.newCardsPerDay`: limite de cartões novos por dia (`user_settings`). `timeZone`/`utcOffsetMinutes`: o fuso que define o "dia" (`REVIEW_TIME_ZONE`).
-- `today`: o dia corrente no fuso e quantos cartões novos já tiveram a primeira revisão nele (em qualquer aparelho). Depois de `nextDayStart`, o aparelho zera a contagem e passa a usar dias de 24 h a partir dele até o próximo sync.
-- `fsrs`: os parâmetros do agendador do servidor. Se diferirem dos que o firmware implementa, o aparelho continua funcionando (o servidor decide), mas mostra um aviso discreto de "agendamento aproximado".
+- `settings.newCardsPerDay`: limite de cartões novos por dia (`user_settings`). `timeZone`/`utcOffsetMinutes`: o fuso do usuário (`user_settings.time_zone`, nulo = `America/Sao_Paulo`). `dayStartHour`: a hora local (0–23, padrão 4, como no Anki) em que o dia de estudo vira. O dia de estudo vai de `dayStartHour`:00 a `dayStartHour`:00 do dia seguinte, no fuso.
+- `today`: o dia de estudo corrente (começa às `dayStartHour`:00 no fuso) e quantos cartões novos já tiveram a primeira revisão nele (em qualquer aparelho). Depois de `nextDayStart`, o aparelho zera a contagem e passa a usar dias de 24 h a partir dele até o próximo sync.
+- `fsrs`: os parâmetros do agendador do servidor. `desiredRetention` é da conta (`user_settings.desired_retention`, 0,70–0,97, padrão 0,9) e vale a partir da próxima revisão; o aparelho agenda com ela. Se diferirem dos que o firmware implementa, o aparelho continua funcionando (o servidor decide), mas mostra um aviso discreto de "agendamento aproximado".
 
 ### `item`
 
@@ -375,6 +375,7 @@ end
 | `forms` | Formas vistas nos encontros, como escritas, uma por chave e sem a do lema, até 10 |
 | `encounters` | Os 2 encontros mais recentes (por `seen_at`), cada um com `form`, `sentence`, `sense`, `work` (título da obra ou ausente) e `at` |
 | `card` | O Reconhecer (`CardState`). Sempre presente |
+| `siblingReviewedAt` | Última revisão do Produzir do mesmo item (`lastReviewAt` dele), feita em qualquer aparelho. Ausente se nunca revisado. Serve para ocultar irmãos (§11) |
 
 O servidor pode omitir campos de texto vazios, `null` e listas vazias (exceto em `card`). O Produzir não vem: o aparelho não o revisa.
 
@@ -523,7 +524,7 @@ Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 1
 
 ## 11. Paridade do FSRS
 
-- O servidor usa **ts-fsrs 6.0.0** (`bun.lock`) por `DefaultScheduler({ desiredRetention: 0.9, enableFuzz: true })` em `apps/web/src/lib/server/scheduler.ts`. Isso dá:
+- O servidor usa **ts-fsrs 6.0.0** (`bun.lock`) por `DefaultScheduler({ desiredRetention, enableFuzz: true })`, com a `desiredRetention` da conta (`header.fsrs`; os vetores usam 0,9), em `apps/web/src/lib/server/scheduler.ts`. Isso dá:
   - modelo **FSRS-7**, pesos padrão (`FSRS7_DEFAULT_WEIGHTS`), dias fracionários (`fractionalDays: true`);
   - `enableShortTerm: true`, passos de aprendizado `["1m", "10m"]`, reaprendizado `["10m"]`, `maximumInterval` 36500;
   - middlewares na ordem: retenção desejada, fuzz, estatísticas, scheduled days, passos de aprendizado, intervalo máximo, intervalo monotônico;
@@ -539,6 +540,9 @@ A mesma regra do app (`buildQueue` em `apps/web/src/lib/review.ts`), sobre a vis
 
 1. Vencidos (`state > 0` e `dueAt <= agora`), mais atrasado primeiro.
 2. Novos (`state = 0`) em ordem de `card.createdAt`, até `newCardsPerDay − novos de hoje`.
+
+Irmãos ocultos, como no Anki: o Reconhecer e o Produzir do mesmo item não caem no mesmo dia de estudo. Um cartão em revisão (`state = 2`) ou novo sai da fila de hoje se `siblingReviewedAt >= today.dayStart` (o aparelho não revisa o Produzir, então só o servidor muda esse campo). Aprendendo e reaprendendo (`state` 1 e 3) não esperam: os passos são em minutos. O servidor também conta só um cartão em revisão por item no "N para revisar".
+
 3. Cartão errado que vence em até 20 minutos volta para o fim da fila da mesma sessão.
 
 Frente do cartão: o lema (com `reading` acima, se houver, e `ipa`). Verso: `sense`, `note` e a frase do encontro mais recente com a forma destacada.

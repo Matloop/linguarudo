@@ -209,11 +209,15 @@
 	}
 	.lang .t b {
 		display: block;
-		font: 600 14px/1.25 var(--f-head);
+		font: 600 15.5px/1.25 var(--f-head);
 	}
 	.lang .t span {
-		font-size: 12px;
+		font-size: 13.5px;
 		color: var(--ink-3);
+		display: block;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.lang > :global(.ic) {
 		color: var(--ink-3);
@@ -266,7 +270,7 @@
 		display: block;
 	}
 	.mi .t span {
-		font-size: 12px;
+		font-size: 13.5px;
 		color: var(--ink-3);
 	}
 	.mi > :global(.ic) {
@@ -288,7 +292,7 @@
 		align-items: center;
 		gap: 4px;
 		padding: 6px 10px;
-		font-size: 12px;
+		font-size: 13.5px;
 		font-weight: 500;
 		color: var(--ink-3);
 	}
@@ -309,7 +313,7 @@
 		padding: 2px 4px 4px;
 	}
 	.note {
-		font-size: 12px;
+		font-size: 13.5px;
 		color: var(--ink-3);
 		padding: 4px 10px 6px;
 	}

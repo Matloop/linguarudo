@@ -7,7 +7,7 @@ import {
 	syncToken
 } from '#lib/server/sync.ts';
 import { parseUiLanguage, parseStudyLanguages, parseLanguage } from '#lib/languages.ts';
-import { dayStart, DEFAULT_NEW_PER_DAY, nextDayStart, REVIEW_TIME_ZONE } from '#lib/review.ts';
+import { clockFrom, DEFAULT_NEW_PER_DAY, DEFAULT_RETENTION, nextDayStart } from '#lib/review.ts';
 import {
 	decodePageToken,
 	encodeCursor,
@@ -27,7 +27,11 @@ type SnapshotPage = {
 		native_language: string | null;
 		study_languages: string[] | null;
 		new_cards_per_day: number;
+		time_zone: string | null;
+		day_start_hour: number | null;
+		desired_retention: number | null;
 	} | null;
+	dayStart?: string;
 	total?: number;
 	newDoneToday?: number;
 	items?: SnapshotItemRow[];
@@ -64,14 +68,16 @@ export const GET: RequestHandler = (event) =>
 			p_token: token,
 			p_language: language,
 			p_after: after as string,
-			p_limit: limit,
-			p_day_start: dayStart(now).toISOString()
+			p_limit: limit
 		});
 		if (error) syncRpcFailure(error);
 		const res = (data ?? {}) as SnapshotPage;
 		if (res.rateLimited) throw new SyncError('rate_limited', undefined, res.rateLimited);
 
 		const items = res.items ?? [];
+		// O dia sai do relógio da conta; o banco devolve o início que usou no newDoneToday.
+		const clock = clockFrom(res.account?.time_zone, res.account?.day_start_hour);
+		const start = res.dayStart ? new Date(res.dayStart) : now;
 		const lines = [
 			headerLine({
 				language,
@@ -83,9 +89,11 @@ export const GET: RequestHandler = (event) =>
 				nativeLanguage: parseLanguage(res.account?.native_language),
 				studyLanguages: parseStudyLanguages(res.account?.study_languages ?? []) ?? [],
 				newCardsPerDay: res.account?.new_cards_per_day ?? DEFAULT_NEW_PER_DAY,
-				timeZone: REVIEW_TIME_ZONE,
-				dayStart: dayStart(now),
-				nextDayStart: nextDayStart(now),
+				timeZone: clock.timeZone,
+				dayStartHour: clock.startHour,
+				desiredRetention: res.account?.desired_retention ?? DEFAULT_RETENTION,
+				dayStart: start,
+				nextDayStart: nextDayStart(start, clock),
 				newDoneToday: res.newDoneToday ?? 0
 			}),
 			...items.map(itemLine),

@@ -59,7 +59,8 @@
 		position: fixed;
 		inset: 0;
 		z-index: 50;
-		background: #073026f2;
+		background: var(--scrim);
+		backdrop-filter: blur(6px);
 		display: grid;
 		place-items: center;
 		padding: 20px;
@@ -67,20 +68,25 @@
 	}
 
 	.cartao {
-		background: var(--creme);
-		color: var(--verde-escuro);
-		border-radius: 28px;
-		padding: 22px 26px 20px;
+		background: var(--raise);
+		color: var(--ink);
+		border-radius: 16px;
+		box-shadow: var(--sh-pop);
+		padding: 26px 26px 20px;
 		width: 100%;
 		max-width: 520px;
 		text-align: center;
-		animation: surge 0.3s;
+		animation: surge 0.3s var(--ease);
+	}
+
+	:global(.tema-escuro) .cartao {
+		background: var(--raise-2);
 	}
 
 	@keyframes surge {
 		from {
 			opacity: 0;
-			transform: translateY(8px) scale(0.97);
+			transform: translateY(8px) scale(0.98);
 		}
 	}
 
@@ -88,8 +94,8 @@
 		display: block;
 		width: 40px;
 		height: 44px;
-		margin: 4px auto 12px;
-		color: var(--cinza);
+		margin: 4px auto 14px;
+		color: var(--ink-3);
 	}
 
 	.simbolo :global(svg) {
@@ -99,42 +105,42 @@
 	}
 
 	h2 {
-		margin: 4px 0 2px;
-		font-size: 28px;
-		color: var(--verde);
+		margin: 4px 0 4px;
+		font: 600 30px/1.2 var(--f-head);
+		letter-spacing: -0.02em;
 	}
 
 	.sub {
 		margin: 0;
-		color: var(--tinta-suave);
-		font-weight: 600;
+		color: var(--ink-2);
+		text-wrap: pretty;
 	}
 
 	q {
-		font-weight: 800;
-		color: var(--verde);
+		font-weight: 600;
+		color: var(--ink);
 	}
 
 	.placar {
 		display: flex;
 		justify-content: center;
 		flex-wrap: wrap;
-		gap: 4px 12px;
-		font-size: 14px;
-		color: var(--tinta-suave);
-		font-weight: 700;
-		margin: 14px 0 0;
+		gap: 4px 14px;
+		font-size: 15px;
+		color: var(--ink-3);
+		margin: 16px 0 0;
 	}
 
 	.placar b {
-		color: var(--verde);
+		color: var(--ink);
+		font-weight: 600;
 	}
 
 	.acoes {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 10px;
-		margin-top: 18px;
+		gap: 8px;
+		margin-top: 20px;
 	}
 
 	.acoes button {
@@ -143,35 +149,38 @@
 		justify-content: center;
 		gap: 8px;
 		border: 0;
-		border-radius: 16px;
-		padding: 14px 10px;
-		font-weight: 850;
-		font-size: 16px;
+		border-radius: var(--r-m);
+		height: 46px;
+		padding: 0 12px;
+		font: 500 16px/1 var(--f-body);
+		transition: background-color 0.18s var(--ease);
 	}
 
 	.coral {
-		background: var(--coral);
-		color: var(--verde-escuro);
-		box-shadow: 0 4px 0 var(--coral-escuro);
+		background: var(--primary);
+		color: var(--on-primary);
+	}
+
+	.coral:hover {
+		background: var(--primary-hover);
 	}
 
 	.verde {
-		background: var(--verde);
-		color: var(--creme);
-		box-shadow: 0 4px 0 var(--verde-escuro);
+		background: var(--soft-bg);
+		box-shadow: var(--sh-card);
+		color: var(--ink);
 	}
 
-	.acoes button:active {
-		transform: translateY(3px);
-		box-shadow: none;
+	.verde:hover {
+		background: var(--soft-hover);
 	}
 
 	svg {
-		width: 20px;
-		height: 20px;
+		width: 19px;
+		height: 19px;
 		fill: none;
 		stroke: currentColor;
-		stroke-width: 2.2;
+		stroke-width: 1.7;
 		stroke-linecap: round;
 		stroke-linejoin: round;
 		flex: none;
@@ -182,10 +191,15 @@
 		border: 0;
 		background: none;
 		font-size: 15px;
-		font-weight: 750;
-		color: var(--tinta-suave);
-		text-decoration: underline;
+		font-weight: 500;
+		color: var(--ink-2);
 		padding: 6px 12px;
+		border-radius: var(--r-m);
+	}
+
+	.sair:hover {
+		background: var(--hover);
+		color: var(--ink);
 	}
 
 	@media (max-width: 520px) {

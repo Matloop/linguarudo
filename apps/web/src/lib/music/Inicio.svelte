@@ -131,7 +131,8 @@
 		position: fixed;
 		inset: 0;
 		z-index: 50;
-		background: #073026f2;
+		background: var(--scrim);
+		backdrop-filter: blur(6px);
 		display: grid;
 		place-items: center;
 		padding: 20px;
@@ -139,20 +140,25 @@
 	}
 
 	.cartao {
-		background: var(--creme);
-		color: var(--verde-escuro);
-		border-radius: 28px;
+		background: var(--raise);
+		color: var(--ink);
+		border-radius: 16px;
+		box-shadow: var(--sh-pop);
 		padding: 26px;
 		width: 100%;
 		max-width: 560px;
-		animation: surge 0.3s;
+		animation: surge 0.3s var(--ease);
 		margin: auto;
+	}
+
+	:global(.tema-escuro) .cartao {
+		background: var(--raise-2);
 	}
 
 	@keyframes surge {
 		from {
 			opacity: 0;
-			transform: translateY(8px) scale(0.97);
+			transform: translateY(8px) scale(0.98);
 		}
 	}
 
@@ -165,54 +171,49 @@
 	}
 
 	.olho {
-		font-size: 12px;
-		font-weight: 850;
-		letter-spacing: 0.08em;
+		font-size: 13px;
+		font-weight: 500;
+		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: var(--coral-escuro);
+		color: var(--ink-3);
 	}
 
 	.tg {
-		font-size: 12px;
-		font-weight: 850;
-		letter-spacing: 0.05em;
-		border-radius: 6px;
-		padding: 2px 8px;
-		background: var(--salvia-claro);
-		color: var(--verde);
-	}
-
-	.tg.it {
-		background: #f6e2c2;
-		color: #7a4b12;
+		font: 600 12px/1 var(--f-head);
+		letter-spacing: 0.04em;
+		border-radius: 4px;
+		padding: 4px 6px;
+		background: var(--tile);
+		color: var(--ink-2);
+		box-shadow: inset 0 0 0 1px var(--line-2);
 	}
 
 	.musica {
-		background: #fff;
-		border: 1.5px solid var(--linha);
-		border-radius: 18px;
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
+		border-radius: var(--r-l);
 		padding: 14px 16px;
 		display: flex;
 		flex-direction: column;
+		gap: 2px;
 	}
 
 	.musica b {
-		font-size: 20px;
-		color: var(--verde);
+		font: 600 21px/1.25 var(--f-head);
+		letter-spacing: -0.01em;
 		overflow-wrap: anywhere;
 	}
 
 	.musica span {
-		font-size: 14px;
-		color: var(--tinta-suave);
-		font-weight: 650;
+		font-size: 15.5px;
+		color: var(--ink-2);
 	}
 
 	.rot {
-		font-size: 14px;
-		font-weight: 850;
-		color: var(--verde);
-		margin: 20px 0 8px;
+		font-size: 15px;
+		font-weight: 500;
+		color: var(--ink);
+		margin: 22px 0 8px;
 		display: flex;
 		justify-content: space-between;
 		align-items: baseline;
@@ -220,63 +221,74 @@
 	}
 
 	.rot small {
-		font-weight: 650;
-		color: var(--tinta-suave);
-		font-size: 13px;
+		color: var(--ink-3);
+		font-size: 14px;
+		font-weight: 400;
 	}
 
 	.difs {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		gap: 10px;
+		gap: 8px;
 	}
 
 	.dif {
-		border: 2px solid var(--linha);
-		background: #fff;
-		border-radius: 16px;
-		padding: 12px;
+		border: 0;
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
+		border-radius: var(--r-l);
+		padding: 12px 14px;
 		text-align: left;
-		color: var(--verde-escuro);
+		color: var(--ink);
+		transition:
+			background-color 0.15s,
+			box-shadow 0.15s;
+	}
+
+	.dif:hover {
+		background: var(--hover);
 	}
 
 	.dif b {
 		display: block;
-		font-size: 17px;
+		font: 600 18px/1.3 var(--f-head);
 	}
 
 	.dif span {
 		display: block;
-		font-size: 13px;
-		color: var(--tinta-suave);
-		font-weight: 650;
+		font-size: 14px;
+		color: var(--ink-2);
 	}
 
 	.dif[aria-checked='true'] {
-		border-color: var(--verde);
-		background: var(--salvia-claro);
+		background: var(--sel);
+		box-shadow: inset 0 0 0 1.5px var(--ink);
 	}
 
 	.prior {
 		display: flex;
 		gap: 10px;
 		align-items: flex-start;
-		background: var(--creme-escuro);
-		border-radius: 14px;
-		padding: 10px 12px;
+		background: var(--gold-soft);
+		border-radius: var(--r-m);
+		padding: 11px 13px;
 		margin: 10px 0 0;
-		font-size: 14px;
-		font-weight: 650;
-		color: #5c4320;
+		font-size: 15px;
+		color: var(--ink-2);
+	}
+
+	.prior :global(b) {
+		color: var(--ink);
+		font-weight: 600;
 	}
 
 	.prior i {
-		width: 10px;
-		height: 10px;
+		width: 7px;
+		height: 7px;
 		border-radius: 50%;
-		background: var(--ouro);
+		background: var(--gold-ink);
 		flex: none;
-		margin-top: 5px;
+		margin-top: 8px;
 	}
 
 	.ir {
@@ -285,39 +297,38 @@
 		justify-content: center;
 		gap: 8px;
 		width: 100%;
+		height: 48px;
 		border: 0;
-		border-radius: 16px;
-		padding: 15px;
-		font-weight: 850;
-		font-size: 17px;
-		background: var(--coral);
-		color: var(--verde-escuro);
-		box-shadow: 0 4px 0 var(--coral-escuro);
+		border-radius: var(--r-m);
+		font: 500 16.5px/1 var(--f-body);
+		background: var(--primary);
+		color: var(--on-primary);
 		margin-top: 20px;
+		transition: background-color 0.18s var(--ease);
 	}
 
-	.ir:active {
-		transform: translateY(3px);
-		box-shadow: 0 1px 0 var(--coral-escuro);
+	.ir:hover {
+		background: var(--primary-hover);
 	}
 
 	svg {
-		width: 20px;
-		height: 20px;
+		width: 19px;
+		height: 19px;
 		fill: none;
 		stroke: currentColor;
-		stroke-width: 2.2;
+		stroke-width: 1.7;
 		stroke-linecap: round;
 		stroke-linejoin: round;
 	}
 
 	.dica {
 		margin: 10px 0 0;
-		border: 1.5px solid var(--ouro);
-		border-radius: 14px;
-		padding: 10px 12px;
-		font-size: 14px;
-		font-weight: 650;
+		background: var(--gold-soft);
+		box-shadow: inset 0 0 0 1px var(--line);
+		border-radius: var(--r-m);
+		padding: 11px 13px;
+		font-size: 15px;
+		font-weight: 500;
 	}
 
 	.dica p {
@@ -326,8 +337,8 @@
 
 	.dica small {
 		display: block;
-		font-weight: 550;
-		color: var(--tinta-suave);
+		font-weight: 400;
+		color: var(--ink-2);
 		margin-top: 2px;
 	}
 
@@ -335,48 +346,51 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
-		margin-top: 8px;
+		margin-top: 10px;
 	}
 
 	.dica-bts button {
-		border: 1px solid #0000001f;
-		background: none;
-		border-radius: 10px;
-		padding: 7px 12px;
+		border: 0;
+		box-shadow: var(--sh-card);
+		background: var(--soft-bg);
+		border-radius: var(--r-m);
+		height: 34px;
+		padding: 0 12px;
 		font: inherit;
-		font-size: 13.5px;
-		font-weight: 750;
-		color: var(--verde-escuro);
+		font-size: 14.5px;
+		font-weight: 500;
+		color: var(--ink);
 	}
 
 	.dica-bts .pri {
-		background: var(--verde);
-		border-color: transparent;
-		color: var(--creme);
+		background: var(--primary);
+		box-shadow: none;
+		color: var(--on-primary);
 	}
 
 	.dica-bts .fant {
-		border-color: transparent;
-		color: var(--tinta-suave);
+		background: none;
+		box-shadow: none;
+		color: var(--ink-2);
 	}
 
 	.nota {
 		text-align: center;
-		font-size: 13px;
-		color: var(--tinta-suave);
-		font-weight: 600;
-		margin: 10px 0 0;
+		font-size: 14px;
+		color: var(--ink-3);
+		margin: 12px 0 0;
+		text-wrap: pretty;
 	}
 
 	.estado {
 		margin: 22px 0 6px;
 		text-align: center;
-		font-weight: 700;
-		color: var(--tinta-suave);
+		font-weight: 500;
+		color: var(--ink-2);
 	}
 
 	.estado.erro {
-		color: var(--verde-escuro);
+		color: var(--terra-ink);
 	}
 
 	.saidas {
@@ -388,9 +402,9 @@
 
 	.voltar {
 		margin-top: 14px;
-		font-size: 14px;
-		font-weight: 750;
-		color: var(--tinta-suave);
+		font-size: 15px;
+		font-weight: 500;
+		color: var(--ink-2);
 	}
 
 	@media (max-width: 520px) {
@@ -399,7 +413,7 @@
 		}
 
 		.difs {
-			gap: 8px;
+			gap: 6px;
 		}
 
 		.dif {
