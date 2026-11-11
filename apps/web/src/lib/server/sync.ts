@@ -20,6 +20,8 @@ import {
 	toOpResult,
 	type FlashcardRowJson,
 	type OpResult,
+	type DeckImportOp,
+	type ExtraNewOp,
 	type ReviewOp,
 	type SyncOp
 } from '#lib/sync.ts';
@@ -165,7 +167,7 @@ async function applySeen(token: string, op: Extract<SyncOp, { type: 'seen' }>): 
 }
 
 type ReviewTarget = {
-	flashcard: FlashcardRowJson & { item_id: string; kind: string };
+	flashcard: FlashcardRowJson & { item_id: string | null; kind: string };
 	sense: string | null;
 	/** Retenção desejada da conta (user_settings). */
 	desired_retention?: number | null;
@@ -201,7 +203,10 @@ async function applyReview(token: string, op: ReviewOp, now: Date): Promise<OpRe
 			{ rating: op.rating, reviewed_at: reviewedAt },
 			data.desired_retention ?? undefined
 		);
-		const unlock = unlocksProduce({ kind: 'reconhecer', sense: data.sense ?? '', intervalDays });
+		// Ficha nunca libera Produzir; a função do banco também confere o tipo.
+		const unlock =
+			flashcard.kind === 'reconhecer' &&
+			unlocksProduce({ kind: 'reconhecer', sense: data.sense ?? '', intervalDays });
 		const result = {
 			status: 'applied',
 			flashcardId: flashcard.id,
@@ -224,6 +229,31 @@ async function applyReview(token: string, op: ReviewOp, now: Date): Promise<OpRe
 		return toOpResult(op.clientId, asStored(saved));
 	}
 	throw new SyncError('server_error');
+}
+
+async function applyExtraNew(token: string, op: ExtraNewOp): Promise<OpResult> {
+	const { data, error } = await apiClient().rpc('api_sync_extra_new', {
+		p_token: token,
+		p_client_id: op.clientId,
+		p_language: op.language,
+		p_n: op.n,
+		p_at: op.at
+	});
+	if (error) syncRpcFailure(error);
+	return toOpResult(op.clientId, asStored(data));
+}
+
+async function applyDeckImport(token: string, op: DeckImportOp): Promise<OpResult> {
+	const { data, error } = await apiClient().rpc('api_sync_deck_import', {
+		p_token: token,
+		p_client_id: op.clientId,
+		p_language: op.language,
+		p_name: op.name,
+		p_hash: op.hash,
+		p_rows: op.rows as unknown as Json
+	});
+	if (error) syncRpcFailure(error);
+	return toOpResult(op.clientId, asStored(data));
 }
 
 async function storeRejection(
@@ -256,6 +286,8 @@ export async function processOps(token: string, ops: readonly unknown[], now = (
 		const op = parsed.op;
 		if (op.type === 'save') results.push(await applySave(token, op));
 		else if (op.type === 'seen') results.push(await applySeen(token, op));
+		else if (op.type === 'extraNew') results.push(await applyExtraNew(token, op));
+		else if (op.type === 'deckImport') results.push(await applyDeckImport(token, op));
 		else results.push(await applyReview(token, op, now()));
 	}
 	return results;

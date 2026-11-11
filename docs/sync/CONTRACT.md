@@ -5,7 +5,7 @@ Duas partes, implementadas em paralelo a partir deste documento:
 | Parte | Onde | Papel |
 |---|---|---|
 | Servidor | `apps/web` (SvelteKit + Supabase) | Rotas `/api/v1/sync/*`, página `/parear`, replay do FSRS, snapshot |
-| Aparelho | Fork do CrossPoint/CrossNext (`crossnext-blend`, C++, ESP32-S3) no Xteink X4 Pro | Lê o blend, salva itens, revisa flashcards Reconhecer offline, guarda `bank.jsonl` e `outbox.jsonl` no SD |
+| Aparelho | Fork do CrossPoint/CrossNext (`crossnext-blend`, C++, ESP32-S3) no Xteink X4 Pro | Lê o blend, salva itens, revisa flashcards (Reconhecer e fichas) offline seguindo a fila do servidor, guarda `bank.jsonl` e `outbox.jsonl` no SD |
 
 O vocabulário é o do glossário (`CONTEXT.md`): **item**, **lema**, **encontro**, **forma**, **sentido**, **obra**, **flashcard** (Reconhecer/Produzir), **revisão**, **visto**, **conhecido**. A regra do FSRS é a do ADR 0001 (`docs/adr/0001-servidor-decide-o-fsrs-pelo-log.md`): o aparelho manda revisões, o servidor reaplica o log e o estado dele vale.
 
@@ -15,8 +15,9 @@ As palavras **deve**, **não deve** e **pode** são normativas. Exemplos de cada
 
 - O aparelho é offline-first. Ele guarda no SD o **banco** de um idioma de estudo (`bank.jsonl`, cópia do servidor) e as **operações** feitas offline (`outbox.jsonl`).
 - **Sync** = enviar o outbox (`push`) e depois baixar o snapshot (`snapshot`). Dispara pelo botão "Sincronizar" ou ao abrir Flashcards com Wi-Fi.
-- O banco inteiro do idioma vai para o aparelho. O aparelho mostra um baralho só, "Linguetta · <Idioma>", e revisa só os flashcards **Reconhecer**. Outros baralhos importados no aparelho ficam locais e nunca sincronizam.
-- O aparelho produz três tipos de operação: `save` (salvar do blend), `review` (revisão de Reconhecer) e `seen` (visto).
+- O banco inteiro do idioma vai para o aparelho: todos os itens e, em versão só texto, as fichas. O aparelho revisa o **Reconhecer** de cada item e um flashcard por ficha (a frente, ou a primeira lacuna).
+- **A fila do dia é do servidor** (ADR 0005). O snapshot traz o orçamento de novas (`today.newAllowance`), a ordem das novas (`queueRank`) e quais flashcards estão em espera de teimosa (`leechWaiting`). O aparelho só executa. Decks (`header.decks`) servem para agrupar e mostrar; a ordem já vem pronta.
+- O aparelho produz cinco tipos de operação: `save` (salvar do blend), `review` (revisão), `seen` (visto), `extraNew` ("+N novas hoje") e `deckImport` (CSV do SD vira deck).
 - Toda operação tem um `clientId` (UUID v4 gerado no aparelho). Reenviar é seguro.
 - Exclusão vence: item apagado no servidor some do aparelho, e operações que apontam para ele são aceitas e descartadas.
 
@@ -145,7 +146,7 @@ Toda operação tem este envelope:
 ```js
 {
   clientId: "uuid v4",   // gerado na hora da ação; identifica a operação para sempre
-  type: "save" | "review" | "seen",
+  type: "save" | "review" | "seen" | "extraNew" | "deckImport",
   at: "2026-11-11T08:15:30.000Z", // quando a pessoa fez a ação, relógio do aparelho
   language: "it",        // idioma de estudo do item
   // ...campos do tipo
@@ -192,9 +193,10 @@ No servidor:
 - O encontro grava `form`, `sentence`, `highlight = form`, `sense`, `position`, `origin = "ereader"`, `seen_at = min(at, agora)` e `client_id = clientId`.
 - A obra é achada por `kind = "livro"` + `koHash` (ref_key `kosync:<hash>`), ou criada. Título e autor (`subtitle`) mais novos vencem, como no resto do app.
 - O app mostra a origem como "O nome da rosa · Primeiro dia · 12%".
+- Item criado pelo `save` cai no deck padrão do idioma ("Minhas palavras"). Item que já existe fica no deck dele. Um encontro novo com frase tira o item da espera de teimosa (`leechWaiting` volta a `false` no próximo snapshot).
 - Textos acima do limite são cortados no servidor; `lemma` vazio ou com mais de 80 code points recusa a operação (`rejected`, `invalid`). O aparelho já **deve** cortar antes de gravar no outbox.
 
-### `review`: revisão de um flashcard Reconhecer
+### `review`: revisão de um flashcard
 
 ```js
 {
@@ -207,7 +209,9 @@ No servidor:
 ```
 
 - Exatamente um entre `flashcardId` e `saveClientId`. Com `saveClientId`, o servidor acha o encontro com esse `client_id`, o item dele e o Reconhecer do item. O `save` vem antes no outbox, então já foi processado (no mesmo lote ou num anterior).
-- O aparelho só manda revisão de Reconhecer. `flashcardId` de um Produzir é recusado (`rejected`, `invalid`).
+- O aparelho manda revisão do Reconhecer de um item ou do flashcard de uma ficha (`frente` ou `lacuna`, o `flashcard.id` da linha `ficha`). `flashcardId` de um Produzir ou de um `inverso` é recusado (`rejected`, `invalid`).
+- **O orçamento nunca recusa revisão.** Uma nova revisada além de `today.newAllowance` (outro aparelho já gastou o dia, relógio adiantado) vale como as outras e conta no `newDoneToday` seguinte.
+- Se a revisão leva o flashcard a `lapses >= settings.leech.lapses`, o servidor aplica `settings.leech.action` ao item ou ficha (seção 11). O aparelho só fica sabendo no próximo snapshot.
 - O servidor grava o log (`review_logs`: `rating`, `reviewed_at = min(at, agora)`, `client_id`, `duration_ms`) e recalcula o flashcard como o app faz (`scheduleReview`/`replay` em `apps/web/src/lib/server/scheduler.ts`): revisão em ordem só aplica a nota; revisão atrasada (anterior à última do flashcard) reaplica o log inteiro em ordem de `reviewed_at`. Os efeitos são os mesmos da revisão no app, inclusive liberar o Produzir.
 - Item `conhecido` ainda aceita a revisão: o log é a verdade.
 - Item apagado: `dropped`, `item_deleted`. `flashcardId` que não existe, ou `saveClientId` cujo save foi recusado ou descartado: `dropped`, `unknown_target`.
@@ -224,9 +228,37 @@ A pessoa tocou numa palavra do blend que já está no banco. Soma uma aparição
 - Sem item vivo: `dropped`, `not_found`.
 - Uma operação por toque. O aparelho não agrega toques em contagem.
 
+### `extraNew`: "+N novas hoje"
+
+A pessoa acabou as novas do dia e pediu mais.
+
+```js
+{ clientId, type: "extraNew", at, language: "it", n: 5 } // n inteiro, 1–1000
+```
+
+- O servidor soma `n` ao extra do dia de estudo de `at` (no relógio do usuário, `at` limitado a agora) no idioma. Resultado: `extraNew`, o extra total do dia depois da soma.
+- Vale para todos os aparelhos e para a web: `today.newAllowance` sobe `n` no próximo snapshot. Offline, o aparelho soma `n` à visão local na hora.
+- O extra de um dia não passa para o outro.
+
+### `deckImport`: CSV vira deck
+
+```js
+{
+  clientId, type: "deckImport", at, language: "it",
+  name: "Verbi irregolari",          // 1–80 (nome do arquivo sem extensão), sem "::"
+  hash: "sha256:9f2c4e1a7b3d",       // 1–128, [A-Za-z0-9_:.-]; identifica o arquivo
+  rows: [ { front: "andare", back: "ir" } ] // 1–500 linhas; front obrigatório
+}
+```
+
+- Cria um deck de topo com ordem `deck` (as novas saem na ordem do arquivo) e uma ficha frente/verso por linha. Nome ocupado no mesmo nível ganha " (2)", " (3)"…
+- **Idempotente por hash:** se a conta já tem um deck com esse `hash`, nada é criado e o resultado traz o deck existente com `created: false`. Arquivo maior que 500 linhas vai em vários arquivos (hashes diferentes).
+- `front` e `back` são texto: o servidor corta em 2000 code points, escapa e troca quebra de linha por `<br>`. Linha sem `front` recusa a operação (`rejected`, `invalid`, `errors: { "rows.3.front": "frente vazia" }`).
+- O deck e as fichas chegam ao aparelho no próximo snapshot.
+
 ### Idempotência
 
-- O servidor **deve** fazer cada `clientId` valer no máximo uma vez por usuário. Reenviar um `clientId` já processado devolve `status: "duplicate"` com os mesmos campos do resultado original, sem efeito novo. Vale para `save` e `review` (já há `client_id` único em `encounters` e `review_logs`) e para `seen` (pede um registro próprio, seção 13).
+- O servidor **deve** fazer cada `clientId` valer no máximo uma vez por usuário. Reenviar um `clientId` já processado devolve `status: "duplicate"` com os mesmos campos do resultado original, sem efeito novo. Vale para todas as operações (registro `sync_ops`).
 - O registro de `clientId` dura pelo menos 180 dias. Resultados `dropped` e `rejected` também valem para reenvios: o mesmo `clientId` dá o mesmo resultado.
 - Mesmo `clientId` com `type` diferente do original: `rejected`, `client_id_conflict`.
 - O aparelho nunca reaproveita um `clientId` e nunca muda uma operação depois de gravá-la no outbox.
@@ -281,6 +313,8 @@ Campos extras do `applied`/`duplicate`:
 - `save`: `itemId`, `flashcardId` (o Reconhecer), `created` (false = o item já existia), `encounterId`.
 - `review`: `flashcardId` e `flashcard` (o `FlashcardState` oficial depois do replay, seção 7).
 - `seen`: `itemId`.
+- `extraNew`: `extraNew` (extra do dia depois da soma).
+- `deckImport`: `deckId`, `created` (false = o hash já existia) e `fichas` (fichas criadas).
 
 Os quatro status são definitivos: o aparelho trata a operação como resolvida (seção 8). Se o número de resultados não bate com o de operações, o aparelho trata a resposta como erro e não resolve nada.
 
@@ -294,7 +328,7 @@ GET /api/v1/sync/snapshot?protocol=1&language=it[&since=<cursor>][&limit=500][&p
 |---|---|
 | `language` | Obrigatório. Idioma do banco |
 | `since` | Opcional. Cursor do último snapshot completo. Pede só o que mudou |
-| `limit` | Itens por página, 100–1000, padrão 500 |
+| `limit` | Linhas `item` ou `ficha` por página, 100–1000, padrão 500 |
 | `page` | Token de página (`end.next` da página anterior). As demais páginas repetem `language`, `since` e `limit` da primeira |
 
 Resposta `200`, `Content-Type: application/x-ndjson; charset=utf-8`: uma página em JSONL (seção 7). O aparelho pede páginas até `end.next` ser `null`.
@@ -302,7 +336,8 @@ Resposta `200`, `Content-Type: application/x-ndjson; charset=utf-8`: uma página
 - Snapshot completo **sempre** funciona. O delta é otimização: com `since`, o servidor responde `mode: "delta"` ou, se o cursor for desconhecido, velho demais ou o servidor não fizer delta, `mode: "full"`. Cursor ruim nunca é erro. O aparelho trata os dois modos.
 - O cursor sai no cabeçalho de cada página (o mesmo em todas). Ele marca o instante em que a **primeira** página foi gerada. O que mudar enquanto o aparelho baixa as páginas vem no próximo delta.
 - Token de página vale 15 minutos. Vencido: `410 page_expired`.
-- Completo: todos os itens não apagados do idioma, inclusive `conhecido`, em ordem de `id`. Delta: todo item com qualquer mudança depois do cursor (no item, no Reconhecer ou nos encontros) como linha `item` completa, e uma linha `del` para cada item apagado depois do cursor.
+- Completo: todos os itens não apagados do idioma, inclusive `conhecido`, em ordem de `id`, e depois todas as fichas não apagadas, em ordem de `id`. Todas as páginas de itens vêm antes das de fichas; uma página nunca mistura os dois. Delta: todo item com qualquer mudança depois do cursor (no item, no Reconhecer ou nos encontros) como linha `item` completa, e uma linha `del` para cada item apagado depois do cursor.
+- O servidor ainda não faz delta: responde sempre `mode: "full"` (permitido acima).
 - Sem limite de 5000 itens (o de `api_items` não se aplica): a paginação cobre bancos grandes e o limite de resposta das funções da Vercel.
 
 ## 7. Formato JSONL do snapshot
@@ -311,7 +346,7 @@ Cada linha é um objeto JSON terminado em `\n`, UTF-8 sem BOM, **no máximo 1638
 
 ```
 header
-item | del   (0 ou mais)
+item | ficha | del   (0 ou mais; uma página tem só itens ou só fichas)
 end
 ```
 
@@ -323,9 +358,14 @@ end
   "cursor": "v1.MjAyNi0xMS0xMVQyMTozMDowMi40MTdaOjg4MjEz",
   "serverNow": "2026-11-11T21:30:02.417Z",
   "deckName": "Linguetta · Italiano",
-  "total": 5,
-  "settings": { "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"], "newFlashcardsPerDay": 10, "timeZone": "America/Sao_Paulo", "utcOffsetMinutes": -180, "dayStartHour": 4 },
-  "today": { "dayStart": "2026-11-11T07:00:00.000Z", "nextDayStart": "2026-11-12T07:00:00.000Z", "newDoneToday": 1 },
+  "total": 5, "fichasTotal": 1,
+  "settings": { "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"], "newFlashcardsPerDay": 10, "timeZone": "America/Sao_Paulo", "utcOffsetMinutes": -180, "dayStartHour": 4,
+                "newOrder": "importance", "desiredRetention": 0.9, "buryRelated": true, "leech": { "lapses": 8, "action": "wait" } },
+  "today": { "dayStart": "2026-11-11T07:00:00.000Z", "nextDayStart": "2026-11-12T07:00:00.000Z", "newDoneToday": 1, "extraNew": 0, "newAllowance": 9 },
+  "decks": [
+    { "id": "5d0c1a2b-3e4f-4a5b-8c6d-7e8f9a0b1c10", "name": "Minhas palavras", "default": true, "parentId": null, "newOrder": "importance", "newCap": null },
+    { "id": "9e8d7c6b-5a4f-4e3d-9c2b-1a0f9e8d7c20", "name": "Gramática", "default": false, "parentId": null, "newOrder": "deck", "newCap": 5 }
+  ],
   "fsrs": { "tsFsrs": "6.0.0", "version": "FSRS-7", "desiredRetention": 0.9, "enableFuzz": true,
             "learningSteps": ["1m", "10m"], "relearningSteps": ["10m"], "maximumInterval": 36500 }
 }
@@ -334,9 +374,11 @@ end
 - `cursor`: opaco, até 200 caracteres. O aparelho só guarda e devolve.
 - `deckName`: "Linguetta · " + nome do idioma na língua da interface (`uiLanguage`); sem `uiLanguage`, o nome do idioma nele mesmo ("Linguetta · Deutsch").
 - `settings.uiLanguage`, `settings.nativeLanguage`, `settings.studyLanguages`: como no `account` do pareamento, sem padrão (`null`, `null`, `[]` numa conta sem preferências).
-- `total`: linhas `item` + `del` somadas em todas as páginas (para a barra de progresso; pode diferir um pouco do recebido).
+- `total`: linhas `item` + `del` somadas em todas as páginas; `fichasTotal`: linhas `ficha` (para a barra de progresso; podem diferir um pouco do recebido).
 - `settings.newFlashcardsPerDay`: limite de flashcards novos por dia (`user_settings`). `timeZone`/`utcOffsetMinutes`: o fuso do usuário (`user_settings.time_zone`, nulo = `America/Sao_Paulo`). `dayStartHour`: a hora local (0–23, padrão 4, como no Anki) em que o dia de estudo vira. O dia de estudo vai de `dayStartHour`:00 a `dayStartHour`:00 do dia seguinte, no fuso.
-- `today`: o dia de estudo corrente (começa às `dayStartHour`:00 no fuso) e quantos flashcards novos já tiveram a primeira revisão nele (em qualquer aparelho). Depois de `nextDayStart`, o aparelho zera a contagem e passa a usar dias de 24 h a partir dele até o próximo sync.
+- `settings.newOrder`: como a fila intercala os decks (`importance`, `deck` ou `random`); só informativo, a ordem já vem em `queueRank`. `settings.desiredRetention`: a mesma de `fsrs`. `settings.buryRelated`: irmãos ocultos (§11), sempre `true` por enquanto. `settings.leech`: a partir de quantos lapsos um flashcard vira teimosa (`lapses`, 1–99, padrão 8) e o que acontece (`action`: `wait` espera um encontro novo, `tag` só marca, `suspend` suspende).
+- `today`: o dia de estudo corrente (começa às `dayStartHour`:00 no fuso), quantos flashcards novos já tiveram a primeira revisão nele (`newDoneToday`, em qualquer aparelho e deck), o extra pedido no dia (`extraNew`) e o **orçamento**: `newAllowance = max(0, newFlashcardsPerDay + extraNew − newDoneToday)`, quantas novas ainda entram hoje. Depois de `nextDayStart`, o aparelho zera `newDoneToday` e `extraNew`, usa `newAllowance = newFlashcardsPerDay` e passa a usar dias de 24 h a partir dele até o próximo sync.
+- `decks`: os decks do idioma marcados "no leitor" e não pausados (nem filhos de pausado), na ordem da árvore (pai, depois os filhos). `parentId` aponta para outro deck da lista (um nível só). `newCap`: teto de novas do deck por dia (`null` = sem teto), já aplicado em `queueRank`. Item ou ficha com `deckId` fora da lista está num deck que não vai para o leitor: o aparelho mostra no banco, mas não revisa.
 - `fsrs`: os parâmetros do agendador do servidor. `desiredRetention` é da conta (`user_settings.desired_retention`, 0,70–0,97, padrão 0,9) e vale a partir da próxima revisão; o aparelho agenda com ela. Se diferirem dos que o firmware implementa, o aparelho continua funcionando (o servidor decide), mas mostra um aviso discreto de "agendamento aproximado".
 
 ### `item`
@@ -348,6 +390,7 @@ end
   "lemma": "bello", "lemmaKey": "bello", "language": "it",
   "sense": "bonito", "note": "adjetivo", "ipa": "", "pos": "",
   "status": "ativo",
+  "deckId": "5d0c1a2b-3e4f-4a5b-8c6d-7e8f9a0b1c10", "queueRank": null, "leechWaiting": false,
   "seenCount": 6, "lastSeenAt": "2026-11-11T08:20:00.000Z",
   "createdAt": "2026-11-01T12:00:00.000Z",
   "updatedAt": "2026-11-11T21:30:01.180Z",
@@ -369,6 +412,9 @@ end
 | `note` | Nota do item, **cortada em 200 code points** no snapshot |
 | `ipa`, `pos` | Pronúncia e classe (`part_of_speech`) |
 | `status` | `ativo` ou `conhecido`. Conhecido fica no banco (conta como "no seu banco" e recebe visto) mas não entra no baralho |
+| `deckId` | Deck do item (sempre presente) |
+| `queueRank` | Posição do Reconhecer entre as novas de hoje: 1 = a primeira. Numeração única entre itens e fichas, com buracos possíveis. `null` = não é nova, ou não entra hoje (teto do deck, irmão revisado hoje, deck fora do leitor). Sempre presente |
+| `leechWaiting` | `true` = teimosa em espera (ou suspensa): fora da fila até um encontro novo ou "Voltar para a fila" na web. Sempre presente |
 | `seenCount`, `lastSeenAt` | Contador de visto |
 | `createdAt` | Criação do item |
 | `updatedAt` | Última mudança do item, do Reconhecer ou dos encontros. Aumenta a cada mudança |
@@ -377,7 +423,37 @@ end
 | `flashcard` | O Reconhecer (`FlashcardState`). Sempre presente |
 | `siblingReviewedAt` | Última revisão do Produzir do mesmo item (`lastReviewAt` dele), feita em qualquer aparelho. Ausente se nunca revisado. Serve para ocultar irmãos (§11) |
 
-O servidor pode omitir campos de texto vazios, `null` e listas vazias (exceto em `flashcard`). O Produzir não vem: o aparelho não o revisa.
+O servidor pode omitir campos de texto vazios, `null` e listas vazias (exceto em `flashcard`, `deckId`, `queueRank` e `leechWaiting`). O Produzir não vem: o aparelho não o revisa.
+
+### `ficha`
+
+Uma ficha (cartão livre, frente/verso ou lacuna) em versão só texto, sem mídia. Uma linha por ficha, com um flashcard: o `frente`, ou a lacuna de menor `ord`.
+
+```json
+{
+  "t": "ficha",
+  "id": "c3b2a1f0-9e8d-4c7b-a6f5-e4d3c2b1a030",
+  "deckId": "9e8d7c6b-5a4f-4e3d-9c2b-1a0f9e8d7c20",
+  "language": "it",
+  "kind": "lacuna",
+  "front": "Ieri [andare] al mare. Passato prossimo",
+  "back": "Ieri sono andato al mare. Passato prossimo — Verbo de movimento: auxiliar essere.",
+  "status": "ativo",
+  "queueRank": 2, "leechWaiting": false,
+  "createdAt": "2026-11-05T10:00:00.000Z", "updatedAt": "2026-11-05T10:00:00.000Z",
+  "flashcard": { "...": "FlashcardState" }
+}
+```
+
+| Campo | |
+|---|---|
+| `kind` | `frente` (frente/verso) ou `lacuna` |
+| `front`, `back` | Texto puro, até 2000 code points cada. HTML vira texto (quebras viram espaço), mídia some. Na lacuna, `front` mostra a lacuna como `[dica]` ou `[…]` e `back` é a frase completa, seguida de " — " e o verso, se houver |
+| `status` | `ativo` ou `conhecido`. Conhecida não entra na fila |
+| `queueRank`, `leechWaiting`, `deckId` | Como no item |
+| `flashcard` | `FlashcardState` do flashcard da linha; a revisão usa o `flashcard.id` dele |
+
+O aparelho não cria, edita nem apaga fichas (a não ser pelo `deckImport`).
 
 ### `FlashcardState`
 
@@ -416,8 +492,8 @@ Os campos do `Card` do ts-fsrs 6, em camelCase (as colunas de `flashcards`). **T
 { "t": "end", "count": 3, "next": "p1.eyJsIjoiaXQi..." }
 ```
 
-- `count`: linhas `item` + `del` desta página. O aparelho confere; se não bate, ou se a página terminou sem `end` (conexão caiu), descarta o snapshot em andamento.
-- `next`: token da próxima página, ou `null` na última.
+- `count`: linhas `item` + `ficha` + `del` desta página. O aparelho confere; se não bate, ou se a página terminou sem `end` (conexão caiu), descarta o snapshot em andamento.
+- `next`: token da próxima página, ou `null` na última. Ele também diz se a próxima página é de itens ou de fichas; o aparelho não precisa saber.
 
 ## 8. Arquivos no SD
 
@@ -425,7 +501,7 @@ Pasta `/.linguetta/` na raiz do cartão SD. Toda reescrita é atômica: grava `<
 
 ### `bank.jsonl`
 
-- O snapshot do servidor, sem páginas: o `header` da primeira página, depois todas as linhas `item`. Sem `end` e sem `del`. Exemplo em `fixtures/bank.jsonl`.
+- O snapshot do servidor, sem páginas: o `header` da primeira página, depois todas as linhas `item` e `ficha`. Sem `end` e sem `del`. Exemplo em `fixtures/bank.jsonl`.
 - **Só muda no sync.** O aparelho não edita o banco ao salvar ou revisar offline; essas mudanças vivem no outbox (veja "Visão local" abaixo).
 - Snapshot `full`: o aparelho grava `bank.jsonl.tmp` página a página e só renomeia depois da última página válida. `delta`: o aparelho reescreve o arquivo trocando as linhas `item` pelo `id`, acrescentando os itens novos, removendo os `del` e trocando o `header` pelo novo.
 - O aparelho não carrega o arquivo inteiro na RAM: lê linha a linha (buffer de 16 KB) e mantém índices próprios (lema/forma → offset) em `/.linguetta/cache/`, reconstruídos quando `bank.jsonl` muda.
@@ -469,6 +545,7 @@ O que o aparelho mostra entre um sync e outro é `bank.jsonl` + o outbox:
 - **Flashcards:** o estado do banco, com as `review` do outbox daquele flashcard aplicadas pelo FSRS local em ordem de `at`. O flashcard de um item local nasce novo (`state` 0, `dueAt = at` do save) e usa o `saveClientId` no lugar do `flashcardId` (também como semente do fuzz).
 - **Visto:** `seenCount` do banco + `seen` do outbox.
 - **Novos de hoje:** `today.newDoneToday` + as `review` do outbox, com `at >= today.dayStart`, de flashcards que estavam novos na visão local.
+- **Orçamento:** `today.newAllowance` + os `n` dos `extraNew` do outbox do dia − as novas revisadas offline no dia (o mesmo conjunto de "Novos de hoje", sem o `newDoneToday`, que já está descontado).
 
 ### Ordem do sync
 
@@ -519,8 +596,12 @@ hash = md5 em hex minúsculo (32 caracteres)
 | Pareamentos pendentes por IP | 5 |
 | push + snapshot | 60 pedidos por minuto por token (`429`) |
 | Registro de `clientId` | ≥ 180 dias |
+| `extraNew.n` | 1–1000 |
+| Linhas por `deckImport` | 1–500 |
+| `front`/`back` da ficha (snapshot e `deckImport`) | 2000 code points |
+| `hash` do `deckImport` | 128 caracteres |
 
-Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 100, `reading` 100, `pos` 80, `form` 80, `sentence` 500, `title` 200, `author` 200, `chapter` 200, `deviceName` 60. São os `LIMITS` de `apps/web/src/lib/items.ts`.
+Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 100, `reading` 100, `pos` 80, `form` 80, `sentence` 500, `title` 200, `author` 200, `chapter` 200, `deviceName` 60, nome de deck 80. São os `LIMITS` de `apps/web/src/lib/items.ts`.
 
 ## 11. Paridade do FSRS
 
@@ -536,10 +617,12 @@ Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 1
 
 ### Fila do baralho no aparelho
 
-A mesma regra do app (`buildQueue` em `apps/web/src/lib/review.ts`), sobre a visão local, só itens `ativo`:
+A mesma regra do app (`buildQueue` em `apps/web/src/lib/review.ts` + `planNew` em `apps/web/src/lib/server/queue.ts`), sobre a visão local, só itens `ativo` e fichas `ativo` de decks em `header.decks`, e nunca com `leechWaiting: true`:
 
 1. Vencidos (`state > 0` e `dueAt <= agora`), mais atrasado primeiro.
-2. Novos (`state = 0`) em ordem de `flashcard.createdAt`, até `newFlashcardsPerDay − novos de hoje`.
+2. Novos (`state = 0`) com `queueRank` não nulo, em ordem de `queueRank`, até o orçamento local (§8 "Visão local"). Novo com `queueRank: null` não entra hoje. Item salvo offline (sem rank) entra depois dos que têm rank. O aparelho não reordena nem aplica tetos: já vêm aplicados.
+
+Estudar um deck só: as mesmas regras restritas ao deck e aos filhos dele (`parentId`); o orçamento é o mesmo do idioma.
 
 Irmãos ocultos, como no Anki: o Reconhecer e o Produzir do mesmo item não caem no mesmo dia de estudo. Um flashcard em revisão (`state = 2`) ou novo sai da fila de hoje se `siblingReviewedAt >= today.dayStart` (o aparelho não revisa o Produzir, então só o servidor muda esse campo). Aprendendo e reaprendendo (`state` 1 e 3) não esperam: os passos são em minutos. O servidor também conta só um flashcard em revisão por item no "N para revisar".
 
@@ -549,15 +632,15 @@ Frente do flashcard: o lema (com `reading` acima, se houver, e `ipa`). Verso: `s
 
 ## 12. Fixtures
 
-Em `docs/sync/fixtures/`. Todas descrevem o mesmo momento: o X4 Pro sincroniza às 21:30 de 11/11/2026 com sete operações offline.
+Em `docs/sync/fixtures/`. Todas descrevem o mesmo momento: o X4 Pro sincroniza às 21:30 de 11/11/2026 com nove operações offline.
 
 | Arquivo | O quê |
 |---|---|
 | `pair-start.request.json`, `pair-start.response.json` | Início do pareamento |
 | `pair-poll.request.json`, `pair-poll.responses.json` | Poll e as cinco respostas possíveis |
-| `push.request.json`, `push.response.json` | Push com `duplicate`, `applied` (save, review, review por `saveClientId`, seen), `dropped` e `rejected` |
-| `snapshot-full.page1.jsonl`, `snapshot-full.page2.jsonl` | Snapshot completo com `limit=3`, em duas páginas |
-| `snapshot-delta.jsonl` | O mesmo momento como delta, com uma linha `del` |
+| `push.request.json`, `push.response.json` | Push com `duplicate`, `applied` (save, review, review por `saveClientId`, seen, extraNew, deckImport), `dropped` e `rejected` |
+| `snapshot-full.page1.jsonl`, `snapshot-full.page2.jsonl`, `snapshot-full.page3.jsonl` | Snapshot completo com `limit=3`: duas páginas de itens e uma de fichas |
+| `snapshot-delta.jsonl` | O mesmo momento como delta, com uma linha `del` e uma `ficha` |
 | `errors.json` | Corpo de cada erro |
 | `bank.jsonl`, `outbox.jsonl`, `state.json` | Arquivos do SD (o outbox é o de antes do push; o banco e o estado, os de depois) |
 | `fsrs-vectors.json` | Vetores do FSRS gerados com o ts-fsrs real por `generate-fsrs-vectors.ts` |
@@ -578,3 +661,4 @@ O que o banco atual (`supabase/migrations/`) ainda não tem e o contrato pede. O
 - **Exclusão vence no save:** procurar item apagado com o mesmo `(language, lemmaKey)` e `deleted_at > at`.
 - **Delta:** `updatedAt` precisa subir também quando o Reconhecer ou um encontro muda (hoje `items.updated_at` só sobe em update do item). Um contador monotônico (sequence) por mudança dá um cursor seguro contra transações concorrentes; enquanto não houver, responder sempre `mode: "full"` cumpre o contrato.
 - **`today.newDoneToday`:** a mesma conta de `review_counts` com `dayStart` de `review.ts`.
+- **Fila:** `api_sync_snapshot` devolve o estado da fila (`queue_state_for`) em toda página; a rota calcula `queueRank` com `readerRanks` e o cabeçalho com `readerDecks` (`apps/web/src/lib/server/queue.ts`). Decks: `supabase/migrations/20261112080000_decks.sql`.

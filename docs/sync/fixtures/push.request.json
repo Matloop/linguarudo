@@ -107,6 +107,31 @@
 				"title": "O nome da rosa",
 				"author": "Umberto Eco"
 			}
+		},
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625107",
+			"type": "extraNew",
+			"at": "2026-11-11T21:20:00.000Z",
+			"language": "it",
+			"n": 5
+		},
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625108",
+			"type": "deckImport",
+			"at": "2026-11-11T21:25:00.000Z",
+			"language": "it",
+			"name": "Verbi irregolari",
+			"hash": "sha256:9f2c4e1a7b3d",
+			"rows": [
+				{
+					"front": "andare",
+					"back": "ir\nvado, vai, va"
+				},
+				{
+					"front": "essere",
+					"back": "ser, estar"
+				}
+			]
 		}
 	]
 }

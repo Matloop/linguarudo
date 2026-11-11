@@ -73,6 +73,18 @@
 			"status": "rejected",
 			"reason": "invalid",
 			"errors": { "lemma": "lema vazio" }
+		},
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625107",
+			"status": "applied",
+			"extraNew": 5
+		},
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625108",
+			"status": "applied",
+			"deckId": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c50",
+			"created": true,
+			"fichas": 2
 		}
 	]
 }

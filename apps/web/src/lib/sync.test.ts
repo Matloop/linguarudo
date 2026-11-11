@@ -9,6 +9,7 @@ import {
 	encodeCursor,
 	encodePageToken,
 	endLine,
+	fichaLine,
 	formatUserCode,
 	headerLine,
 	itemLine,
@@ -22,6 +23,8 @@ import {
 	userCodeFrom,
 	utcOffsetMinutes,
 	type FlashcardState,
+	type HeaderInput,
+	type SnapshotFichaRow,
 	type SnapshotItemRow
 } from './sync';
 
@@ -43,6 +46,9 @@ type ItemFixture = {
 	ipa?: string;
 	pos?: string;
 	status: string;
+	deckId: string;
+	queueRank: number | null;
+	leechWaiting: boolean;
 	seenCount: number;
 	lastSeenAt?: string;
 	createdAt: string;
@@ -66,6 +72,8 @@ function rowFrom(item: ItemFixture): SnapshotItemRow {
 		ipa: item.ipa ?? '',
 		pos: item.pos ?? '',
 		status: item.status,
+		deck_id: item.deckId,
+		leech_hold: item.leechWaiting ? 'wait' : null,
 		seen_count: item.seenCount,
 		last_seen_at: item.lastSeenAt ? pg(item.lastSeenAt) : null,
 		created_at: pg(item.createdAt),
@@ -108,7 +116,10 @@ describe('linha item do snapshot', () => {
 		test(`igual ao fixture ${file}`, () => {
 			const items = lines(file).filter((l) => JSON.parse(l).t === 'item');
 			expect(items.length).toBeGreaterThan(0);
-			for (const line of items) expect(itemLine(rowFrom(JSON.parse(line)))).toBe(line);
+			for (const line of items) {
+				const item = JSON.parse(line) as ItemFixture;
+				expect(itemLine(rowFrom(item), item.queueRank)).toBe(line);
+			}
 		});
 	}
 
@@ -180,27 +191,120 @@ describe('linha item do snapshot', () => {
 	});
 });
 
+/** Cabeçalho dos fixtures: 5 itens, 1 ficha, 1 nova feita hoje, dois decks no leitor. */
+function fixtureHeader(serverNow: Date): HeaderInput {
+	const deck = (id: string, name: string, over: object) => ({
+		id,
+		language: 'it',
+		name,
+		parentId: null,
+		isDefault: false,
+		paused: false,
+		newOrder: 'importance' as const,
+		newCap: null,
+		onReader: true,
+		position: 0,
+		createdAt: '2026-10-01T00:00:00.000Z',
+		...over
+	});
+	return {
+		language: 'it',
+		cursor: 'v1.MjAyNi0xMS0xMVQyMTozMDowMi40MTdaOjg4MjEz',
+		serverNow,
+		total: 5,
+		fichasTotal: 1,
+		uiLanguage: 'pt',
+		nativeLanguage: 'pt',
+		studyLanguages: ['it', 'en'],
+		newFlashcardsPerDay: 10,
+		timeZone: REVIEW_TIME_ZONE,
+		dayStartHour: DEFAULT_CLOCK.startHour,
+		desiredRetention: 0.9,
+		dayStart: dayStart(serverNow),
+		nextDayStart: nextDayStart(serverNow),
+		newDoneToday: 1,
+		newOrder: 'importance',
+		leech: { lapses: 8, action: 'wait' },
+		extraNew: 0,
+		newAllowance: 9,
+		decks: [
+			deck('5d0c1a2b-3e4f-4a5b-8c6d-7e8f9a0b1c10', 'Minhas palavras', { isDefault: true }),
+			deck('9e8d7c6b-5a4f-4e3d-9c2b-1a0f9e8d7c20', 'Gramática', {
+				newOrder: 'deck',
+				newCap: 5,
+				position: 1
+			})
+		]
+	};
+}
+
+describe('linha ficha do snapshot', () => {
+	const expected = lines('snapshot-full.page3.jsonl')[1];
+	const row: SnapshotFichaRow = {
+		id: 'c3b2a1f0-9e8d-4c7b-a6f5-e4d3c2b1a030',
+		language: 'it',
+		deck_id: '9e8d7c6b-5a4f-4e3d-9c2b-1a0f9e8d7c20',
+		leech_hold: null,
+		front: 'Ieri {{c1::sono andato::andare}} al mare.<br>Passato prossimo',
+		back: 'Verbo de movimento: auxiliar <b>essere</b>.',
+		status: 'ativo',
+		created_at: '2026-11-05 10:00:00+00',
+		updated_at: '2026-11-05 10:00:00+00',
+		flashcard: {
+			id: 'd4c3b2a1-0f9e-4d8c-b7a6-f5e4d3c2b140',
+			kind: 'lacuna',
+			ord: 1,
+			created_at: '2026-11-05 10:00:00+00',
+			due_at: '2026-11-05 10:00:00+00',
+			stability: 0,
+			stability_fast: 0,
+			difficulty: 0,
+			state: 0,
+			schedule_status: 'new',
+			last_review_at: null,
+			reps: 0,
+			lapses: 0,
+			scheduled_days: 0,
+			learning_step: 0
+		}
+	};
+
+	test('lacuna em texto puro, igual ao fixture (também no bank.jsonl)', () => {
+		expect(fichaLine(row, 2)).toBe(expected);
+		expect(lines('bank.jsonl').at(-1)).toBe(expected);
+		const f = JSON.parse(expected);
+		expect(f.front).toBe('Ieri [andare] al mare. Passato prossimo');
+		expect(f.flashcard).not.toHaveProperty('kind');
+	});
+
+	test('frente: texto sem HTML, cortado em 2000 code points, em espera vira leechWaiting', () => {
+		const f = JSON.parse(
+			fichaLine({
+				...row,
+				front: `<b>casa</b> &amp; ${'è'.repeat(2500)}`,
+				back: 'house<br>home',
+				leech_hold: 'wait',
+				flashcard: { ...row.flashcard, kind: 'frente', ord: 0 }
+			})
+		);
+		expect(f.kind).toBe('frente');
+		expect([...f.front]).toHaveLength(2000);
+		expect(f.front.startsWith('casa & è')).toBe(true);
+		expect(f.back).toBe('house home');
+		expect(f.queueRank).toBeNull();
+		expect(f.leechWaiting).toBe(true);
+	});
+});
+
 describe('cabeçalho e fim da página', () => {
 	test('header igual ao fixture', () => {
 		const expected = lines('snapshot-full.page1.jsonl')[0];
 		const serverNow = new Date('2026-11-11T21:30:02.417Z');
-		const line = headerLine({
-			language: 'it',
-			cursor: 'v1.MjAyNi0xMS0xMVQyMTozMDowMi40MTdaOjg4MjEz',
-			serverNow,
-			total: 5,
-			uiLanguage: 'pt',
-			nativeLanguage: 'pt',
-			studyLanguages: ['it', 'en'],
-			newFlashcardsPerDay: 10,
-			timeZone: REVIEW_TIME_ZONE,
-			dayStartHour: DEFAULT_CLOCK.startHour,
-			desiredRetention: 0.9,
-			dayStart: dayStart(serverNow),
-			nextDayStart: nextDayStart(serverNow),
-			newDoneToday: 1
-		});
+		const line = headerLine(fixtureHeader(serverNow));
 		expect(line).toBe(expected);
+		for (const f of ['snapshot-full.page2.jsonl', 'snapshot-full.page3.jsonl', 'bank.jsonl']) {
+			expect(lines(f)[0]).toBe(expected);
+		}
 	});
 
 	test('conta sem preferências: nada de padrão em português', () => {
@@ -220,7 +324,13 @@ describe('cabeçalho e fim da página', () => {
 				desiredRetention: 0.9,
 				dayStart: dayStart(serverNow),
 				nextDayStart: nextDayStart(serverNow),
-				newDoneToday: 0
+				newDoneToday: 0,
+				fichasTotal: 0,
+				newOrder: 'importance',
+				leech: { lapses: 8, action: 'wait' },
+				extraNew: 0,
+				newAllowance: 10,
+				decks: []
 			})
 		);
 		expect(header.settings).toMatchObject({
@@ -232,7 +342,7 @@ describe('cabeçalho e fim da página', () => {
 	});
 
 	test('end', () => {
-		expect(endLine(2, null)).toBe(lines('snapshot-full.page2.jsonl').at(-1)!);
+		expect(endLine(1, null)).toBe(lines('snapshot-full.page3.jsonl').at(-1)!);
 		const page1End = JSON.parse(lines('snapshot-full.page1.jsonl').at(-1)!);
 		expect(Object.keys(JSON.parse(endLine(3, 'p1.x')))).toEqual(Object.keys(page1End));
 	});
@@ -256,7 +366,7 @@ describe('cursor e token de página', () => {
 
 	test('página vale para o mesmo pedido por 15 minutos', () => {
 		const id = '6a7b8c9d-1e2f-4a3b-9c4d-5e6f7a8b9c04';
-		const token = encodePageToken({ l: 'it', a: id, c: encodeCursor(now), n: 500 });
+		const token = encodePageToken({ l: 'it', k: 'item', a: id, c: encodeCursor(now), n: 500 });
 		expect(token.startsWith('p1.')).toBe(true);
 		expect(
 			decodePageToken(token, { language: 'it', limit: 500 }, new Date(now.getTime() + 60_000))?.a
@@ -268,6 +378,22 @@ describe('cursor e token de página', () => {
 		).toBeNull();
 		expect(decodePageToken('p1.!!!', { language: 'it', limit: 500 }, now)).toBeNull();
 		expect(decodePageToken('qualquer', { language: 'it', limit: 500 }, now)).toBeNull();
+	});
+
+	test('depois dos itens, as fichas começam do zero', () => {
+		const c = encodeCursor(now);
+		const fichas = encodePageToken({ l: 'it', k: 'ficha', a: null, c, n: 500 });
+		expect(decodePageToken(fichas, { language: 'it', limit: 500 }, now)).toMatchObject({
+			k: 'ficha',
+			a: null
+		});
+		// Itens sem último id não existem; tipo desconhecido também não.
+		const bad = encodePageToken({ l: 'it', k: 'item', a: null, c, n: 500 });
+		expect(decodePageToken(bad, { language: 'it', limit: 500 }, now)).toBeNull();
+		const page2 = JSON.parse(lines('snapshot-full.page2.jsonl').at(-1)!);
+		expect(
+			decodePageToken(page2.next, { language: 'it', limit: 500 }, new Date(now.getTime() + 1000))?.k
+		).toBe('ficha');
 	});
 
 	test('limit: 100–1000, padrão 500', () => {
@@ -284,7 +410,7 @@ describe('operações do push', () => {
 	const response = json('push.response.json');
 
 	test('envelope: 1 a 200 operações', () => {
-		expect(parsePushBody(request)?.ops).toHaveLength(7);
+		expect(parsePushBody(request)?.ops).toHaveLength(9);
 		expect(parsePushBody({ protocol: 1, ops: [] })).toBeNull();
 		expect(parsePushBody({ protocol: 1, ops: Array(201).fill({}) })).toBeNull();
 		expect(parsePushBody({ protocol: 1 })).toBeNull();
@@ -446,6 +572,47 @@ describe('operações do push', () => {
 				result: { status: 'rejected', reason: 'client_id_conflict' }
 			}).status
 		).toBe('rejected');
+	});
+
+	test('extraNew: n inteiro de 1 a 1000', () => {
+		const parsed = parseOp(request.ops[7]);
+		expect(parsed).toMatchObject({ ok: true, op: { type: 'extraNew', n: 5, language: 'it' } });
+		for (const n of [0, 1.5, 1001, '5']) {
+			const bad = parseOp({ ...request.ops[7], n });
+			expect(bad.ok).toBe(false);
+			if (!bad.ok) expect(bad.store).toBe('extraNew');
+		}
+	});
+
+	test('deckImport: nome, hash e linhas viram HTML seguro', () => {
+		const parsed = parseOp(request.ops[8]);
+		if (!parsed.ok || parsed.op.type !== 'deckImport') throw new Error('deckImport');
+		expect(parsed.op.name).toBe('Verbi irregolari');
+		expect(parsed.op.hash).toBe('sha256:9f2c4e1a7b3d');
+		expect(parsed.op.rows).toEqual([
+			{ front: 'andare', back: 'ir<br>vado, vai, va' },
+			{ front: 'essere', back: 'ser, estar' }
+		]);
+		const html = parseOp({ ...request.ops[8], rows: [{ front: '<script>x</script>a<b>b</b>' }] });
+		if (!html.ok || html.op.type !== 'deckImport') throw new Error('deckImport');
+		expect(html.op.rows[0].front).not.toContain('<script');
+		expect(html.op.rows[0].back).toBe('');
+		const errorsOf = (over: object) => {
+			const r = parseOp({ ...request.ops[8], ...over });
+			return r.ok ? null : (r.result as { errors?: Record<string, string> }).errors;
+		};
+		expect(errorsOf({ name: '  ' })).toHaveProperty('name');
+		expect(errorsOf({ hash: 'a b' })).toHaveProperty('hash');
+		expect(errorsOf({ rows: [] })).toHaveProperty('rows');
+		expect(errorsOf({ rows: Array(501).fill({ front: 'a' }) })).toHaveProperty('rows');
+		expect(errorsOf({ rows: [{ front: 'a' }, { back: 'b' }] })).toHaveProperty(['rows.1.front']);
+	});
+
+	test('resultados dos fixtures de extraNew e deckImport', () => {
+		expect(response.results.slice(7).map((r: { status: string }) => r.status)).toEqual([
+			'applied',
+			'applied'
+		]);
 	});
 
 	test('FlashcardState do fixture', () => {

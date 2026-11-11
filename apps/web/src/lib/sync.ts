@@ -19,6 +19,8 @@ import {
 	type UiLanguage
 } from './languages.ts';
 import { isGrade, type Grade } from './review.ts';
+import { DECK_LIMITS, parseDeckName, type Deck, type LeechAction, type NewOrder } from './decks.ts';
+import { FICHA_LIMITS, fichaPlainText, fichaTextToHtml, renderCloze } from './fichas.ts';
 
 export const SYNC_PROTOCOL = 1;
 
@@ -40,7 +42,12 @@ export const SYNC_LIMITS = {
 	author: 200,
 	durationMs: 3_600_000,
 	pairExpiresIn: 600,
-	pairInterval: 5
+	pairInterval: 5,
+	/** Frente/verso da linha ficha (só texto), em code points. */
+	fichaText: 2000,
+	/** Linhas de um deckImport. */
+	importRows: 500,
+	importHash: 128
 } as const;
 
 /** Os parâmetros do agendador do servidor (lib/server/scheduler.ts), para o cabeçalho. */
@@ -99,7 +106,9 @@ export type OpResult =
 			errors?: Record<string, string>;
 	  };
 
-export type OpType = 'save' | 'review' | 'seen';
+export type OpType = 'save' | 'review' | 'seen' | 'extraNew' | 'deckImport';
+const OP_TYPES: readonly string[] = ['save', 'review', 'seen', 'extraNew', 'deckImport'];
+const isOpType = (t: unknown): t is OpType => typeof t === 'string' && OP_TYPES.includes(t);
 
 export type SaveOp = {
 	type: 'save';
@@ -127,7 +136,25 @@ export type SeenOp = {
 	/** Calculada aqui a partir de lemma e language; o cliente não manda. */
 	lemmaKey: string;
 };
-export type SyncOp = SaveOp | ReviewOp | SeenOp;
+/** "+N hoje" no leitor: soma ao extra do dia de estudo de `at`. */
+export type ExtraNewOp = {
+	type: 'extraNew';
+	clientId: string;
+	at: string;
+	language: Language;
+	n: number;
+};
+/** CSV do leitor vira deck (ordem do deck). Frente e verso já em HTML seguro. */
+export type DeckImportOp = {
+	type: 'deckImport';
+	clientId: string;
+	at: string;
+	language: Language;
+	name: string;
+	hash: string;
+	rows: { front: string; back: string }[];
+};
+export type SyncOp = SaveOp | ReviewOp | SeenOp | ExtraNewOp | DeckImportOp;
 
 /**
  * Resultado da validação de uma operação. Inválida: o resultado já pronto e, se der
@@ -138,6 +165,7 @@ export type ParsedOp =
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KO_HASH = /^[0-9a-f]{32}$/;
+const IMPORT_HASH = /^[A-Za-z0-9_:.-]+$/;
 
 function record(v: unknown): Record<string, unknown> | null {
 	return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -206,7 +234,7 @@ export function parseOp(raw: unknown): ParsedOp {
 	});
 	if (!r) return invalid({ op: 'operação inválida' }, null);
 	if (!clientId) return invalid({ clientId: 'clientId precisa ser um uuid' }, null);
-	if (type !== 'save' && type !== 'review' && type !== 'seen') {
+	if (!isOpType(type)) {
 		return {
 			ok: false,
 			result: { clientId, status: 'rejected', reason: 'unknown_type' },
@@ -219,6 +247,43 @@ export function parseOp(raw: unknown): ParsedOp {
 	if (!at) errors.at = 'data inválida';
 	const language = parseLanguage(r.language) ?? '';
 	if (!language) errors.language = 'idioma inválido';
+
+	if (type === 'extraNew') {
+		const n = r.n;
+		if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > DECK_LIMITS.extraMax) {
+			errors.n = `inteiro de 1 a ${DECK_LIMITS.extraMax}`;
+		}
+		if (Object.keys(errors).length) return invalid(errors, type);
+		return { ok: true, op: { type, clientId, at: at!, language, n: n as number } };
+	}
+
+	if (type === 'deckImport') {
+		const name = parseDeckName(r.name);
+		if (!name) errors.name = `nome de 1 a ${DECK_LIMITS.name} caracteres`;
+		const hash = str(r.hash);
+		if (!hash || hash.length > SYNC_LIMITS.importHash || !IMPORT_HASH.test(hash)) {
+			errors.hash = 'hash de 1 a 128 caracteres [A-Za-z0-9_:.-]';
+		}
+		const rows: { front: string; back: string }[] = [];
+		if (!Array.isArray(r.rows) || r.rows.length < 1 || r.rows.length > SYNC_LIMITS.importRows) {
+			errors.rows = `de 1 a ${SYNC_LIMITS.importRows} linhas`;
+		} else {
+			for (const [i, raw] of r.rows.entries()) {
+				const row = record(raw);
+				const front = clip(row?.front, FICHA_LIMITS.face).trim();
+				if (!front) {
+					errors[`rows.${i}.front`] = 'frente vazia';
+					break;
+				}
+				rows.push({
+					front: fichaTextToHtml(front),
+					back: fichaTextToHtml(clip(row?.back, FICHA_LIMITS.face).trim())
+				});
+			}
+		}
+		if (Object.keys(errors).length) return invalid(errors, type);
+		return { ok: true, op: { type, clientId, at: at!, language, name: name!, hash, rows } };
+	}
 
 	if (type === 'seen') {
 		const lemma = normalizeLemma(str(r.lemma));
@@ -422,6 +487,24 @@ export interface SnapshotItemRow {
 	flashcard: FlashcardRowJson;
 	/** Última revisão do irmão (Produzir); o aparelho oculta o Reconhecer nesse dia. */
 	sibling_reviewed_at?: string | null;
+	deck_id: string;
+	/** Teimosa: 'wait' (em espera) ou 'suspend'; null = na fila. */
+	leech_hold: string | null;
+}
+
+/** Uma ficha como api_sync_snapshot devolve (p_kind 'ficha'): frente e verso em HTML. */
+export interface SnapshotFichaRow {
+	id: string;
+	language: string;
+	deck_id: string;
+	leech_hold: string | null;
+	front: string;
+	back: string;
+	status: string;
+	created_at: string;
+	updated_at: string;
+	/** A frente, ou a lacuna de menor ord (o leitor revisa um flashcard por ficha). */
+	flashcard: FlashcardRowJson & { kind: string; ord: number };
 }
 
 function lineBytes(line: string): number {
@@ -445,8 +528,11 @@ function cut(v: string | null, max: number): string {
 	return chars.length > max ? chars.slice(0, max).join('') : v;
 }
 
-/** Linha item. Se passar de 16384 bytes, perde encontros e formas até caber. */
-export function itemLine(row: SnapshotItemRow): string {
+/**
+ * Linha item. queueRank: posição do Reconhecer entre as novas de hoje (readerRanks), null se
+ * não é nova ou não entra. Se passar de 16384 bytes, perde encontros e formas até caber.
+ */
+export function itemLine(row: SnapshotItemRow, queueRank: number | null = null): string {
 	// Formas como escritas, uma por chave do idioma e sem a do próprio lema.
 	const seen = new Set([row.lemma_key]);
 	const forms = (row.forms ?? [])
@@ -478,8 +564,11 @@ export function itemLine(row: SnapshotItemRow): string {
 				note: cut(row.note, SYNC_LIMITS.note),
 				ipa: row.ipa,
 				pos: row.pos,
-				status: row.status
+				status: row.status,
+				deckId: row.deck_id
 			}),
+			queueRank,
+			leechWaiting: row.leech_hold !== null,
 			seenCount: row.seen_count,
 			...compact({
 				lastSeenAt: row.last_seen_at ? iso(row.last_seen_at) : null,
@@ -501,11 +590,51 @@ export function itemLine(row: SnapshotItemRow): string {
 	return line;
 }
 
+/** Texto puro cortado no tamanho da linha ficha. */
+function fichaText(html: string): string {
+	return cut(fichaPlainText(html), SYNC_LIMITS.fichaText);
+}
+
+/**
+ * Linha ficha, só texto (sem mídia nem HTML). Lacuna: front com "[…]" (ou a dica), back
+ * com a frase inteira e o verso depois de " — ".
+ */
+export function fichaLine(row: SnapshotFichaRow, queueRank: number | null = null): string {
+	const kind = row.flashcard.kind === 'lacuna' ? 'lacuna' : 'frente';
+	const front =
+		kind === 'lacuna'
+			? fichaText(renderCloze(row.front, row.flashcard.ord, false))
+			: fichaText(row.front);
+	const back =
+		kind === 'lacuna'
+			? [fichaText(renderCloze(row.front, row.flashcard.ord, true)), fichaText(row.back)]
+					.filter(Boolean)
+					.join(' — ')
+			: fichaText(row.back);
+	return JSON.stringify({
+		t: 'ficha',
+		id: row.id,
+		deckId: row.deck_id,
+		language: row.language,
+		kind,
+		front,
+		back,
+		status: row.status,
+		queueRank,
+		leechWaiting: row.leech_hold !== null,
+		createdAt: iso(row.created_at),
+		updatedAt: iso(row.updated_at),
+		flashcard: flashcardState(row.flashcard)
+	});
+}
+
 export interface HeaderInput {
 	language: Language;
 	cursor: string;
 	serverNow: Date;
 	total: number;
+	/** Fichas do idioma (vêm depois dos itens, nas páginas seguintes). */
+	fichasTotal: number;
 	uiLanguage: UiLanguage | null;
 	nativeLanguage: Language | null;
 	studyLanguages: Language[];
@@ -518,6 +647,13 @@ export interface HeaderInput {
 	dayStart: Date;
 	nextDayStart: Date;
 	newDoneToday: number;
+	/** Como "Estudar tudo" intercala os decks. */
+	newOrder: NewOrder;
+	leech: { lapses: number; action: LeechAction };
+	extraNew: number;
+	newAllowance: number;
+	/** Decks no leitor (on_reader e não pausados), pais antes dos filhos. */
+	decks: Deck[];
 }
 
 /**
@@ -562,6 +698,7 @@ export function headerLine(h: HeaderInput): string {
 		serverNow: h.serverNow.toISOString(),
 		deckName: deckName(h.language, h.uiLanguage),
 		total: h.total,
+		fichasTotal: h.fichasTotal,
 		settings: {
 			uiLanguage: h.uiLanguage,
 			nativeLanguage: h.nativeLanguage,
@@ -569,13 +706,27 @@ export function headerLine(h: HeaderInput): string {
 			newFlashcardsPerDay: h.newFlashcardsPerDay,
 			timeZone: h.timeZone,
 			utcOffsetMinutes: utcOffsetMinutes(h.timeZone, h.serverNow),
-			dayStartHour: h.dayStartHour
+			dayStartHour: h.dayStartHour,
+			newOrder: h.newOrder,
+			desiredRetention: h.desiredRetention,
+			buryRelated: true,
+			leech: h.leech
 		},
 		today: {
 			dayStart: h.dayStart.toISOString(),
 			nextDayStart: h.nextDayStart.toISOString(),
-			newDoneToday: h.newDoneToday
+			newDoneToday: h.newDoneToday,
+			extraNew: h.extraNew,
+			newAllowance: h.newAllowance
 		},
+		decks: h.decks.map((d) => ({
+			id: d.id,
+			name: d.name,
+			default: d.isDefault,
+			parentId: d.parentId,
+			newOrder: d.newOrder,
+			newCap: d.newCap
+		})),
 		fsrs: { ...FSRS_HEADER, desiredRetention: h.desiredRetention }
 	});
 }
@@ -612,8 +763,10 @@ export function decodeCursor(cursor: unknown): Date | null {
 export interface PageToken {
 	/** Idioma. */
 	l: Language;
-	/** Último id da página anterior. */
-	a: string;
+	/** O que a página traz: itens primeiro, depois fichas. */
+	k: 'item' | 'ficha';
+	/** Último id da página anterior; null = primeira página do tipo. */
+	a: string | null;
 	/** Cursor da primeira página. */
 	c: string;
 	/** limit da primeira página. */
@@ -642,12 +795,13 @@ export function decodePageToken(
 	}
 	const r = record(t);
 	if (!r || r.l !== expect.language || r.n !== expect.limit) return null;
-	const after = uuid(r.a);
+	if (r.k !== 'item' && r.k !== 'ficha') return null;
+	const after = r.a === null ? null : uuid(r.a);
 	const cursorAt = decodeCursor(r.c);
-	if (!after || !cursorAt) return null;
+	if ((after === null && (r.a !== null || r.k === 'item')) || !cursorAt) return null;
 	const age = now.getTime() - cursorAt.getTime();
 	if (age < -60_000 || age > SYNC_LIMITS.pageTtlMs) return null;
-	return { l: expect.language, a: after, c: r.c as string, n: expect.limit, cursorAt };
+	return { l: expect.language, k: r.k, a: after, c: r.c as string, n: expect.limit, cursorAt };
 }
 
 /** limit da query: 100–1000, padrão 500. */
