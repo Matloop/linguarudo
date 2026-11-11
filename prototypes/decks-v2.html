@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linguetta · Flashcards (decks)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --f-head:'Manrope',system-ui,sans-serif; --f-body:'Inter',system-ui,sans-serif;
+  --page:#1a1715; --panel:#211d1a; --raise:#28231f; --raise-2:#2d2723;
+  --tile:rgba(247,241,230,.035); --hover:rgba(247,241,230,.045);
+  --line:rgba(247,241,230,.08); --line-2:rgba(247,241,230,.14);
+  --ink:#f3ede1; --ink-2:#d2d6cd; --ink-3:#a5aea6;
+  --primary:#f3ede1; --on-primary:#1f1a17; --nav-active:rgba(247,241,230,.07);
+  --prog:#e9e2d3; --prog-track:rgba(247,241,230,.1);
+  --terra-ink:#d79b7b; --terra-soft:rgba(215,155,123,.12);
+  --ok-ink:#a9c9b2; --gold-ink:#d9b57c;
+  --sh-card:0 0 0 1px rgba(247,241,230,.07); --sh-pop:0 0 0 1px rgba(247,241,230,.1),0 16px 40px -16px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{color:var(--ink);font:14px/1.5 var(--f-body);-webkit-font-smoothing:antialiased}
+h1{font:700 24px var(--f-head);margin:0;letter-spacing:-.01em}
+
+.app{display:grid;grid-template-columns:184px 1fr;background:var(--page);border-radius:14px;overflow:hidden;min-height:560px;border:1px solid var(--line)}
+.side{padding:14px 10px;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.brand{display:flex;align-items:center;gap:8px;font:700 15px var(--f-head);padding:4px 8px 12px}
+.brand i{width:18px;height:18px;border-radius:6px;background:var(--primary)}
+.lang{display:flex;align-items:center;gap:8px;padding:6px 8px 10px}
+.lang .ab{font:600 10px var(--f-body);border:1px solid var(--line-2);border-radius:5px;padding:2px 4px;color:var(--ink-3)}
+.lang small{display:block;color:var(--ink-3);font-size:11px;line-height:1.2}
+.save{background:var(--raise);box-shadow:var(--sh-card);border-radius:8px;padding:8px 10px;margin-bottom:12px;display:flex;justify-content:space-between;font-weight:500}
+.save kbd{font:500 10px var(--f-body);color:var(--ink-3);border:1px solid var(--line-2);border-radius:4px;padding:0 4px}
+.nv{padding:7px 10px;border-radius:8px;color:var(--ink-2);display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+.nv:hover{background:var(--hover)}
+.nv.on{background:var(--nav-active);color:var(--ink);font-weight:600}
+.ct{font-size:11px;background:var(--terra-soft);color:var(--terra-ink);border-radius:5px;padding:0 6px;font-weight:600}
+.sub{padding:5px 10px 5px 24px;color:var(--ink-3);font-size:12.5px;display:flex;justify-content:space-between;border-radius:7px;cursor:pointer}
+.sub:hover{background:var(--hover);color:var(--ink-2)}
+.sub span{font-variant-numeric:tabular-nums}
+.sec{font-size:11px;color:var(--ink-3);padding:14px 10px 4px}
+
+.main{background:var(--panel);margin:8px 8px 8px 0;border-radius:12px;padding:28px 28px 90px;position:relative}
+.ph{display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
+.ph p{margin:2px 0 0;color:var(--ink-3)}
+.btn{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:8px;padding:8px 12px;font:600 13px var(--f-body);cursor:pointer;white-space:nowrap;color:var(--ink);background:transparent}
+.btn-primary{background:var(--primary);color:var(--on-primary)}
+.btn-soft{background:var(--tile);box-shadow:var(--sh-card)}
+.btn-ghost{color:var(--ink-2)} .btn-ghost:hover{background:var(--hover)}
+
+.study{display:flex;align-items:center;gap:18px;margin:22px 0 26px;padding:14px 16px;background:var(--raise);box-shadow:var(--sh-card);border-radius:12px}
+.study .txt{flex:1;min-width:0}
+.study b{font:700 15px var(--f-head)}
+.study .meta{font-size:12px;color:var(--ink-3);margin-top:6px;display:flex;align-items:center;gap:10px}
+.bar{height:4px;width:120px;border-radius:99px;background:var(--prog-track);overflow:hidden}
+.bar i{display:block;height:100%;width:60%;background:var(--prog)}
+
+table{width:100%;border-collapse:collapse}
+th{font:500 12px var(--f-body);color:var(--ink-3);text-align:right;padding:0 10px 8px;border-bottom:1px solid var(--line)}
+th:first-child,th:nth-child(2){text-align:left}
+td{padding:12px 10px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-3)}
+td.n{color:var(--ink)} td.r{color:var(--terra-ink);font-weight:600}
+td:nth-child(1){width:28px;padding-right:0}
+td:nth-child(2){text-align:left}
+td.go{width:84px}
+tr.deck{cursor:pointer}
+tr.deck:hover td{background:var(--hover)}
+tr.deck.sel td{background:var(--nav-active)}
+.nm{font-weight:600;color:var(--ink);white-space:nowrap}
+.nm small{font-weight:500;color:var(--ink-3);margin-left:8px;font-size:12px}
+tr.child .nm{padding-left:18px;position:relative}
+tr.child .nm::before{content:"";position:absolute;left:4px;top:-4px;width:8px;height:12px;border-left:1px solid var(--line-2);border-bottom:1px solid var(--line-2);border-bottom-left-radius:4px}
+tr.paused td{opacity:.5}
+.ck{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--line-2);display:block;opacity:0;transition:opacity .12s}
+tr.deck:hover .ck,.picking .ck{opacity:1}
+tr.sel .ck{opacity:1;background:var(--primary);border-color:var(--primary);position:relative}
+tr.sel .ck::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid var(--on-primary);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.go .btn{opacity:0} tr.deck:hover .go .btn{opacity:1}
+.zero{color:var(--line-2)}
+
+.bulk{position:absolute;left:50%;bottom:22px;transform:translate(-50%,12px);opacity:0;pointer-events:none;transition:.16s;background:var(--raise-2);box-shadow:var(--sh-pop);border-radius:12px;padding:6px 6px 6px 14px;display:flex;align-items:center;gap:4px;font-size:13px;white-space:nowrap}
+.bulk.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.bulk .cnt{margin-right:8px;color:var(--ink-2)}
+.bulk .sep{width:1px;height:18px;background:var(--line-2);margin:0 4px}
+
+.pop{position:absolute;right:28px;top:74px;width:300px;background:var(--raise-2);box-shadow:var(--sh-pop);border-radius:12px;padding:16px;display:none;z-index:2}
+.pop.on{display:block}
+.pop label{font-size:12px;color:var(--ink-3);display:block;margin-bottom:6px}
+.pop .in{background:rgba(0,0,0,.16);border:1px solid var(--line-2);border-radius:8px;padding:8px 10px;font-size:14px;margin-bottom:12px}
+.pop .in:after{content:"";display:inline-block;width:1px;height:15px;background:var(--ink);vertical-align:-2px;margin-left:1px;animation:b 1s steps(1) infinite}
+@keyframes b{50%{opacity:0}}
+.pop .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pop .hint{font-size:12px;color:var(--ink-3)}
+@media (max-width:700px){.app{grid-template-columns:1fr}.side{display:none}.main{margin:8px;padding:20px}.hide-s{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><i></i>Linguetta</div>
+    <div class="lang"><span class="ab">IT</span><div>Italiano<small>63 flashcards</small></div></div>
+    <div class="save">+ Guardar palavra <kbd>N</kbd></div>
+    <div class="nv">Início</div>
+    <div class="nv">Minhas palavras</div>
+    <div class="nv on">Flashcards <span class="ct">14</span></div>
+    <div class="sub">Minhas palavras <span>10</span></div>
+    <div class="sub">Italiano Básico <span>3</span></div>
+    <div class="sub">1000 parole <span>1</span></div>
+    <div class="nv">Estatísticas</div>
+    <div class="nv">Música</div>
+    <div class="sec">Conexões</div>
+    <div class="nv">Integrações</div>
+    <div class="nv">Perfil</div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="ph">
+      <div><h1>Flashcards</h1><p>3 decks · 63 flashcards</p></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost hide-s">Importar</button>
+        <button class="btn btn-soft" onclick="document.getElementById('pop').classList.toggle('on')">+ Novo deck</button>
+      </div>
+    </div>
+
+    <div class="pop" id="pop">
+      <label>Nome do deck</label>
+      <div class="in">Viagem</div>
+      <div class="row"><span class="hint">Italiano</span><span><button class="btn btn-ghost" onclick="pop.classList.remove('on')">Cancelar</button><button class="btn btn-primary">Criar</button></span></div>
+    </div>
+
+    <div class="study">
+      <div class="txt">
+        <b>14 para hoje</b>
+        <div class="meta"><span class="bar"><i></i></span>6 de 10 novas começadas</div>
+      </div>
+      <button class="btn btn-primary">Estudar tudo</button>
+    </div>
+
+    <table id="t">
+      <thead><tr><th></th><th>Deck</th><th>Novas</th><th>Aprendendo</th><th>Revisar</th></tr></thead>
+      <tbody>
+        <tr class="deck"><td><span class="ck"></span></td><td><span class="nm">Minhas palavras<small>padrão</small></span></td><td class="n">6</td><td class="n">4</td><td class="zero">0</td></tr>
+        <tr class="deck"><td><span class="ck"></span></td><td><span class="nm">Italiano Básico</span></td><td class="n">3</td><td class="zero">0</td><td class="zero">0</td></tr>
+        <tr class="deck"><td><span class="ck"></span></td><td><span class="nm">1000 parole</span></td><td class="n">1</td><td class="zero">0</td><td class="zero">0</td></tr>
+        <tr class="deck child paused"><td><span class="ck"></span></td><td><span class="nm">Verbi<small>pausado</small></span></td><td>—</td><td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+
+    <div class="bulk" id="bulk">
+      <span class="cnt" id="cnt">1 selecionado</span>
+      <button class="btn btn-ghost">Estudar</button>
+      <button class="btn btn-ghost">Pausar</button>
+      <button class="btn btn-ghost">Renomear</button>
+      <span class="sep"></span>
+      <button class="btn btn-ghost" onclick="clearSel()">✕</button>
+    </div>
+  </main>
+</div>
+<script>
+const rows=[...document.querySelectorAll('tr.deck')], bulk=document.getElementById('bulk'), t=document.getElementById('t');
+function sync(){const n=rows.filter(r=>r.classList.contains('sel')).length;
+  bulk.classList.toggle('on',n>0);t.classList.toggle('picking',n>0);
+  document.getElementById('cnt').textContent=n+(n>1?' selecionados':' selecionado');}
+rows.forEach(r=>r.querySelector('.ck').parentElement.addEventListener('click',e=>{e.stopPropagation();r.classList.toggle('sel');sync()}));
+function clearSel(){rows.forEach(r=>r.classList.remove('sel'));sync()}
+rows[1].classList.add('sel');rows[2].classList.add('sel');sync();
+</script>
+</body>
+</html>

@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linguetta · Proposta: decks e regras de estudo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --f-head:'Manrope',system-ui,sans-serif; --f-body:'Inter',system-ui,sans-serif;
+  --salvia:#8aa392; --terra:#a8613f;
+  --page:#1a1715; --panel:#211d1a; --raise:#28231f; --raise-2:#2d2723;
+  --tile:rgba(247,241,230,.035); --sunk:rgba(0,0,0,.16); --hover:rgba(247,241,230,.045);
+  --line:rgba(247,241,230,.08); --line-2:rgba(247,241,230,.14);
+  --ink:#f3ede1; --ink-2:#d2d6cd; --ink-3:#a5aea6;
+  --primary:#f3ede1; --on-primary:#1f1a17; --nav-active:rgba(247,241,230,.07);
+  --prog:#e9e2d3; --prog-track:rgba(247,241,230,.1);
+  --terra-ink:#d79b7b; --terra-soft:rgba(215,155,123,.12);
+  --hl:rgba(138,163,146,.24); --ok-ink:#a9c9b2; --ok-soft:rgba(138,163,146,.18);
+  --gold-ink:#d9b57c; --gold-soft:rgba(217,181,124,.13);
+  --sh-card:0 0 0 1px rgba(247,241,230,.07); --sh-pop:0 0 0 1px rgba(247,241,230,.1),0 16px 40px -16px rgba(0,0,0,.7);
+}
+body.claro{
+  --page:#f1ebdf; --panel:#fbf8f2; --raise:#fff; --raise-2:#fff; --tile:#f6f2ea; --sunk:#efe9de; --hover:rgba(17,38,26,.04);
+  --line:rgba(17,38,26,.08); --line-2:rgba(17,38,26,.14); --ink:#16231b; --ink-2:#464e48; --ink-3:#6e736b;
+  --primary:#1a3626; --on-primary:#f7f1e6; --nav-active:#fff; --prog:#1a3626; --prog-track:rgba(17,38,26,.09);
+  --terra-ink:#9a5536; --terra-soft:rgba(168,97,63,.1); --hl:#e3e8dd; --ok-ink:#3f6b4c; --ok-soft:rgba(138,163,146,.22);
+  --gold-ink:#8f6428; --gold-soft:rgba(184,138,74,.14);
+  --sh-card:0 0 0 1px rgba(17,38,26,.07),0 1px 1px rgba(17,38,26,.03); --sh-pop:0 0 0 1px rgba(17,38,26,.08),0 12px 32px -14px rgba(17,30,22,.24);
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:var(--page);color:var(--ink);font:14px/1.5 var(--f-body);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--f-head);margin:0;letter-spacing:-.01em}
+a{color:inherit}
+.doc{max-width:1240px;margin:0 auto;padding:40px 32px 120px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:28px}
+.top h1{font-size:30px;font-weight:800}
+.top p{color:var(--ink-3);margin:6px 0 0;max-width:720px}
+.toggle{border:0;background:var(--raise);color:var(--ink);box-shadow:var(--sh-card);border-radius:8px;padding:8px 12px;font:500 13px var(--f-body);cursor:pointer;white-space:nowrap}
+nav.toc{position:sticky;top:0;z-index:5;background:var(--page);display:flex;gap:6px;padding:10px 0 14px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:28px}
+nav.toc a{text-decoration:none;font-weight:500;font-size:13px;color:var(--ink-2);padding:6px 10px;border-radius:8px;background:var(--tile)}
+nav.toc a:hover{background:var(--hover);color:var(--ink)}
+section.part{margin:0 0 64px;scroll-margin-top:70px}
+.part>h2{font-size:22px;font-weight:800;margin-bottom:6px}
+.part>.lead{color:var(--ink-3);margin:0 0 20px;max-width:820px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.note{background:var(--panel);box-shadow:var(--sh-card);border-radius:12px;padding:18px 20px}
+.note h3{font-size:15px;font-weight:700;margin-bottom:6px}
+.note p,.note li{color:var(--ink-2);margin:0}
+.note ul{margin:6px 0 0;padding-left:18px} .note li{margin:3px 0}
+.note .why{margin-top:10px;font-size:13px;color:var(--ink-3)}
+.tag-rec{display:inline-block;font:600 11px var(--f-body);color:var(--ok-ink);background:var(--ok-soft);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:2px}
+.tag-q{display:inline-block;font:600 11px var(--f-body);color:var(--gold-ink);background:var(--gold-soft);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:2px}
+.flow{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin:6px 0 0}
+.flow .st{flex:1;min-width:180px;background:var(--panel);box-shadow:var(--sh-card);border-radius:12px;padding:14px 16px}
+.flow .st b{font-family:var(--f-head);font-size:15px;display:block;margin-bottom:4px}
+.flow .st span{color:var(--ink-3);font-size:13px}
+.flow .ar{align-self:center;color:var(--ink-3);font-size:20px}
+.cap{font-size:12px;color:var(--ink-3);margin:10px 2px 0}
+
+/* ---------- app frame ---------- */
+.app{display:grid;grid-template-columns:200px 1fr;background:var(--page);border-radius:16px;box-shadow:var(--sh-pop);overflow:hidden;min-height:640px;border:1px solid var(--line)}
+.side{padding:14px 10px;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.brand{display:flex;align-items:center;gap:8px;font:700 15px var(--f-head);padding:4px 8px 12px}
+.brand i{width:18px;height:18px;border-radius:6px;background:var(--primary);display:inline-block}
+.lang{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;margin-bottom:8px}
+.lang .ab{font:600 10px var(--f-body);border:1px solid var(--line-2);border-radius:5px;padding:2px 4px;color:var(--ink-3)}
+.lang small{display:block;color:var(--ink-3);font-size:11px;line-height:1.2}
+.save{background:var(--raise);box-shadow:var(--sh-card);border-radius:8px;padding:8px 10px;margin-bottom:12px;display:flex;justify-content:space-between;font-weight:500}
+.save kbd{font:500 10px var(--f-body);color:var(--ink-3);border:1px solid var(--line-2);border-radius:4px;padding:0 4px}
+.nv{padding:7px 10px;border-radius:8px;color:var(--ink-2);display:flex;justify-content:space-between;align-items:center}
+.nv.on{background:var(--nav-active);color:var(--ink);font-weight:600}
+.nv .ct{font-size:11px;background:var(--terra-soft);color:var(--terra-ink);border-radius:5px;padding:0 6px;font-weight:600}
+.sub{padding:4px 10px 4px 26px;color:var(--ink-3);font-size:12.5px;display:flex;justify-content:space-between}
+.sub.on{color:var(--ink);font-weight:600}
+.sec{font-size:11px;color:var(--ink-3);padding:14px 10px 4px}
+.main{background:var(--panel);margin:8px 8px 8px 0;border-radius:12px;padding:28px 36px;overflow:hidden}
+.ph{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+.ph h1{font-size:24px;font-weight:700}
+.ph p{margin:2px 0 0;color:var(--ink-3)}
+.btn{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:8px;padding:8px 12px;font:600 13px var(--f-body);cursor:default;white-space:nowrap}
+.btn-primary{background:var(--primary);color:var(--on-primary)}
+.btn-soft{background:var(--tile);color:var(--ink);box-shadow:var(--sh-card)}
+.btn-ghost{background:transparent;color:var(--ink-2)}
+.btn-lg{padding:11px 16px;font-size:14px}
+.row-acts{display:flex;gap:8px}
+
+.today{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:22px}
+.hero{background:var(--raise);box-shadow:var(--sh-card);border-radius:12px;padding:20px 22px}
+.hero h2{font-size:18px;font-weight:700}
+.hero .nums{display:flex;gap:26px;margin:14px 0 16px}
+.hero .nums div b{font:800 26px var(--f-head);display:block;line-height:1.1}
+.hero .nums div span{font-size:12px;color:var(--ink-3)}
+.hero .nums .rev b{color:var(--terra-ink)}
+.budget{margin:4px 0 16px}
+.budget .lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-3);margin-bottom:6px}
+.bar{height:6px;border-radius:99px;background:var(--prog-track);overflow:hidden;display:flex}
+.bar i{display:block;height:100%;background:var(--prog)} .bar i.extra{background:var(--gold-ink)}
+.obras{background:var(--raise);box-shadow:var(--sh-card);border-radius:12px;padding:18px 20px}
+.obras h3{font-size:14px;font-weight:700;margin-bottom:2px}
+.obras p{font-size:12px;color:var(--ink-3);margin:0 0 10px}
+.obra{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.obra:first-of-type{border-top:0}
+.obra .ic{width:28px;height:28px;border-radius:7px;background:var(--tile);display:grid;place-items:center;font-size:13px;color:var(--ink-2);flex:none}
+.obra .t{flex:1;min-width:0} .obra .t b{display:block;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.obra .t span{font-size:12px;color:var(--ink-3)}
+.mini{font:600 12px var(--f-body);color:var(--ink);background:var(--tile);box-shadow:var(--sh-card);border-radius:7px;padding:4px 9px;white-space:nowrap}
+
+.h3row{display:flex;justify-content:space-between;align-items:center;margin:4px 0 10px}
+.h3row h3{font-size:15px;font-weight:700}
+.decks{display:flex;flex-direction:column;gap:8px}
+.deck{display:grid;grid-template-columns:34px 1fr 210px 92px;align-items:center;gap:14px;background:var(--raise);box-shadow:var(--sh-card);border-radius:12px;padding:12px 16px}
+.deck .di{width:34px;height:34px;border-radius:9px;background:var(--tile);display:grid;place-items:center;font-size:15px}
+.deck .dn b{font-weight:600;display:flex;align-items:center;gap:6px}
+.deck .dn span{font-size:12px;color:var(--ink-3)}
+.pill{font:600 10.5px var(--f-body);border-radius:999px;padding:1px 7px;color:var(--ink-3);background:var(--tile)}
+.pill.def{color:var(--ok-ink);background:var(--ok-soft)}
+.pill.pause{color:var(--gold-ink);background:var(--gold-soft)}
+.counts{display:flex;gap:14px;font-size:12px;color:var(--ink-3)}
+.counts b{font:700 14px var(--f-head);color:var(--ink);margin-right:3px}
+.counts .r b{color:var(--terra-ink)}
+.deck.child{margin-left:30px;grid-template-columns:34px 1fr 210px 92px}
+.deck.paused{opacity:.62}
+
+.leech{margin-top:22px;background:var(--gold-soft);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:14px}
+.leech b{font-family:var(--f-head)} .leech p{margin:0;color:var(--ink-2);font-size:13px;flex:1}
+.wchips{display:flex;gap:6px;flex-wrap:wrap}
+.wchip{font:600 12px var(--f-body);background:var(--raise);box-shadow:var(--sh-card);border-radius:7px;padding:3px 8px}
+
+/* deck page */
+.crumbs{font-size:12px;color:var(--ink-3);margin-bottom:6px}
+.tabs{display:flex;gap:4px;background:var(--tile);border-radius:9px;padding:3px;width:max-content;margin:14px 0 14px}
+.tabs span{font-size:12.5px;padding:5px 10px;border-radius:7px;color:var(--ink-2)}
+.tabs span.on{background:var(--raise);color:var(--ink);box-shadow:var(--sh-card);font-weight:600}
+.tabs em{font-style:normal;color:var(--ink-3);margin-left:4px;font-size:11px}
+.list{border-top:1px solid var(--line)}
+.li{display:grid;grid-template-columns:28px 170px 1fr 110px 70px;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.li .ck{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--line-2)}
+.li .ck.on{background:var(--primary);border-color:var(--primary)}
+.li b{font-weight:600;display:block} .li small{color:var(--ink-3);font-size:12px}
+.li .sn{color:var(--ink-2);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .sn mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 3px}
+.li .src{font-size:12px;color:var(--ink-3)}
+.li .due{text-align:right;font-size:12px;font-weight:600;color:var(--terra-ink)}
+.li .due.n{color:var(--ink-3);font-weight:500}
+.bulk{position:relative;margin:14px auto 0;width:max-content;background:var(--raise-2);box-shadow:var(--sh-pop);border-radius:12px;padding:8px 8px 8px 16px;display:flex;align-items:center;gap:10px;font-size:13px}
+.side-panel{display:grid;grid-template-columns:1fr 300px;gap:18px}
+.opts{background:var(--raise);box-shadow:var(--sh-card);border-radius:12px;padding:16px 18px;align-self:start}
+.opts h3{font-size:14px;font-weight:700;margin-bottom:10px}
+.opt{padding:10px 0;border-top:1px solid var(--line)}
+.opt:first-of-type{border-top:0;padding-top:0}
+.opt label{font-weight:600;font-size:13px;display:block}
+.opt p{font-size:12px;color:var(--ink-3);margin:2px 0 8px}
+.seg{display:flex;background:var(--tile);border-radius:8px;padding:3px;gap:2px}
+.seg span{flex:1;text-align:center;font-size:12px;padding:5px 6px;border-radius:6px;color:var(--ink-2)}
+.seg span.on{background:var(--raise-2);color:var(--ink);font-weight:600;box-shadow:var(--sh-card)}
+.field{display:flex;align-items:center;gap:8px}
+.input{background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;min-width:64px}
+.sw{width:32px;height:18px;border-radius:99px;background:var(--prog-track);position:relative;flex:none}
+.sw::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:var(--ink-3);top:2px;left:2px}
+.sw.on{background:var(--primary)} .sw.on::after{left:16px;background:var(--on-primary)}
+.swrow{display:flex;justify-content:space-between;align-items:center;gap:10px}
+
+/* settings */
+.set{max-width:680px}
+.set .grp{background:var(--raise);box-shadow:var(--sh-card);border-radius:12px;padding:4px 18px;margin-bottom:16px}
+.set .it{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:14px 0;border-top:1px solid var(--line)}
+.set .it:first-child{border-top:0}
+.set .it b{font-weight:600;display:block} .set .it span{font-size:12.5px;color:var(--ink-3)}
+.set h3{font-size:13px;color:var(--ink-3);font-weight:600;margin:6px 2px 8px;font-family:var(--f-body)}
+
+/* dialog */
+.dlg-wrap{background:rgba(8,6,4,.55);border-radius:12px;padding:40px;display:grid;place-items:center}
+.dlg{background:var(--raise-2);box-shadow:var(--sh-pop);border-radius:14px;padding:22px 24px;width:440px}
+.dlg h3{font-size:17px;font-weight:700;margin-bottom:4px}
+.dlg p{color:var(--ink-3);margin:0 0 14px;font-size:13px}
+.choice{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:10px;background:var(--tile);margin-bottom:8px}
+.choice.on{box-shadow:0 0 0 1.5px var(--primary)}
+.choice b{display:block;font-weight:600} .choice span{font-size:12.5px;color:var(--ink-3)}
+.choice .rd{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--line-2);margin-top:2px;flex:none}
+.choice.on .rd{border:5px solid var(--primary)}
+.warn{font-size:12.5px;color:var(--gold-ink);background:var(--gold-soft);border-radius:8px;padding:8px 10px;margin:6px 0 14px}
+
+/* e-ink */
+.eink-row{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.eink{width:300px;height:500px;background:#f4f4f1;color:#111;border-radius:6px;box-shadow:0 0 0 10px #2b2b2b,0 0 0 11px #444,0 20px 40px -10px #000;font-family:'Noto Sans',Inter,sans-serif;position:relative;overflow:hidden;flex:none}
+.eink .bat{text-align:right;font-size:9px;font-weight:700;padding:5px 10px 0}
+.eink .hd{display:flex;justify-content:space-between;align-items:center;padding:6px 12px 8px;border-bottom:1.5px solid #111;font-weight:700;font-size:13px}
+.eink .hd small{font-weight:500;font-size:9px}
+.eink .bd{padding:10px 12px}
+.eink h4{font-size:17px;margin:2px 0 6px;font-family:inherit}
+.eink .lab{font-size:10px;margin:8px 0 3px;border-bottom:1px solid #111;padding-bottom:2px}
+.eink .r{border:1.5px solid #111;border-radius:6px;padding:6px 9px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.eink .r b{font-size:12px;display:block} .eink .r span{font-size:10px}
+.eink .r.sel{border-width:3px}
+.eink .r i{font-style:normal;font-size:13px}
+.eink .wd{text-align:center;font-weight:800;font-size:28px;margin-top:120px}
+.eink .tm{text-align:center;font-size:10px;margin-top:8px;border:1px dashed #111;border-radius:6px;padding:6px;margin:90px 6px 0}
+.eink .bt{position:absolute;left:12px;right:12px;bottom:12px;background:#111;color:#f4f4f1;text-align:center;border-radius:6px;padding:8px;font-weight:700;font-size:12px}
+
+/* contract/table */
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--ink-3);font-weight:600;font-size:12px}
+td code,p code,li code{font:12px ui-monospace,Menlo,monospace;background:var(--tile);border-radius:4px;padding:1px 5px;color:var(--ink)}
+pre{font:12px/1.55 ui-monospace,Menlo,monospace;background:var(--sunk);border-radius:10px;padding:14px 16px;overflow:auto;color:var(--ink-2);margin:0}
+.slices{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.slice{background:var(--panel);box-shadow:var(--sh-card);border-radius:12px;padding:16px}
+.slice .n{font:800 12px var(--f-head);color:var(--ink-3)}
+.slice h4{font-size:15px;margin:4px 0 8px}
+.slice ul{margin:0;padding-left:16px;color:var(--ink-2);font-size:13px} .slice li{margin:3px 0}
+.slice .dep{font-size:12px;color:var(--ink-3);margin-top:10px}
+@media (max-width:1000px){.grid2,.grid3,.slices,.today,.side-panel{grid-template-columns:1fr}.app{grid-template-columns:1fr}.side{display:none}.main{margin:8px;padding:20px}.doc{padding:24px 12px 80px}.li{grid-template-columns:22px 120px 1fr 64px}.li .src{display:none}.deck,.deck.child{grid-template-columns:34px 1fr 92px}.deck .counts{grid-column:2;grid-row:2}.deck .btn{grid-row:1/3;grid-column:3}.flow .ar{display:none}.tabs{flex-wrap:wrap;width:auto}}
+</style>
+</head>
+<body>
+<div class="doc">
+
+<div class="top">
+  <div>
+    <h1>Decks e regras de estudo</h1>
+    <p>Proposta para a web ter vários decks e decidir a fila de estudo em um só lugar. O livro, o Stremio e o leitor só capturam e executam. Exemplos com os seus dados reais em italiano: 60 palavras, 54 novas, limite de 10 por dia.</p>
+  </div>
+  <button class="toggle" onclick="document.body.classList.toggle('claro')">Tema claro / escuro</button>
+</div>
+
+<nav class="toc">
+  <a href="#ideia">1 · A ideia</a>
+  <a href="#modelo">2 · O que é um deck</a>
+  <a href="#hub">3 · Tela Flashcards</a>
+  <a href="#deck">4 · Página do deck</a>
+  <a href="#limite">5 · Passar do limite</a>
+  <a href="#teimosas">6 · Teimosas</a>
+  <a href="#estudo">7 · Regras (Perfil)</a>
+  <a href="#leitor">8 · No leitor</a>
+  <a href="#contrato">9 · Sync</a>
+  <a href="#plano">10 · Plano e decisões</a>
+</nav>
+
+<!-- 1 -->
+<section class="part" id="ideia">
+  <h2>1 · A ideia em uma linha</h2>
+  <p class="lead">Capturar não tem limite. Começar a estudar tem um orçamento diário. Revisar não tem limite. Quem decide a ordem e o orçamento é a web; os outros apps seguem.</p>
+  <div class="flow">
+    <div class="st"><b>Captura</b><span>Livro (leitor), Stremio, música, web e importação do Anki ou CSV. Tudo vai para o banco na hora, com frase e obra.</span></div>
+    <div class="ar">→</div>
+    <div class="st"><b>Banco + decks</b><span>Cada palavra ou ficha mora em um deck. Captura cai no deck padrão do idioma.</span></div>
+    <div class="ar">→</div>
+    <div class="st"><b>Fila do dia (web)</b><span>Vencidas, sem limite. Novas pela importância, até o orçamento. Irmãos ocultos, teimosas em espera.</span></div>
+    <div class="ar">→</div>
+    <div class="st"><b>Estudo em qualquer lugar</b><span>Web, leitor e Stremio recebem a fila pronta no sync e só executam. Offline, descontam o que já estudaram.</span></div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="part" id="modelo">
+  <h2>2 · O que é um deck</h2>
+  <p class="lead">Um deck é uma coleção de flashcards dentro de um idioma de estudo. As tags continuam existindo para filtrar entre decks.</p>
+  <div class="grid3">
+    <div class="note">
+      <h3>Um deck por palavra <span class="tag-rec">recomendado</span></h3>
+      <ul>
+        <li>Cada <b>palavra</b> (item) ou <b>ficha</b> pertence a exatamente um deck. Reconhecer e Produzir da mesma palavra ficam juntos.</li>
+        <li>Mover para outro deck não perde o histórico.</li>
+        <li>As tags ficam como filtro transversal.</li>
+      </ul>
+      <p class="why">Por quê: com "uma palavra em vários decks", a mesma revisão contaria em dois lugares e o limite diário ficaria confuso. O Anki também funciona assim.</p>
+    </div>
+    <div class="note">
+      <h3>Deck padrão do idioma</h3>
+      <ul>
+        <li>Todo idioma tem <b>Minhas palavras</b>, criado sozinho e impossível de apagar.</li>
+        <li>Tudo o que vem do livro, do Stremio, da música e do "Guardar palavra" cai nele, sem perguntar nada.</li>
+        <li>Na web dá para mudar qual deck é o padrão, por exemplo um deck "Kaguya".</li>
+      </ul>
+      <p class="why">Por quê: capturar precisa continuar com um clique. Organizar é opcional e acontece depois.</p>
+    </div>
+    <div class="note">
+      <h3>Como os decks nascem</h3>
+      <ul>
+        <li><b>Novo deck</b> na web, para temas como "Viagem" ou "Gramática".</li>
+        <li><b>Importar .apkg:</b> cada deck do Anki vira um deck, e <code>Pai::Filho</code> vira subdeck. Hoje eles viram tags.</li>
+        <li><b>Importar CSV:</b> na web, ou enviado pelo leitor no sync (os CSV da pasta <code>/flashcards</code>).</li>
+      </ul>
+      <p class="why">Isso acaba com os "decks locais" do leitor, que tinham regras próprias (20 novos por dia, fixo).</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="part" id="hub">
+  <h2>3 · Tela Flashcards (nova)</h2>
+  <p class="lead">Hoje <code>/flashcards</code> abre direto na revisão. Proposta: ela passa a ser um painel de decks com um botão grande "Estudar tudo". A revisão continua igual, em <code>/flashcards/estudar</code>.</p>
+
+  <div class="app">
+    <aside class="side">
+      <div class="brand"><i></i>Linguetta</div>
+      <div class="lang"><span class="ab">IT</span><div>Italiano<small>63 flashcards</small></div></div>
+      <div class="save">+ Guardar palavra <kbd>N</kbd></div>
+      <div class="nv">Início</div>
+      <div class="nv">Minhas palavras</div>
+      <div class="nv on">Flashcards <span class="ct">14</span></div>
+      <div class="sub">Minhas palavras <span>10</span></div>
+      <div class="sub">Italiano Básico <span>3</span></div>
+      <div class="sub">1000 parole <span>1</span></div>
+      <div class="nv">Estatísticas</div>
+      <div class="nv">Música</div>
+      <div class="sec">Conexões</div>
+      <div class="nv">Integrações</div>
+    </aside>
+    <main class="main">
+      <div class="ph">
+        <div><h1>Flashcards</h1><p>Italiano · 3 decks · 63 flashcards</p></div>
+        <div class="row-acts"><span class="btn btn-soft">Importar</span><span class="btn btn-soft">+ Novo deck</span></div>
+      </div>
+
+      <div class="today">
+        <div class="hero">
+          <h2>Hoje</h2>
+          <div class="nums">
+            <div class="rev"><b>0</b><span>para revisar</span></div>
+            <div><b>4</b><span>aprendendo</span></div>
+            <div><b>10</b><span>novas</span></div>
+          </div>
+          <div class="budget">
+            <div class="lbl"><span>Novas de hoje: 6 de 10 já começadas (6 na web)</span><span>restam 4 · <a href="#limite">+5 hoje</a></span></div>
+            <div class="bar"><i style="width:60%"></i></div>
+          </div>
+          <div class="row-acts"><span class="btn btn-primary btn-lg">Estudar tudo · 14</span><span class="btn btn-ghost">Só revisões</span></div>
+        </div>
+        <div class="obras">
+          <h3>Estudar desta obra</h3>
+          <p>Sessões com as palavras novas de um episódio ou capítulo, mesmo fora do limite.</p>
+          <div class="obra"><span class="ic">▭</span><div class="t"><b>Kaguya-sama · ep. 3</b><span>12 novas · ontem no Stremio</span></div><span class="mini">Estudar</span></div>
+          <div class="obra"><span class="ic">▤</span><div class="t"><b>O Hobbit (blend PT-IT) · cap. 2</b><span>5 novas · hoje no leitor</span></div><span class="mini">Estudar</span></div>
+          <div class="obra"><span class="ic">♪</span><div class="t"><b>Laura Pausini · La solitudine</b><span>3 novas · música</span></div><span class="mini">Estudar</span></div>
+        </div>
+      </div>
+
+      <div class="h3row"><h3>Decks</h3><span style="font-size:12px;color:var(--ink-3)">novas · aprendendo · revisar hoje</span></div>
+      <div class="decks">
+        <div class="deck"><span class="di">✦</span><div class="dn"><b>Minhas palavras <span class="pill def">padrão</span></b><span>60 flashcards · captura do livro, Stremio e web</span></div><div class="counts"><span><b>6</b>novas</span><span><b>4</b>apr.</span><span class="r"><b>0</b>rev.</span></div><span class="btn btn-soft">Estudar</span></div>
+        <div class="deck"><span class="di">▦</span><div class="dn"><b>Italiano Básico <span class="pill">CSV do leitor</span></b><span>3 flashcards · ordem do arquivo</span></div><div class="counts"><span><b>3</b>novas</span><span><b>0</b>apr.</span><span class="r"><b>0</b>rev.</span></div><span class="btn btn-soft">Estudar</span></div>
+        <div class="deck"><span class="di">A</span><div class="dn"><b>1000 parole <span class="pill">Anki</span></b><span>Pai do subdeck abaixo · 0 próprios</span></div><div class="counts"><span><b>1</b>novas</span><span><b>0</b>apr.</span><span class="r"><b>0</b>rev.</span></div><span class="btn btn-soft">Estudar</span></div>
+        <div class="deck child paused"><span class="di">↳</span><div class="dn"><b>Verbi <span class="pill pause">pausado</span></b><span>Não entra em "Estudar tudo"</span></div><div class="counts"><span><b>—</b></span></div><span class="btn btn-ghost">Retomar</span></div>
+      </div>
+
+      <div class="leech">
+        <div><b>2 teimosas em espera</b><p>Saíram da fila depois de 8 erros. Voltam quando você as encontrar de novo num livro, série ou música.</p></div>
+        <div class="wchips"><span class="wchip">sbagliare</span><span class="wchip">atteggiamento</span></div>
+        <span class="btn btn-soft">Ver</span>
+      </div>
+    </main>
+  </div>
+  <p class="cap">O orçamento de 10 novas é <b>um só por idioma</b> e vale para todos os decks. "Estudar tudo" escolhe as 4 que faltam pela importância; um deck só passa na frente se você o abrir.</p>
+</section>
+
+<!-- 4 -->
+<section class="part" id="deck">
+  <h2>4 · Página do deck</h2>
+  <p class="lead">A mesma lista de "Minhas palavras", filtrada pelo deck, com as opções do deck ao lado. Selecionar várias permite mover de deck.</p>
+  <div class="app" style="min-height:600px">
+    <aside class="side">
+      <div class="brand"><i></i>Linguetta</div>
+      <div class="lang"><span class="ab">IT</span><div>Italiano<small>63 flashcards</small></div></div>
+      <div class="save">+ Guardar palavra <kbd>N</kbd></div>
+      <div class="nv">Início</div><div class="nv">Minhas palavras</div>
+      <div class="nv on">Flashcards <span class="ct">14</span></div>
+      <div class="sub on">Minhas palavras <span>10</span></div><div class="sub">Italiano Básico <span>3</span></div><div class="sub">1000 parole <span>1</span></div>
+      <div class="nv">Estatísticas</div><div class="nv">Música</div>
+    </aside>
+    <main class="main">
+      <div class="crumbs">Flashcards ›</div>
+      <div class="ph"><div><h1>Minhas palavras</h1><p>Deck padrão · 60 flashcards · 6 novas e 4 aprendendo hoje</p></div><div class="row-acts"><span class="btn btn-primary">Estudar · 10</span></div></div>
+      <div class="side-panel">
+        <div>
+          <div class="tabs"><span class="on">Todas<em>60</em></span><span>Na fila hoje<em>10</em></span><span>Novas<em>54</em></span><span>Aprendendo<em>4</em></span><span>Teimosas<em>2</em></span></div>
+          <div class="list">
+            <div class="li"><span class="ck on"></span><div><b>giovane</b><small>jovem</small></div><span class="sn">Quel <mark>giovanotto</mark> non mi piace.</span><span class="src">▭ visto 3× · 2 obras</span><span class="due">hoje · 1º</span></div>
+            <div class="li"><span class="ck on"></span><div><b>entrambi</b><small>ambos</small></div><span class="sn">C'era un impulso che abbiamo seguito <mark>entrambi</mark>.</span><span class="src">▤ ▭ visto 3×</span><span class="due">hoje · 2º</span></div>
+            <div class="li"><span class="ck"></span><div><b>formaggio</b><small>queijo</small></div><span class="sn">…una fetta di <mark>formaggio</mark> squagliato.</span><span class="src">▭ visto 2×</span><span class="due">hoje · 3º</span></div>
+            <div class="li"><span class="ck"></span><div><b>appena</b><small>apenas</small></div><span class="sn">Aspetta, ho <mark>appena</mark> scritto…</span><span class="src">▭ visto 1×</span><span class="due n">amanhã</span></div>
+            <div class="li"><span class="ck"></span><div><b>vasca da bagno</b><small>banheira</small></div><span class="sn">Un pezzo della <mark>vasca da bagno</mark> di Errol Flynn.</span><span class="src">▭ visto 1×</span><span class="due n">em 2 dias</span></div>
+          </div>
+          <div class="bulk">2 selecionadas <span class="btn btn-soft">Mover para deck…</span><span class="btn btn-soft">Tag</span><span class="btn btn-ghost">Conhecida</span></div>
+        </div>
+        <div class="opts">
+          <h3>Opções do deck</h3>
+          <div class="opt"><label>Ordem das novas</label><p>Como as novas deste deck disputam o orçamento.</p>
+            <div class="seg"><span class="on">Importância</span><span>Ordem do deck</span><span>Aleatória</span></div></div>
+          <div class="opt"><label>Teto próprio</label><p>No máximo N novas por dia vindas deste deck (dentro das 10 do idioma).</p>
+            <div class="field"><span class="input">sem teto</span></div></div>
+          <div class="opt"><div class="swrow"><div><label>Pausar deck</label><p style="margin:0">Fica fora do "Estudar tudo" e do leitor.</p></div><span class="sw"></span></div></div>
+          <div class="opt"><div class="swrow"><div><label>Deck padrão</label><p style="margin:0">Recebe o que você captura.</p></div><span class="sw on"></span></div></div>
+          <div class="opt"><div class="swrow"><div><label>No leitor</label><p style="margin:0">Aparece no e-reader.</p></div><span class="sw on"></span></div></div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <p class="cap">"visto 3× · 2 obras" é o que dá a importância. Os decks do Anki começam em "Ordem do deck", para respeitar a ordem de quem montou o deck.</p>
+</section>
+
+<!-- 5 -->
+<section class="part" id="limite">
+  <h2>5 · Passar do limite de propósito</h2>
+  <p class="lead">Quando o orçamento acaba, a revisão termina com duas saídas explícitas. Nada é bloqueado na captura.</p>
+  <div class="grid2">
+    <div class="dlg-wrap">
+      <div class="dlg">
+        <h3>As 10 novas de hoje acabaram</h3>
+        <p>Você ainda tem 44 palavras novas esperando. Quer continuar?</p>
+        <div class="choice on"><span class="rd"></span><div><b>Estudar as de Kaguya-sama · ep. 3</b><span>12 novas que você viu ontem. Com a cena fresca, elas fixam melhor.</span></div></div>
+        <div class="choice"><span class="rd"></span><div><b>+5 novas só hoje</b><span>As 5 mais importantes de todos os decks. O limite volta a 10 amanhã.</span></div></div>
+        <div class="warn">Isso adiciona umas 15 revisões amanhã (hoje são 4).</div>
+        <div class="row-acts" style="justify-content:flex-end"><span class="btn btn-ghost">Parar por hoje</span><span class="btn btn-primary">Continuar</span></div>
+      </div>
+    </div>
+    <div class="note">
+      <h3>Regras</h3>
+      <ul>
+        <li><b>Salvar nunca tem limite.</b> 50 palavras do livro num dia vão todas para o banco como "novas esperando".</li>
+        <li>As novas entram nos dias seguintes pela <b>importância</b>: vezes vista + obras diferentes + obra atual. Ver de novo em qualquer app faz a palavra subir.</li>
+        <li><b>+5 hoje</b> e <b>Desta obra</b> são extras do dia. Ficam registrados no servidor (<code>extraNew</code>) e valem também no leitor depois do sync.</li>
+        <li><b>Offline:</b> o leitor usa a cota do último sync menos o que estudou nele. Se passar um pouco porque você estudou na web no meio, o servidor aceita: revisão feita nunca é recusada.</li>
+        <li>Palavra salva no leitor antes do sync entra pela mesma conta simples (vezes vista) até o servidor recalcular.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="part" id="teimosas">
+  <h2>6 · Teimosas: espera e reencontro</h2>
+  <p class="lead">Errar 8 vezes depois de aprender quase sempre é falta de contexto. Em vez de insistir, a palavra espera até você encontrá-la de verdade outra vez.</p>
+  <div class="flow">
+    <div class="st"><b>8º erro</b><span>A palavra sai da fila e fica <i>em espera</i>. Aviso na web e no leitor: "sbagliare ficou teimosa".</span></div>
+    <div class="ar">→</div>
+    <div class="st"><b>Em espera</b><span>O Word Lens no livro e o modo só língua-alvo no Stremio destacam a palavra quando ela aparece.</span></div>
+    <div class="ar">→</div>
+    <div class="st"><b>Reencontro</b><span>Um encontro novo vindo de qualquer app a devolve para a fila, com essa frase nova no cartão.</span></div>
+    <div class="ar">→</div>
+    <div class="st"><b>Ou à mão</b><span>A aba "Teimosas" na web tem "Voltar para a fila" e "Editar" (melhorar sentido ou frase).</span></div>
+  </div>
+  <div class="grid2" style="margin-top:16px">
+    <div class="note"><h3>Configurável no Perfil</h3><ul><li>Erros para virar teimosa: <b>8</b> (como o Anki).</li><li>O que fazer: <b>Esperar reencontro</b> (padrão) · Só avisar (como hoje) · Pausar até eu voltar.</li></ul></div>
+    <div class="note"><h3>Por que isso combina com o Linguetta</h3><p>O banco já liga cada palavra às obras onde ela aparece. A teimosa usa isso: ver a palavra de novo numa cena ou página real resolve mais do que mais uma repetição seca.</p></div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="part" id="estudo">
+  <h2>7 · Regras de estudo (Perfil → Estudo)</h2>
+  <p class="lead">Um único lugar para as regras. O leitor e o Stremio deixam de ter números próprios.</p>
+  <div class="app" style="min-height:0">
+    <aside class="side"><div class="brand"><i></i>Linguetta</div><div class="nv">Início</div><div class="nv">Flashcards</div><div class="sec">Conta</div><div class="nv on">Perfil</div></aside>
+    <main class="main">
+      <div class="ph"><div><h1>Estudo</h1><p>Vale para a web, o leitor e o Stremio. Por idioma: Italiano</p></div></div>
+      <div class="set">
+        <h3>Ritmo</h3>
+        <div class="grp">
+          <div class="it"><div><b>Novas por dia</b><span>Um orçamento só, dividido entre todos os decks do idioma.</span></div><span class="input">10</span></div>
+          <div class="it"><div><b>Ordem das novas</b><span>Importância usa as vezes que você viu a palavra e em quantas obras.</span></div><div class="seg" style="width:260px"><span class="on">Importância</span><span>Mais antigas</span></div></div>
+          <div class="it"><div><b>Retenção desejada</b><span>90% é o padrão do FSRS. O leitor passa a usar o mesmo número.</span></div><span class="input">90%</span></div>
+          <div class="it"><div><b>Início do dia</b><span>America/Sao_Paulo</span></div><span class="input">04:00</span></div>
+        </div>
+        <h3>Ajuda</h3>
+        <div class="grp">
+          <div class="it"><div><b>Ocultar irmãos</b><span>Reconhecer e Produzir da mesma palavra não caem no mesmo dia. Agora também no leitor.</span></div><span class="sw on"></span></div>
+          <div class="it"><div><b>Teimosas</b><span>Depois de 8 erros: esperar reencontro.</span></div><span class="input">8 · espera</span></div>
+          <div class="it"><div><b>Sugerir "Desta obra"</b><span>Oferecer a sessão da obra recente quando as novas acabam.</span></div><span class="sw on"></span></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="part" id="leitor">
+  <h2>8 · No leitor (e-ink)</h2>
+  <p class="lead">A lista de decks do leitor espelha a web: os mesmos decks, com o mesmo orçamento e a mesma ordem. Os CSV do cartão SD sobem no primeiro sync e viram decks da web.</p>
+  <div class="eink-row">
+    <div class="eink">
+      <div class="bat">100% ▭</div>
+      <div class="hd"><span>← Flashcards</span></div>
+      <div class="bd">
+        <h4>14 para hoje</h4>
+        <div class="r sel"><div><b>Estudar tudo</b><span>4 novas de 10 · 10 aprendendo</span></div><i>›</i></div>
+        <div class="lab">Decks · Italiano</div>
+        <div class="r"><div><b>Minhas palavras</b><span>60 cartões · 10 para hoje</span></div><i>›</i></div>
+        <div class="r"><div><b>Italiano Básico</b><span>3 cartões · 3 para hoje</span></div><i>›</i></div>
+        <div class="r"><div><b>1000 parole</b><span>1 cartão · 1 para hoje</span></div><i>›</i></div>
+        <div class="lab">Navegação</div>
+        <div class="r"><div><b>Sincronizar</b></div><i>›</i></div>
+      </div>
+    </div>
+    <div class="eink">
+      <div class="bat">100% ▭</div>
+      <div class="hd"><span>← Italiano</span><small>Faltam 9</small></div>
+      <div class="wd">sbagliare</div>
+      <div class="tm">Teimosa: errou 8 vezes.<br>Vai esperar até você encontrá-la num livro ou série.</div>
+      <div class="bt">Mostrar resposta</div>
+    </div>
+    <div class="note" style="flex:1;min-width:280px">
+      <h3>O que muda no firmware</h3>
+      <ul>
+        <li>Deixa de ter constantes próprias (20 novos nos CSV, retenção de 90%) e usa o que vem no cabeçalho do banco.</li>
+        <li>Novas na ordem de <code>queueRank</code>; offline, a cota é <code>newAllowance</code> menos o que estudou desde o sync.</li>
+        <li>"Estudar tudo" mais um item por deck; um deck pausado não aparece.</li>
+        <li>Teimosa: aviso no cartão e no resumo. Word Lens destaca as teimosas em espera.</li>
+        <li>Irmãos ocultos via <code>siblingReviewedAt</code>, que o servidor já manda.</li>
+        <li>CSV do SD: enviados no sync como importação; depois disso viram um deck como os outros.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="part" id="contrato">
+  <h2>9 · Mudanças no sync</h2>
+  <p class="lead">Só campos novos e opcionais: um leitor antigo continua funcionando (sem decks, tudo em um deck só).</p>
+  <div class="grid2">
+    <div class="note">
+      <h3>Snapshot (servidor → leitor)</h3>
+<pre>{"t":"header", "language":"it", ...,
+ "settings":{"newCardsPerDay":10, "newOrder":"importance",
+   "desiredRetention":0.9, "buryRelated":true,
+   "leech":{"lapses":8, "action":"wait"}},
+ "today":{"newDoneToday":6, "extraNew":0,
+   "newAllowance":4},
+ "decks":[{"id":"d1","name":"Minhas palavras","default":true},
+          {"id":"d2","name":"Italiano Básico","order":"deck"}]}
+{"t":"item", "lemma":"giovane", "deckId":"d1",
+ "queueRank":1, "leech":false, "flashcard":{...}}</pre>
+    </div>
+    <div class="note">
+      <h3>Operações (leitor → servidor)</h3>
+      <table>
+        <tr><th>op</th><th>novo?</th><th>o que faz</th></tr>
+        <tr><td><code>save</code></td><td>igual</td><td>Vai para o deck padrão. Encontro novo de teimosa em espera → volta para a fila.</td></tr>
+        <tr><td><code>review</code></td><td>igual</td><td>Nunca recusada por limite.</td></tr>
+        <tr><td><code>extraNew</code></td><td>nova</td><td>"+5 hoje" feito no leitor.</td></tr>
+        <tr><td><code>deckImport</code></td><td>nova</td><td>CSV do SD, uma vez por arquivo (idempotente pelo hash).</td></tr>
+      </table>
+      <p class="why">O servidor continua decidindo o FSRS pelo log (ADR 0001). O novo ADR 0005 diz: a fila do dia também é decisão do servidor.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="part" id="plano">
+  <h2>10 · Plano com subagentes e decisões em aberto</h2>
+  <p class="lead">Quatro fatias. A 1 define o contrato; as fatias 2, 3 e 4 rodam em paralelo depois dela, cada uma num worktree próprio.</p>
+  <div class="slices">
+    <div class="slice"><div class="n">FATIA 1 · servidor</div><h4>Decks + fila no banco</h4><ul><li>Migração: <code>decks</code>, <code>items.deck_id</code>, <code>fichas.deck_id</code>, deck padrão por idioma, estado "em espera".</li><li>Importância e <code>queueRank</code> no SQL.</li><li><code>extraNew</code>, orçamento e teimosas com reencontro.</li><li>apkg: decks no lugar de tags.</li><li>ADR 0005 + CONTRACT + fixtures.</li></ul><div class="dep">Primeiro, sozinha. Banco de rascunho antes de prod.</div></div>
+    <div class="slice"><div class="n">FATIA 2 · web</div><h4>Telas</h4><ul><li><code>/flashcards</code> vira painel; revisão em <code>/flashcards/estudar</code>.</li><li>Página do deck, mover de deck, opções.</li><li>Fim de cota: Desta obra / +5.</li><li>Perfil → Estudo; aba Teimosas.</li></ul><div class="dep">Depois da fatia 1.</div></div>
+    <div class="slice"><div class="n">FATIA 3 · leitor</div><h4>Firmware</h4><ul><li>Lê decks, rank, cota, retenção, irmãos e teimosas.</li><li>Lista de decks espelhada e "Estudar tudo".</li><li>CSV sobe no sync.</li><li>Testes no host e prints no simulador.</li></ul><div class="dep">Depois da fatia 1, contra as fixtures.</div></div>
+    <div class="slice"><div class="n">FATIA 4 · Stremio</div><h4>Fork LingoBlend</h4><ul><li>Destaque das teimosas em espera no modo só língua-alvo.</li><li>CONTRACT atualizado.</li></ul><div class="dep">Pequena; junto com a fatia 3.</div></div>
+  </div>
+
+  <div class="grid2" style="margin-top:18px">
+    <div class="note">
+      <h3>Decisões que eu tomei (mudam fácil agora)</h3>
+      <ul>
+        <li>Uma palavra mora em um deck só; as tags continuam.</li>
+        <li>Orçamento único por idioma; o deck pode ter um teto, mas não um limite separado.</li>
+        <li>Captura sempre no deck padrão, sem perguntar.</li>
+        <li>Teimosa sai da fila e espera o reencontro; pode virar "só avisar" no Perfil.</li>
+        <li>Os CSV do leitor viram decks da web; acaba o deck "só local".</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>Para você decidir <span class="tag-q">em aberto</span></h3>
+      <ul>
+        <li><b>Fichas no leitor:</b> hoje elas não vão para o e-reader. Um deck do Anki que vira fichas não apareceria lá. Proposta: mandar a versão só texto (sem imagem nem áudio).</li>
+        <li><b>Subdecks:</b> um nível só (Pai › Filho) ou árvore livre como o Anki? Proposta: um nível.</li>
+        <li><b>"Minhas palavras" (página) vs deck "Minhas palavras":</b> renomear o deck padrão para "Capturadas"?</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>
