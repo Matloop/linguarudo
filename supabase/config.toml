@@ -245,12 +245,12 @@ otp_expiry = 3600
 # Link mágico com token_hash: o app verifica em /auth/confirm (no servidor, sem PKCE).
 # Em produção, cole o mesmo HTML em Authentication > Emails > Magic Link.
 [auth.email.template.magic_link]
-subject = "Seu link para entrar no Linguarudo"
+subject = "Seu link para entrar no Linguetta"
 content_path = "./supabase/templates/magic_link.html"
 
 # Primeiro acesso de um e-mail novo usa o template de confirmação.
 [auth.email.template.confirmation]
-subject = "Seu link para entrar no Linguarudo"
+subject = "Seu link para entrar no Linguetta"
 content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize email template

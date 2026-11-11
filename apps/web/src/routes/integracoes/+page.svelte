@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { REVIEW_TIME_ZONE } from '#lib/review.ts';
+	import { REVIEW_TIME_ZONE, formatAgo } from '#lib/review.ts';
+	import { toast } from '#lib/ui/app-state.svelte.ts';
+	import Icon from '#lib/ui/Icon.svelte';
 	import type { PageProps, SubmitFunction } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -11,6 +13,8 @@
 
 	const newToken = $derived(form?.action === 'create' && 'token' in form ? form.token : null);
 	const message = $derived(form && 'message' in form ? form.message : null);
+	const connected = $derived(data.tokens.length > 0);
+	const now = $derived(new Date(data.now));
 
 	const submitCreate: SubmitFunction = () => {
 		creating = true;
@@ -23,9 +27,10 @@
 
 	const submitRevoke: SubmitFunction = ({ formData }) => {
 		revoking = formData.get('id')?.toString() ?? null;
-		return async ({ update }) => {
+		return async ({ update, result }) => {
 			await update();
 			revoking = null;
+			if (result.type === 'success') toast('Token revogado. Ele parou de funcionar.');
 		};
 	};
 
@@ -33,6 +38,7 @@
 		if (!newToken) return;
 		await navigator.clipboard.writeText(newToken);
 		copied = true;
+		toast('Token copiado');
 	}
 
 	const dateFormat = new Intl.DateTimeFormat('pt-BR', {
@@ -50,282 +56,454 @@
 </script>
 
 <svelte:head>
-	<title>Integrações · Linguarudo</title>
+	<title>Integrações · Linguetta</title>
 </svelte:head>
 
-<h1>Integrações</h1>
+<div class="ph">
+	<div>
+		<h1>Integrações</h1>
+		<p>
+			Seu banco de palavras recebe o que você encontra em cada lugar. Tudo cai na mesma revisão.
+		</p>
+	</div>
+</div>
 
-<section class="cartao" aria-labelledby="stremio-titulo">
-	<h2 id="stremio-titulo">Stremio (LingoBlend)</h2>
-	<p>
-		O LingoBlend troca algumas palavras da legenda pela língua que você estuda. Com um token, ele
-		salva as palavras que você clicar aqui no seu banco e traz primeiro as que você está aprendendo.
-	</p>
-	<ol>
-		<li>Gere um token.</li>
-		<li>No player, abra o menu do botão da língua (IT/EN).</li>
-		<li>Cole o token no campo “Token do Linguarudo”.</li>
-	</ol>
-
-	<form method="POST" action="?/create" use:enhance={submitCreate} class="gerar">
-		<div class="campo">
-			<label for="label">Nome <span class="opcional">(opcional)</span></label>
-			<input id="label" name="label" maxlength="60" placeholder="Stremio" autocomplete="off" />
+<div class="intg">
+	<section class="tile lift ig stremio" aria-labelledby="stremio-titulo">
+		<div class="ig-h">
+			<span class="ig-logo tv"><Icon name="tv" /></span>
+			{#if connected}<span class="status">Conectado</span>{:else}<span class="soon-tag"
+					>Não conectado</span
+				>{/if}
 		</div>
-		<button class="botao" type="submit" disabled={creating}>
-			{creating ? 'Gerando…' : 'Gerar token'}
-		</button>
-	</form>
-
-	{#if newToken}
-		<div class="novo" role="status">
-			<p><strong>Copie agora.</strong> Este token não aparece de novo.</p>
-			<div class="copiar">
-				<input
-					readonly
-					value={newToken}
-					aria-label="Token gerado"
-					onfocus={(e) => e.currentTarget.select()}
-				/>
-				<button type="button" class="botao-secundario" onclick={copy}>
-					{copied ? 'Copiado' : 'Copiar'}
-				</button>
+		<h2 class="ig-t" id="stremio-titulo">Stremio</h2>
+		<span class="ig-s">Pelo addon LingoBlend</span>
+		<p>
+			Toque numa palavra da legenda. Ela chega com a frase e o episódio, e o LingoBlend traz
+			primeiro as palavras que você está aprendendo.
+		</p>
+		<div class="ig-stats">
+			<span><b>{data.stremio.words}</b> {data.stremio.words === 1 ? 'palavra' : 'palavras'}</span>
+			{#if data.stremio.last}<span>Última: {formatAgo(new Date(data.stremio.last.at), now)}</span
+				>{/if}
+		</div>
+		{#if data.stremio.last}
+			<div class="ig-last">
+				<Icon name="tv" size="sm" /><span
+					><b>{data.stremio.last.lemma}</b>{#if data.stremio.last.source}
+						· {data.stremio.last.source}{/if}</span
+				>
 			</div>
+		{/if}
+
+		{#if newToken}
+			<div class="novo" role="status">
+				<p><strong>Copie agora.</strong> Este token não aparece de novo.</p>
+				<div class="token">
+					<input
+						readonly
+						value={newToken}
+						aria-label="Token gerado"
+						onfocus={(e) => e.currentTarget.select()}
+					/>
+					<button type="button" class="btn btn-soft sm" onclick={copy}>
+						{copied ? 'Copiado' : 'Copiar'}
+					</button>
+				</div>
+			</div>
+		{/if}
+
+		{#if message}<p class="erro" role="alert">{message}</p>{/if}
+
+		<section class="tokens" aria-labelledby="tokens-titulo">
+			<h3 id="tokens-titulo">Tokens ativos</h3>
+			{#if data.tokens.length === 0}
+				<p class="vazio">Nenhum token ainda.</p>
+			{:else}
+				<ul>
+					{#each data.tokens as t (t.id)}
+						<li class:saindo={revoking === t.id}>
+							<div class="texto">
+								<p class="nome">{t.label} <code>…{t.token_hint}</code></p>
+								<p class="meta">
+									Criado em {when(t.created_at)} · Último uso: {when(t.last_used_at)}
+								</p>
+							</div>
+							<form method="POST" action="?/revoke" use:enhance={submitRevoke}>
+								<input type="hidden" name="id" value={t.id} />
+								<button
+									class="btn btn-ghost sm"
+									type="submit"
+									aria-label={`Revogar ${t.label} …${t.token_hint}`}
+								>
+									Revogar
+								</button>
+							</form>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+
+		<form method="POST" action="?/create" use:enhance={submitCreate} class="gerar">
+			<label class="campo">
+				<span>Nome <i>· opcional</i></span>
+				<input name="label" maxlength="60" placeholder="Stremio" autocomplete="off" />
+			</label>
+			<button class="btn btn-primary" type="submit" disabled={creating}>
+				<Icon name="refresh" size="sm" />{creating ? 'Gerando…' : 'Gerar token'}
+			</button>
+		</form>
+
+		<details class="como">
+			<summary>Como conectar</summary>
+			<ol class="steps">
+				<li><span><b>Gere um token</b>Aqui em cima. Ele aparece uma vez só.</span></li>
+				<li><span><b>Abra o menu da língua</b>No player do Stremio, no botão IT/EN.</span></li>
+				<li><span><b>Cole o token</b>No campo do token. Pronto: as palavras chegam aqui.</span></li>
+			</ol>
+		</details>
+	</section>
+
+	<section class="tile ig soon" aria-labelledby="ereader-titulo">
+		<div class="ig-h">
+			<span class="ig-logo"><Icon name="bookmark" /></span><span class="soon-tag">Em breve</span>
 		</div>
-	{/if}
+		<h2 class="ig-t" id="ereader-titulo">E-reader</h2>
+		<span class="ig-s">CrossNext</span>
+		<p>Marque uma palavra enquanto lê. Ela chega com a frase e a página.</p>
+	</section>
 
-	{#if message}<p class="erro" role="alert">{message}</p>{/if}
-</section>
+	<section class="tile ig soon" aria-labelledby="anki-titulo">
+		<div class="ig-h">
+			<span class="ig-logo"><Icon name="archive" /></span><span class="soon-tag">Em breve</span>
+		</div>
+		<h2 class="ig-t" id="anki-titulo">Anki</h2>
+		<span class="ig-s">Baralhos</span>
+		<p>Suas palavras no Anki, com a frase e a tradução.</p>
+	</section>
+</div>
 
-<section aria-labelledby="tokens-titulo">
-	<h2 id="tokens-titulo">Tokens ativos</h2>
-	{#if data.tokens.length === 0}
-		<p class="vazio">Nenhum token ainda.</p>
-	{:else}
-		<ul class="lista">
-			{#each data.tokens as t (t.id)}
-				<li class:saindo={revoking === t.id}>
-					<div class="texto">
-						<p class="nome">{t.label} <code>…{t.token_hint}</code></p>
-						<p class="meta">Criado em {when(t.created_at)} · Último uso: {when(t.last_used_at)}</p>
-					</div>
-					<form method="POST" action="?/revoke" use:enhance={submitRevoke}>
-						<input type="hidden" name="id" value={t.id} />
-						<button
-							class="revogar"
-							type="submit"
-							aria-label={`Revogar ${t.label} …${t.token_hint}`}
-						>
-							Revogar
-						</button>
-					</form>
-				</li>
-			{/each}
-		</ul>
-	{/if}
+<section class="how-int">
+	<h2>Como o banco junta tudo</h2>
+	<ol class="steps row">
+		<li><span><b>Você encontra</b>No Stremio, numa música ou à mão.</span></li>
+		<li><span><b>Guarda com a frase</b>A palavra entra no banco do idioma certo.</span></li>
+		<li><span><b>Revisa num lugar só</b>Tudo cai na mesma fila, no dia certo.</span></li>
+	</ol>
 </section>
 
 <style>
-	h1 {
-		margin: 0 0 16px;
-		font-size: 28px;
-		color: var(--verde);
-		letter-spacing: -0.01em;
+	.intg {
+		display: grid;
+		grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+		gap: 14px;
+		align-items: start;
 	}
-
-	h2 {
-		margin: 0;
-		font-size: 16px;
-		color: var(--verde);
-	}
-
-	section + section {
-		margin-top: 28px;
-	}
-
-	section > h2 {
-		margin-bottom: 10px;
-	}
-
-	.cartao {
-		background: var(--papel);
-		border: 1.5px solid var(--linha);
-		border-radius: 22px;
-		padding: 18px 16px;
+	.ig {
+		padding: 22px;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
 	}
-
-	.cartao p,
-	.cartao ol {
-		margin: 0;
-		color: var(--tinta-suave);
-	}
-
-	.cartao ol {
-		padding-left: 22px;
-	}
-
-	.gerar {
+	.ig-h {
 		display: flex;
-		align-items: flex-end;
-		gap: 12px;
-		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 18px;
 	}
-
-	.campo {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		flex: 1;
-		min-width: 180px;
+	.ig-logo {
+		width: 40px;
+		height: 40px;
+		border-radius: var(--r-m);
+		display: grid;
+		place-items: center;
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--ink-2);
 	}
-
-	label {
-		font-weight: 700;
-		font-size: 14px;
-		color: var(--verde);
-	}
-
-	.opcional {
-		font-weight: 600;
-		color: var(--cinza);
-	}
-
-	input {
-		border: 1.5px solid var(--linha);
-		border-radius: var(--raio-p);
-		background: #fff;
-		padding: 10px 12px;
-		min-width: 0;
-	}
-
-	input:focus-visible {
-		outline: 2px solid var(--salvia);
-		outline-offset: 1px;
-	}
-
-	.botao {
-		border: 0;
-		background: var(--coral);
-		color: #fff;
-		border-radius: 14px;
-		padding: 12px 22px;
-		font-weight: 800;
-		box-shadow: var(--sombra-botao) var(--coral-escuro);
-	}
-
-	.botao:active {
-		transform: translateY(2px);
+	.ig-logo.tv {
+		background: var(--primary);
+		color: var(--on-primary);
 		box-shadow: none;
 	}
-
-	.botao:disabled {
-		opacity: 0.7;
-		cursor: default;
+	.ig-t {
+		margin: 0;
+		font: 600 18px/1.25 var(--f-head);
+		letter-spacing: -0.01em;
+		display: block;
+	}
+	.ig-s {
+		font-size: 13px;
+		color: var(--ink-3);
+	}
+	.ig p {
+		margin: 12px 0 0;
+		color: var(--ink-2);
+		font-size: 13.5px;
+		text-wrap: pretty;
+	}
+	.ig-stats {
+		display: flex;
+		gap: 16px;
+		margin-top: 16px;
+		font-size: 12.5px;
+		color: var(--ink-3);
+		align-items: baseline;
+	}
+	.ig-stats b {
+		font: 600 15px var(--f-head);
+		color: var(--ink);
+		margin-right: 2px;
+	}
+	.ig-last {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 14px;
+		padding: 9px 12px;
+		border-radius: var(--r-m);
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
+		font-size: 13px;
+		color: var(--ink-3);
+		min-width: 0;
+	}
+	.ig-last span {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.ig-last b {
+		color: var(--ink);
+		font-weight: 500;
+	}
+	.status {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--ink-2);
+	}
+	.status::before {
+		content: '';
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--salvia);
+	}
+	.soon-tag {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ink-3);
+		padding: 2px 8px;
+		border-radius: 4px;
+		box-shadow: inset 0 0 0 1px var(--line-2);
+	}
+	.soon .ig-t {
+		color: var(--ink-2);
+	}
+	.soon .ig-logo {
+		color: var(--ink-3);
 	}
 
 	.novo {
-		border: 1.5px dashed var(--salvia);
-		background: #fff;
-		border-radius: var(--raio);
-		padding: 12px;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
+		margin-top: 16px;
 	}
-
 	.novo p {
-		color: var(--verde);
+		margin: 0 0 8px;
 	}
-
-	.copiar {
-		display: flex;
-		gap: 8px;
-	}
-
-	.copiar input {
-		flex: 1;
-		font-family: ui-monospace, monospace;
-		font-size: 14px;
-	}
-
-	.botao-secundario,
-	.revogar {
-		border: 1.5px solid var(--linha);
-		background: #fff;
-		color: var(--verde);
-		border-radius: var(--raio-p);
-		padding: 8px 14px;
-		font-weight: 700;
-	}
-
-	.revogar {
-		color: #a53b3b;
-	}
-
-	.botao-secundario:hover,
-	.revogar:hover {
-		background: var(--creme-escuro);
-	}
-
-	.erro {
-		color: #a53b3b;
-		font-weight: 600;
-	}
-
-	.lista {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	.lista li {
+	.token {
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		background: #fff;
-		border: 1.5px solid var(--linha);
-		border-radius: var(--raio);
-		padding: 12px 12px 12px 16px;
-		transition: opacity 0.15s;
+		padding: 5px 5px 5px 12px;
+		border-radius: var(--r-m);
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
 	}
-
-	.lista li.saindo {
-		opacity: 0.4;
-	}
-
-	.texto {
+	.token input {
 		flex: 1;
 		min-width: 0;
+		border: 0;
+		background: none;
+		outline: none;
+		font:
+			500 13px ui-monospace,
+			'SF Mono',
+			Menlo,
+			monospace;
+		color: var(--ink-2);
+	}
+	.sm {
+		height: 30px;
+		padding: 0 12px;
+		font-size: 13px;
+	}
+	.erro {
+		color: var(--terra-ink) !important;
 	}
 
-	.texto p {
+	.tokens {
+		margin-top: 20px;
+		border-top: 1px solid var(--line);
+		padding-top: 14px;
+	}
+	.tokens h3 {
+		margin: 0 0 6px;
+		font: 500 12.5px var(--f-body);
+		color: var(--ink-3);
+	}
+	.tokens .vazio {
+		margin: 4px 0 0;
+		color: var(--ink-3);
+	}
+	.tokens ul {
+		list-style: none;
 		margin: 0;
-		overflow-wrap: anywhere;
+		padding: 0;
 	}
-
-	.nome {
-		font-weight: 800;
-		color: var(--verde);
+	.tokens li {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 8px 0;
+		transition: opacity 0.2s;
 	}
-
-	.nome code {
-		font-weight: 600;
-		color: var(--cinza);
+	.tokens li + li {
+		border-top: 1px solid var(--line);
 	}
-
-	.meta {
+	.tokens li.saindo {
+		opacity: 0.4;
+	}
+	.tokens .texto p {
+		margin: 0;
+	}
+	.tokens .nome {
+		font-weight: 500;
+		color: var(--ink);
 		font-size: 14px;
-		color: var(--cinza);
+	}
+	.tokens code {
+		font:
+			500 12.5px ui-monospace,
+			'SF Mono',
+			Menlo,
+			monospace;
+		color: var(--ink-3);
+	}
+	.tokens .meta {
+		font-size: 12.5px;
+		color: var(--ink-3);
+		margin-top: 2px;
+	}
+	.gerar {
+		display: flex;
+		align-items: flex-end;
+		gap: 10px;
+		margin-top: 16px;
+		flex-wrap: wrap;
+	}
+	.campo {
+		flex: 1;
+		min-width: 160px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.campo span {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ink-3);
+	}
+	.campo i {
+		font-style: normal;
+		font-weight: 400;
+	}
+	.campo input {
+		height: 36px;
+		padding: 0 12px;
+		border: 0;
+		border-radius: var(--r-m);
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--ink);
+		font: inherit;
+		font-size: 14px;
+	}
+	.como {
+		margin-top: 18px;
+	}
+	.como summary {
+		cursor: pointer;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--ink-2);
+	}
+	.como .steps {
+		margin-top: 14px;
 	}
 
-	.vazio {
+	.steps {
+		list-style: none;
 		margin: 0;
-		color: var(--cinza);
+		padding: 0;
+		counter-reset: s;
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+	.steps li {
+		counter-increment: s;
+		display: grid;
+		grid-template-columns: 26px 1fr;
+		gap: 12px;
+		font-size: 13.5px;
+		color: var(--ink-2);
+	}
+	.steps li::before {
+		content: counter(s);
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		font: 600 12px var(--f-head);
+		box-shadow: inset 0 0 0 1px var(--line-2);
+		color: var(--ink-2);
+	}
+	.steps b {
+		color: var(--ink);
+		font-weight: 500;
+		display: block;
+	}
+	.how-int {
+		margin-top: 40px;
+	}
+	.how-int h2 {
+		margin: 0 0 18px;
+		font: 500 13px var(--f-body);
+		color: var(--ink-3);
+	}
+	.steps.row {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 20px;
+	}
+
+	@media (max-width: 1100px) {
+		.intg {
+			grid-template-columns: 1fr 1fr;
+		}
+		.stremio {
+			grid-column: 1 / -1;
+		}
+	}
+	@media (max-width: 768px) {
+		.intg,
+		.steps.row {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

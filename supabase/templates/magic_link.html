@@ -1,12 +1,31 @@
-<h2 style="font-family: system-ui, sans-serif; color: #0c4033">Entrar no Linguarudo</h2>
-<p style="font-family: system-ui, sans-serif">Toque no botão para entrar. O link vale por uma hora.</p>
-<p>
-	<a
-		href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email"
-		style="display: inline-block; background: #f07c7c; color: #fff; padding: 12px 22px; border-radius: 12px; font-family: system-ui, sans-serif; font-weight: 700; text-decoration: none"
-		>Entrar</a
-	>
+<h2
+  style="
+    font-family: system-ui, sans-serif;
+    color: #11261a;
+    letter-spacing: -0.02em;
+  "
+>
+  Entrar no Linguetta
+</h2>
+<p style="font-family: system-ui, sans-serif; color: #11261a">
+  Toque no botão para entrar. O link vale por uma hora.
 </p>
-<p style="font-family: system-ui, sans-serif; color: #6e7f78; font-size: 13px">
-	Se não foi você que pediu, pode ignorar este e-mail.
+<p>
+  <a
+    href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email"
+    style="
+      display: inline-block;
+      background: #11261a;
+      color: #f7f1e6;
+      padding: 12px 22px;
+      border-radius: 10px;
+      font-family: system-ui, sans-serif;
+      font-weight: 600;
+      text-decoration: none;
+    "
+    >Entrar</a
+  >
+</p>
+<p style="font-family: system-ui, sans-serif; color: #6b7468; font-size: 13px">
+  Se não foi você que pediu, pode ignorar este e-mail.
 </p>

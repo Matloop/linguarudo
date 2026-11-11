@@ -4,16 +4,24 @@ import {
 	answerItem,
 	buildQueue,
 	dayStart,
+	estimateMinutes,
+	formatAgo,
 	formatInterval,
+	formatNextReview,
+	formatToday,
 	formatWhen,
+	GRADE_LABELS,
 	highlightParts,
+	isDueToday,
 	isMastered,
+	itemStrength,
 	MASTERED_STABILITY_DAYS,
 	nextAvailableAt,
 	nextDayStart,
 	reviewCount,
 	sessionProgress,
 	startSession,
+	STRENGTH_LABELS,
 	undoLast,
 	type QueueCard,
 	type ReviewItem
@@ -42,6 +50,7 @@ function item(id: string, over: Partial<ReviewItem> = {}): ReviewItem {
 		dueAt: '2026-11-10T12:00:00.000Z',
 		lemma: id,
 		sense: '',
+		ipa: '',
 		language: 'en',
 		sentence: '',
 		highlight: '',
@@ -234,7 +243,7 @@ describe('highlightParts', () => {
 describe('sessão', () => {
 	const now = new Date('2026-11-10T15:00:00.000Z');
 
-	test('responder avança e conta acertos (De novo é erro)', () => {
+	test('responder avança e conta acertos (Errei é erro)', () => {
 		let s = startSession([item('a'), item('b')]);
 		s = answerItem(s, {
 			rating: 3,
@@ -248,7 +257,7 @@ describe('sessão', () => {
 		expect(sessionProgress(s)).toBe(50);
 	});
 
-	test('De novo com vencimento próximo volta para o fim da fila', () => {
+	test('Errei com vencimento próximo volta para o fim da fila', () => {
 		let s = startSession([item('a'), item('b')]);
 		s = answerItem(s, {
 			rating: 1,
@@ -324,5 +333,100 @@ describe('isMastered', () => {
 
 	test('o limite fica bem acima do "maduro" do Anki (21 dias)', () => {
 		expect(MASTERED_STABILITY_DAYS).toBeGreaterThanOrEqual(60);
+	});
+});
+
+describe('rótulos das notas', () => {
+	test('a nota 1 se chama Errei', () => {
+		expect(GRADE_LABELS).toEqual({ 1: 'Errei', 2: 'Difícil', 3: 'Bom', 4: 'Fácil' });
+	});
+});
+
+describe('sessão conta as notas', () => {
+	const now = new Date('2026-11-10T15:00:00.000Z');
+
+	test('cada nota soma no seu balde e desfazer desconta', () => {
+		let s = startSession([item('a'), item('b')]);
+		expect(s.byGrade).toEqual({ 1: 0, 2: 0, 3: 0, 4: 0 });
+		s = answerItem(s, {
+			rating: 3,
+			logId: 'l1',
+			updated: item('a', { dueAt: '2026-11-15T00:00:00.000Z' }),
+			now
+		});
+		expect(s.byGrade[3]).toBe(1);
+		s = undoLast(s, item('a'));
+		expect(s.byGrade[3]).toBe(0);
+	});
+});
+
+describe('itemStrength', () => {
+	const c = (state: number, stability: number) => ({ state, stability });
+
+	test('só cartões novos é força 0 (Nova)', () => {
+		expect(itemStrength([c(0, 0)])).toBe(0);
+		expect(itemStrength([])).toBe(0);
+		expect(STRENGTH_LABELS[0]).toBe('Nova');
+	});
+
+	test('a estabilidade mais fraca decide', () => {
+		expect(itemStrength([c(1, 0.5)])).toBe(1);
+		expect(itemStrength([c(2, 30), c(2, 5)])).toBe(2);
+		expect(itemStrength([c(2, 40)])).toBe(3);
+	});
+
+	test('dominado é força 4', () => {
+		expect(itemStrength([c(2, MASTERED_STABILITY_DAYS)])).toBe(4);
+		expect(STRENGTH_LABELS[4]).toBe('Dominada');
+	});
+
+	test('cartão novo ao lado de um antigo não zera a força', () => {
+		expect(itemStrength([c(2, 40), c(0, 0)])).toBe(3);
+	});
+});
+
+describe('próxima revisão', () => {
+	// 15:00 UTC = 12:00 em São Paulo.
+	const now = new Date('2026-11-11T15:00:00.000Z');
+
+	test('o cartão que vence primeiro decide; vencido ou hoje é "hoje"', () => {
+		expect(formatNextReview(['2026-11-20T15:00:00.000Z', '2026-11-11T10:00:00.000Z'], now)).toBe(
+			'hoje'
+		);
+		expect(formatNextReview(['2026-11-12T02:00:00.000Z'], now)).toBe('hoje');
+	});
+
+	test('amanhã e em N dias, contando dias do calendário', () => {
+		expect(formatNextReview(['2026-11-12T13:00:00.000Z'], now)).toBe('amanhã');
+		expect(formatNextReview(['2026-11-14T13:00:00.000Z'], now)).toBe('em 3 dias');
+	});
+
+	test('isDueToday acompanha o rótulo', () => {
+		expect(isDueToday(['2026-11-12T02:00:00.000Z'], now)).toBe(true);
+		expect(isDueToday(['2026-11-12T13:00:00.000Z'], now)).toBe(false);
+		expect(isDueToday([], now)).toBe(false);
+	});
+});
+
+describe('datas da interface', () => {
+	const now = new Date('2026-11-11T15:00:00.000Z');
+
+	test('formatToday escreve o dia por extenso', () => {
+		expect(formatToday(now)).toBe('Quarta, 11 de novembro');
+	});
+
+	test('formatAgo em linguagem de gente', () => {
+		expect(formatAgo(new Date(now.getTime() - 20_000), now)).toBe('agora');
+		expect(formatAgo(new Date(now.getTime() - 5 * MIN), now)).toBe('há 5 min');
+		expect(formatAgo(new Date(now.getTime() - 3 * HOUR), now)).toBe('há 3 h');
+		expect(formatAgo(new Date('2026-11-10T20:00:00.000Z'), now)).toBe('ontem');
+		expect(formatAgo(new Date('2026-11-08T20:00:00.000Z'), now)).toBe('há 3 dias');
+		expect(formatAgo(new Date('2026-10-12T20:00:00.000Z'), now)).toBe('12 out');
+	});
+
+	test('estimateMinutes: uns 30 segundos por cartão, no mínimo 1', () => {
+		expect(estimateMinutes(1)).toBe(1);
+		expect(estimateMinutes(13)).toBe(7);
+		expect(estimateMinutes(0)).toBe(0);
 	});
 });

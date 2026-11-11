@@ -1,23 +1,31 @@
 import { expect, test, type Page } from '@playwright/test';
-import { login, SUPABASE_URL } from '../../e2e/auth.ts';
+import { login, saveWord, SUPABASE_URL } from '../../e2e/auth.ts';
 
-async function addWord(
-	page: Page,
-	w: { lemma: string; sense: string; language?: 'EN' | 'IT'; sentence?: string }
-) {
-	const form = page.getByRole('form', { name: 'Guardar palavra' });
-	await form.getByLabel('Palavra ou expressão').fill(w.lemma);
-	await form.getByLabel('Sentido').fill(w.sense);
-	await form.getByRole('radio', { name: w.language ?? 'EN' }).check();
-	if (w.sentence) await form.getByLabel('Frase').fill(w.sentence);
-	await form.getByRole('button', { name: 'Guardar' }).click();
-	await expect(form.getByRole('status')).toHaveText(`“${w.lemma}” guardada.`);
+async function addWord(page: Page, lemma: string, sense: string, sentence = '') {
+	const dialog = await saveWord(page, lemma, sense, sentence);
+	await expect(dialog).toBeHidden();
 }
 
-const bankItem = (page: Page, lemma: string) =>
-	page.getByRole('list', { name: 'Palavras' }).locator(':scope > li').filter({ hasText: lemma });
+const nav = (page: Page) => page.getByRole('navigation', { name: 'Principal' });
+const reviewLink = (page: Page) => nav(page).getByRole('link', { name: /^Revisar/ });
+const front = (page: Page) => page.locator('section[aria-label="Frente do cartão"]');
+const back = (page: Page) => page.locator('section[aria-label="Verso do cartão"]');
+const card = (page: Page) => page.getByTestId('cartao');
+const counter = (page: Page) => page.getByTestId('contador');
+const grades = (page: Page) => page.getByRole('form', { name: 'Como foi?' });
+const endTitle = (page: Page) => page.getByRole('heading', { name: /^Pronto por/ });
 
-const header = (page: Page) => page.getByRole('navigation', { name: 'Principal' });
+async function markKnown(page: Page, lemma: string, known = true) {
+	await page.goto('/palavras');
+	await page.getByRole('list', { name: 'Palavras' }).getByRole('link', { name: lemma }).click();
+	const label = known ? `Marcar “${lemma}” como conhecida` : `Voltar “${lemma}” para a revisão`;
+	await page.getByRole('button', { name: label }).click();
+	await expect(
+		page.getByRole('button', {
+			name: known ? `Voltar “${lemma}” para a revisão` : `Marcar “${lemma}” como conhecida`
+		})
+	).toBeVisible();
+}
 
 test('sem login, /revisar manda para /entrar', async ({ page }) => {
 	await page.goto('/revisar');
@@ -35,162 +43,158 @@ test('anon não lê cartões nem logs pela API', async () => {
 	}
 });
 
-test('revisão: conhecida, virar, avaliar, desfazer, teclado, resumo e estado vazio', async ({
+test('revisão: conhecida, virar, avaliar, desfazer, teclado, fim e estado vazio', async ({
 	page
 }) => {
 	await login(page);
-	await expect(header(page).getByRole('link', { name: /Revisar/ })).not.toContainText(
-		'para revisar'
-	);
+	await expect(reviewLink(page)).not.toContainText('para revisar');
 
-	await addWord(page, {
-		lemma: 'give up',
-		sense: 'desistir',
-		sentence: 'Never give up on the small boat.'
-	});
-	await addWord(page, { lemma: 'allora', sense: 'então', language: 'IT' });
-	await addWord(page, { lemma: 'magari', sense: 'quem dera', language: 'IT' });
+	await addWord(page, 'give up', 'desistir', 'Never give up on the small boat.');
+	await addWord(page, 'however', 'porém');
+	await addWord(page, 'maybe', 'talvez');
 
 	// Todo item nasce com um cartão Reconhecer.
-	await expect(header(page).getByRole('link', { name: 'Revisar 3 para revisar' })).toBeVisible();
+	await expect(reviewLink(page)).toContainText('3 para revisar');
 
 	// Conhecida não entra na revisão.
-	await page.getByRole('button', { name: 'Marcar “magari” como conhecida' }).click();
-	await expect(bankItem(page, 'magari')).toContainText('Conhecida');
-	await expect(header(page).getByRole('link', { name: 'Revisar 2 para revisar' })).toBeVisible();
+	await markKnown(page, 'maybe');
+	await expect(reviewLink(page)).toContainText('2 para revisar');
 
-	await page.getByRole('link', { name: /2 para revisar.*Leva poucos minutos/ }).click();
+	await reviewLink(page).click();
 	await expect(page).toHaveURL(/\/revisar$/);
 
-	const progresso = page.getByRole('progressbar', { name: 'Progresso da sessão' });
+	const progresso = page.getByRole('progressbar', { name: 'Progresso da revisão' });
 	await expect(progresso).toHaveAttribute('aria-valuenow', '0');
+	await expect(counter(page)).toHaveText('1 de 2');
 
-	// Novos saem por ordem de criação: "give up" primeiro.
-	await expect(page.getByRole('button', { name: /give up/ })).toBeVisible();
+	// Novos saem por ordem de criação: "give up" primeiro, com a frase sublinhada.
+	await expect(front(page)).toContainText('give up');
+	await expect(front(page).locator('u')).toHaveText('give up');
+	await expect(grades(page)).toBeHidden();
 	await page.getByRole('button', { name: 'Mostrar resposta' }).click();
 
-	const cartao = page.getByRole('region', { name: 'Cartão' });
-	await expect(cartao).toContainText('desistir');
-	await expect(cartao.locator('mark')).toHaveText('give up');
-	await expect(cartao.getByText('Origem: Adicionado à mão')).toBeAttached();
-	await expect(cartao.getByRole('button', { name: 'Ouvir' })).toBeVisible();
-
-	const notas = page.getByRole('form', { name: 'Como foi?' });
-	await expect(notas.getByRole('button')).toHaveText([
-		/De novo\s*\d+ min/,
+	await expect(card(page)).toHaveClass(/flipped/);
+	await expect(back(page)).toContainText('desistir');
+	await expect(grades(page).getByRole('button')).toHaveText([
+		/Errei\s*\d+ min/,
 		/Difícil/,
 		/Bom\s*\d+ (h|d)/,
 		/Fácil\s*\d+ (d|mês|meses)/
 	]);
 
-	// De novo: o cartão volta para o fim da fila (vence em minutos).
-	await notas.getByRole('button', { name: /De novo/ }).click();
-	await expect(page.getByRole('button', { name: /allora/ })).toBeVisible();
-	await expect(page.getByText('1/3')).toBeVisible();
+	// Errei: o cartão volta para o fim da fila (vence em minutos).
+	await grades(page).getByRole('button', { name: /Errei/ }).click();
+	await expect(front(page)).toContainText('however');
+	await expect(counter(page)).toHaveText('2 de 3');
 
 	// Desfazer devolve "give up" ao topo, como novo.
 	await page.getByRole('button', { name: /Desfazer/ }).click();
-	await expect(page.getByRole('button', { name: /give up/ })).toBeVisible();
-	await expect(page.getByText('0/2')).toBeVisible();
+	await expect(front(page)).toContainText('give up');
+	await expect(counter(page)).toHaveText('1 de 2');
 	await expect(progresso).toHaveAttribute('aria-valuenow', '0');
 
 	// Teclado: Espaço vira, 3 = Bom. (Fácil libera o Produzir; tem teste próprio.)
 	await page.keyboard.press('Space');
-	await expect(cartao).toContainText('desistir');
+	await expect(card(page)).toHaveClass(/flipped/);
 	await page.keyboard.press('3');
-	await expect(page.getByRole('button', { name: /allora/ })).toBeVisible();
+	await expect(front(page)).toContainText('however');
 	await expect(progresso).toHaveAttribute('aria-valuenow', '50');
 
 	await page.keyboard.press('Space');
-	await expect(cartao).toContainText('então');
-	await expect(cartao.locator('mark')).toHaveCount(0); // sem frase, sem destaque
+	await expect(back(page)).toContainText('porém');
+	await expect(front(page).locator('u')).toHaveCount(0); // sem frase, sem destaque
 	await page.keyboard.press('3');
 
-	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
-	await expect(page.getByText('2 de 2')).toBeVisible();
-	await expect(page.getByText(/O próximo cartão vence/)).toBeVisible();
-	await expect(header(page).getByRole('link', { name: 'Revisar' })).toHaveText(/^\s*Revisar\s*$/);
+	await expect(endTitle(page)).toHaveText('Pronto por hoje');
+	await expect(page.getByText('Você revisou 2 palavras.')).toBeVisible();
+	await expect(page.getByTestId('resumo').locator('[data-g="3"] b')).toHaveText('2');
+	await expect(reviewLink(page)).not.toContainText('para revisar');
 
-	// Z desfaz a última nota mesmo no resumo.
+	// Z desfaz a última nota mesmo na tela final.
 	await page.keyboard.press('z');
-	await expect(page.getByRole('button', { name: /allora/ })).toBeVisible();
+	await expect(front(page)).toContainText('however');
 	await page.keyboard.press('Space');
 	await page.keyboard.press('3');
-	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
+	await expect(endTitle(page)).toBeVisible();
 
-	// Recarregar: nada vencido, estado vazio diz quando volta.
+	// Recarregar: nada vencido, o estado vazio diz quando volta.
 	await page.reload();
-	await expect(page.getByRole('heading', { name: 'Nada para revisar agora' })).toBeVisible();
-	await expect(page.getByText(/O próximo cartão vence (hoje|amanhã|\d\d\/\d\d) às/)).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Nada para revisar' })).toBeVisible();
+	await expect(page.getByText(/A próxima palavra em inglês volta/)).toBeVisible();
 
 	// Voltar a conhecida para a revisão traz o cartão de volta.
-	await page.getByRole('link', { name: 'Ir para Minhas palavras' }).click();
-	await page.getByRole('button', { name: 'Voltar “magari” para a revisão' }).click();
-	await expect(bankItem(page, 'magari')).not.toContainText('Conhecida');
-	await expect(header(page).getByRole('link', { name: 'Revisar 1 para revisar' })).toBeVisible();
-	await header(page)
-		.getByRole('link', { name: /Revisar/ })
-		.click();
+	await markKnown(page, 'maybe', false);
+	await expect(reviewLink(page)).toContainText('1 para revisar');
+	await reviewLink(page).click();
 	await expect(page).toHaveURL(/\/revisar$/);
-	await expect(page.getByRole('button', { name: /magari.*Toque para virar/ })).toBeVisible();
+	await expect(front(page)).toContainText('maybe');
 });
 
 test('Produzir nasce quando o Reconhecer passa de 7 dias e pede o lema', async ({ page }) => {
 	await login(page);
-	await addWord(page, { lemma: 'aspettare', sense: 'esperar', language: 'IT' });
-	await addWord(page, { lemma: 'ecco', sense: '', language: 'IT' });
+	await addWord(page, 'wait', 'esperar');
+	await addWord(page, 'here', '');
 	// Navegação no cliente: a página já está hidratada quando as teclas chegam.
-	await header(page)
-		.getByRole('link', { name: /Revisar/ })
-		.click();
+	await reviewLink(page).click();
 
 	// Fácil num cartão novo dá semanas de intervalo.
-	for (const lemma of ['aspettare', 'ecco']) {
-		await expect(
-			page.getByRole('button', { name: new RegExp(`${lemma}\\s*Toque para virar`) })
-		).toBeVisible();
+	for (const lemma of ['wait', 'here']) {
+		await expect(front(page)).toContainText(lemma);
 		await page.keyboard.press('Space');
 		await page.keyboard.press('4');
 	}
-	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
+	await expect(endTitle(page)).toHaveText('Pronto por agora');
 
 	// Só o item com sentido ganha o Produzir.
-	await expect(page.getByText('Ainda tem 1 para revisar.')).toBeVisible();
+	await expect(page.getByText('Ainda tem 1 palavra para revisar.')).toBeVisible();
 	await page.getByRole('button', { name: 'Continuar revisando' }).click();
-	const frente = page.getByRole('button', { name: /Como se diz em italiano\?\s*esperar/ });
-	await expect(frente).toBeVisible();
-	await expect(frente).not.toContainText('aspettare');
+	await expect(front(page)).toContainText('Como se diz em inglês?');
+	await expect(front(page)).toContainText('esperar');
+	await expect(front(page)).not.toContainText('wait');
 	await page.keyboard.press('Space');
-	const cartao = page.getByRole('region', { name: 'Cartão' });
-	await expect(cartao).toContainText('aspettare');
-	await expect(cartao).toContainText('esperar');
+	await expect(back(page)).toContainText('wait');
 
 	await page.keyboard.press('3');
-	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
+	await expect(endTitle(page)).toBeVisible();
 });
 
 test('desfazer o Fácil do Reconhecer apaga o Produzir que ele liberou', async ({ page }) => {
 	await login(page);
-	await addWord(page, { lemma: 'aspettare', sense: 'esperar', language: 'IT' });
-	await header(page)
-		.getByRole('link', { name: /Revisar/ })
-		.click();
+	await addWord(page, 'wait', 'esperar');
+	await reviewLink(page).click();
 
-	await expect(page.getByRole('button', { name: /aspettare\s*Toque para virar/ })).toBeVisible();
+	await expect(front(page)).toContainText('wait');
 	await page.keyboard.press('Space');
 	await page.keyboard.press('4');
-	// O cabeçalho já dizia "1 para revisar" antes da nota: espere o fim da sessão.
-	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
-	await expect(page.getByText('Ainda tem 1 para revisar.')).toBeVisible();
+	await expect(endTitle(page)).toHaveText('Pronto por agora');
+	await expect(page.getByText('Ainda tem 1 palavra para revisar.')).toBeVisible();
 
 	await page.keyboard.press('z');
-	await expect(page.getByRole('button', { name: /aspettare\s*Toque para virar/ })).toBeVisible();
+	await expect(front(page)).toContainText('wait');
 	await page.keyboard.press('Space');
 	await page.keyboard.press('3');
-	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
+	await expect(endTitle(page)).toHaveText('Pronto por hoje');
 
 	// "Bom" deixa o cartão em minutos: o Produzir não volta.
 	await page.goto('/palavras');
 	await page.goto('/revisar');
-	await expect(page.getByRole('button', { name: /Como se diz/ })).toHaveCount(0);
+	await expect(page.getByText('Como se diz')).toHaveCount(0);
+});
+
+test('a revisão só traz as palavras do idioma ativo', async ({ page }) => {
+	await login(page);
+	await addWord(page, 'however', 'porém');
+	const side = page.getByRole('complementary', { name: 'Navegação' });
+	await side.getByLabel(/Trocar idioma/).click();
+	await side.getByRole('menuitemradio', { name: /Italiano/ }).click();
+	await expect(side.getByTestId('idioma-ativo')).toHaveText('IT');
+	await addWord(page, 'magari', 'quem dera');
+
+	await reviewLink(page).click();
+	await expect(counter(page)).toHaveText('1 de 1');
+	await expect(front(page)).toContainText('magari');
+	await page.keyboard.press('Space');
+	await page.keyboard.press('3');
+	await expect(endTitle(page)).toBeVisible();
+	await expect(page.getByText('however')).toHaveCount(0);
 });

@@ -20,7 +20,7 @@ export type Grade = 1 | 2 | 3 | 4;
 export const GRADES: readonly Grade[] = [1, 2, 3, 4];
 
 export const GRADE_LABELS: Record<Grade, string> = {
-	1: 'De novo',
+	1: 'Errei',
 	2: 'Difícil',
 	3: 'Bom',
 	4: 'Fácil'
@@ -51,6 +51,26 @@ export function isMastered(cards: readonly { state: number; stability: number }[
 		cards.length > 0 &&
 		cards.every((c) => c.state === STATE_REVIEW && c.stability >= MASTERED_STABILITY_DAYS)
 	);
+}
+
+// ---------- Força da memória ----------
+
+/** Níveis da força (0–4) mostrados em Minhas palavras. 4 é o dominado. */
+export const STRENGTH_LABELS = ['Nova', 'Frágil', 'Firmando', 'Firme', 'Dominada'] as const;
+export type Strength = 0 | 1 | 2 | 3 | 4;
+
+/**
+ * Força do item pelo cartão mais fraco já estudado. Só cartões novos: 0. Um
+ * Produzir recém-liberado (novo) não derruba a força do Reconhecer.
+ */
+export function itemStrength(cards: readonly { state: number; stability: number }[]): Strength {
+	if (isMastered(cards)) return 4;
+	const studied = cards.filter((c) => c.state !== STATE_NEW);
+	if (studied.length === 0) return 0;
+	const weakest = Math.min(...studied.map((c) => c.stability));
+	if (weakest < 3) return 1;
+	if (weakest < 21) return 2;
+	return 3;
 }
 
 // ---------- Fila ----------
@@ -182,6 +202,69 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
+/** Dias de calendário (no fuso) entre hoje e o dia de `at`; negativo se já passou. */
+function calendarDaysFrom(at: Date, now: Date, timeZone: string): number {
+	return Math.round((dayStart(at, timeZone).getTime() - dayStart(now, timeZone).getTime()) / DAY);
+}
+
+function earliest(dueAts: readonly string[]): Date | null {
+	if (dueAts.length === 0) return null;
+	return new Date(Math.min(...dueAts.map((d) => Date.parse(d))));
+}
+
+/** Algum cartão do item vence até o fim de hoje (ou já venceu). */
+export function isDueToday(
+	dueAts: readonly string[],
+	now: Date,
+	timeZone = REVIEW_TIME_ZONE
+): boolean {
+	const at = earliest(dueAts);
+	return at !== null && at.getTime() < nextDayStart(now, timeZone).getTime();
+}
+
+/** Próxima revisão do item: "hoje", "amanhã" ou "em N dias". */
+export function formatNextReview(
+	dueAts: readonly string[],
+	now: Date,
+	timeZone = REVIEW_TIME_ZONE
+): string {
+	const at = earliest(dueAts);
+	if (!at || isDueToday(dueAts, now, timeZone)) return 'hoje';
+	const days = calendarDaysFrom(at, now, timeZone);
+	return days === 1 ? 'amanhã' : `em ${days} dias`;
+}
+
+/** "Quarta, 11 de novembro". */
+export function formatToday(now: Date, timeZone = REVIEW_TIME_ZONE): string {
+	const weekday = new Intl.DateTimeFormat('pt-BR', { timeZone, weekday: 'long' })
+		.format(now)
+		.replace(/-feira$/, '');
+	const date = new Intl.DateTimeFormat('pt-BR', { timeZone, day: 'numeric', month: 'long' }).format(
+		now
+	);
+	return `${weekday[0].toUpperCase()}${weekday.slice(1)}, ${date}`;
+}
+
+/** Há quanto tempo: "agora", "há 5 min", "há 3 h", "ontem", "há 3 dias", "12 out". */
+export function formatAgo(at: Date, now: Date, timeZone = REVIEW_TIME_ZONE): string {
+	const ms = now.getTime() - at.getTime();
+	if (ms < MIN) return 'agora';
+	if (ms < HOUR) return `há ${Math.floor(ms / MIN)} min`;
+	const days = -calendarDaysFrom(at, now, timeZone);
+	if (days <= 0) return `há ${Math.floor(ms / HOUR)} h`;
+	if (days === 1) return 'ontem';
+	if (days < 7) return `há ${days} dias`;
+	return new Intl.DateTimeFormat('pt-BR', { timeZone, day: 'numeric', month: 'short' })
+		.format(at)
+		.replace('.', '')
+		.replace(' de ', ' ');
+}
+
+/** Minutos de revisão para `n` cartões, a uns 30 s cada. */
+export function estimateMinutes(n: number): number {
+	return n <= 0 ? 0 : Math.max(1, Math.ceil(n / 2));
+}
+
 function decimal(n: number): string {
 	return (Math.round(n * 10) / 10).toString().replace('.', ',');
 }
@@ -237,6 +320,8 @@ export interface ReviewItem {
 	dueAt: string;
 	lemma: string;
 	sense: string;
+	/** Pronúncia guardada no item; vazia se não há. */
+	ipa: string;
 	language: Language;
 	/** Frase do encontro mais recente; vazia se o item não tem encontro. */
 	sentence: string;
@@ -252,11 +337,12 @@ export interface Session {
 	queue: ReviewItem[];
 	answered: number;
 	correct: number;
+	byGrade: Record<Grade, number>;
 	last: { logId: string; rating: Grade; cardId: string; requeued: boolean } | null;
 }
 
 export function startSession(items: ReviewItem[]): Session {
-	return { queue: items, answered: 0, correct: 0, last: null };
+	return { queue: items, answered: 0, correct: 0, byGrade: { 1: 0, 2: 0, 3: 0, 4: 0 }, last: null };
 }
 
 /** Tira o cartão do topo; se ele vence logo (errou), volta para o fim da fila. */
@@ -270,6 +356,7 @@ export function answerItem(
 		queue: requeued ? [...rest, a.updated] : rest,
 		answered: s.answered + 1,
 		correct: s.correct + (a.rating === 1 ? 0 : 1),
+		byGrade: { ...s.byGrade, [a.rating]: s.byGrade[a.rating] + 1 },
 		last: { logId: a.logId, rating: a.rating, cardId: a.updated.cardId, requeued }
 	};
 }
@@ -282,6 +369,7 @@ export function undoLast(s: Session, restored: ReviewItem): Session {
 		queue: [restored, ...rest],
 		answered: s.answered - 1,
 		correct: s.correct - (s.last.rating === 1 ? 0 : 1),
+		byGrade: { ...s.byGrade, [s.last.rating]: Math.max(0, s.byGrade[s.last.rating] - 1) },
 		last: null
 	};
 }

@@ -1,6 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import { generateToken } from '#lib/server/tokens.ts';
-import { normalizeLemma } from '#lib/items.ts';
+import { formatWorkSource, normalizeLemma } from '#lib/items.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const LABEL_MAX = 60;
@@ -11,15 +11,55 @@ async function requireUser(locals: App.Locals) {
 	return user;
 }
 
+/** O que chega pelo LingoBlend (Stremio) entra com uma destas origens. */
+const STREMIO_ORIGINS = ['stremio', 'blend'];
+
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = await requireUser(locals);
-	const { data, error: dbError } = await locals.supabase
-		.from('api_tokens')
-		.select('id, label, token_hint, created_at, last_used_at')
-		.eq('user_id', user.id)
-		.order('created_at', { ascending: false });
-	if (dbError) error(500, 'Não deu para carregar suas integrações agora.');
-	return { tokens: data };
+	const [tokens, words, last] = await Promise.all([
+		locals.supabase
+			.from('api_tokens')
+			.select('id, label, token_hint, created_at, last_used_at')
+			.eq('user_id', user.id)
+			.order('created_at', { ascending: false }),
+		locals.supabase
+			.from('items')
+			.select('id, encounters!inner(origin)', { count: 'exact', head: true })
+			.eq('user_id', user.id)
+			.is('deleted_at', null)
+			.in('encounters.origin', STREMIO_ORIGINS),
+		locals.supabase
+			.from('encounters')
+			.select('seen_at, position, items!inner(lemma, deleted_at), works(title, subtitle)')
+			.eq('user_id', user.id)
+			.is('deleted_at', null)
+			.is('items.deleted_at', null)
+			.in('origin', STREMIO_ORIGINS)
+			.order('seen_at', { ascending: false })
+			.limit(1)
+			.maybeSingle()
+	]);
+	if (tokens.error) error(500, 'Não deu para carregar suas integrações agora.');
+	const lastRow = last.data as {
+		seen_at: string;
+		position: unknown;
+		items: { lemma: string };
+		works: { title: string; subtitle: string } | null;
+	} | null;
+	return {
+		tokens: tokens.data,
+		stremio: {
+			words: words.count ?? 0,
+			last: lastRow
+				? {
+						lemma: lastRow.items.lemma,
+						source: formatWorkSource(lastRow.works, lastRow.position),
+						at: lastRow.seen_at
+					}
+				: null
+		},
+		now: new Date().toISOString()
+	};
 };
 
 export const actions: Actions = {

@@ -6,6 +6,7 @@
 	import { parseYoutubeId } from '#lib/music/youtube.ts';
 	import { LANGUAGE_LABELS } from '#lib/languages.ts';
 	import { MUSIC_LANGUAGES, type MusicLanguage } from '#lib/music/wordlists.ts';
+	import Icon from '#lib/ui/Icon.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -54,16 +55,18 @@
 </script>
 
 <svelte:head>
-	<title>Música · Linguarudo</title>
+	<title>Música · Linguetta</title>
 </svelte:head>
 
-<div class="topo">
-	<h1>Música</h1>
-	<p class="sub">Complete a letra de uma música que você gosta.</p>
+<div class="ph">
+	<div>
+		<h1>Música</h1>
+		<p>Complete a letra de uma música que você gosta, escolhendo a palavra certa.</p>
+	</div>
 </div>
 
 <form
-	class="nova"
+	class="tile lift nova"
 	method="POST"
 	action="?/play"
 	aria-labelledby="nova-titulo"
@@ -75,7 +78,7 @@
 		};
 	}}
 >
-	<h2 id="nova-titulo">Escolher música</h2>
+	<h2 id="nova-titulo"><Icon name="music" size="sm" />Escolher música</h2>
 
 	<div class="campo">
 		<label for="url">Link do YouTube</label>
@@ -151,24 +154,22 @@
 
 	<div class="acoes">
 		<p class="nota">A letra vem do LRCLIB na hora de jogar. Nada dela fica guardado.</p>
-		<button class="jogar" type="submit" disabled={submitting}>
-			{submitting ? 'Abrindo…' : 'Jogar'}
+		<button class="btn btn-primary btn-lg" type="submit" disabled={submitting}>
+			<Icon name="play" size="sm" />{submitting ? 'Abrindo…' : 'Jogar'}
 		</button>
 	</div>
 </form>
 
 <section class="recentes" aria-labelledby="recentes-titulo">
-	<h2 id="recentes-titulo">Tocadas recentemente</h2>
+	<h2 class="eyebrow" id="recentes-titulo">Tocadas recentemente</h2>
 	{#if data.songs.length === 0}
-		<div class="vazio">
-			<p>Nenhuma música ainda. Cole um link aí em cima para começar.</p>
-		</div>
+		<p class="vazio">Nenhuma música ainda. Cole um link aí em cima para começar.</p>
 	{:else}
-		<ul>
+		<ul class="songs">
 			{#each data.songs as song (song.id)}
 				<li>
-					<a href={resolve('/musica/[id]', { id: song.id })}>
-						<span class="miniatura" aria-hidden="true">
+					<a class="song" href={resolve('/musica/[id]', { id: song.id })}>
+						<span class="art" aria-hidden="true">
 							<img
 								src={`https://i.ytimg.com/vi/${song.youtubeId}/mqdefault.jpg`}
 								alt=""
@@ -178,13 +179,14 @@
 							/>
 						</span>
 						<span class="texto">
-							<strong>{song.title}</strong>
-							<span class="artista">{song.artist}</span>
+							<b>{song.title}</b>
+							<span>{song.artist}</span>
 						</span>
-						<span class="selo {song.language}" title={LANGUAGE_LABELS[song.language]}
+						<span class="code" title={LANGUAGE_LABELS[song.language]}
 							>{song.language.toUpperCase()}</span
 						>
 						<span class="data">{song.playedAt ? playedAt(song.playedAt) : ''}</span>
+						<span class="btn btn-soft" aria-hidden="true">Jogar de novo</span>
 					</a>
 				</li>
 			{/each}
@@ -193,83 +195,65 @@
 </section>
 
 <style>
-	.topo {
-		margin-bottom: 16px;
-	}
-
-	h1 {
-		margin: 0;
-		font-size: 28px;
-		color: var(--verde);
-		letter-spacing: -0.01em;
-	}
-
-	.sub {
-		margin: 4px 0 0;
-		color: var(--cinza);
-		font-weight: 650;
-	}
-
 	.nova {
-		background: var(--papel);
-		border: 1.5px solid var(--linha);
-		border-radius: 22px;
-		padding: 18px 16px;
+		padding: 22px;
 		display: flex;
 		flex-direction: column;
-		gap: 14px;
+		gap: 16px;
+		margin-bottom: 32px;
 	}
-
-	h2 {
+	.nova h2 {
 		margin: 0;
-		font-size: 16px;
-		color: var(--verde);
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font: 600 16px var(--f-head);
+		letter-spacing: -0.01em;
 	}
-
 	.campo {
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
 		min-width: 0;
 	}
-
 	.linha {
 		display: flex;
 		flex-direction: column;
-		gap: 14px;
+		gap: 16px;
 	}
-
 	label,
 	legend {
-		font-weight: 700;
-		font-size: 14px;
-		color: var(--verde);
+		font-size: 12.5px;
+		font-weight: 500;
+		color: var(--ink-3);
 	}
-
 	input:not([type='radio']) {
 		width: 100%;
-		border: 2px solid var(--linha);
-		background: #fff;
-		border-radius: var(--raio-p);
-		padding: 11px 13px;
-		font-size: 16px;
+		height: 40px;
+		border: 0;
+		border-radius: var(--r-m);
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--ink);
+		padding: 0 12px;
+		font: inherit;
+		font-size: 15px;
+		transition: box-shadow 0.15s;
 	}
-
-	input:focus {
-		border-color: var(--salvia);
+	input:not([type='radio']):focus {
 		outline: none;
+		box-shadow: inset 0 0 0 1.5px var(--ink-3);
 	}
-
 	[aria-invalid='true'] {
-		border-color: var(--coral) !important;
+		box-shadow: inset 0 0 0 1.5px var(--terra-ink) !important;
 	}
-
-	.ajuda {
+	.ajuda,
+	.nota {
 		margin: 0;
 		font-size: 13px;
-		color: var(--tinta-suave);
+		color: var(--ink-3);
+		text-wrap: pretty;
 	}
-
 	.idioma {
 		border: 0;
 		margin: 0;
@@ -278,26 +262,23 @@
 		flex-direction: column;
 		gap: 6px;
 	}
-
 	.idioma legend {
 		padding: 0;
 		margin-bottom: 6px;
 	}
-
 	.segmentos {
 		display: inline-flex;
 		align-self: flex-start;
-		background: #fff;
-		border: 2px solid var(--linha);
-		border-radius: 99px;
 		padding: 3px;
+		gap: 2px;
+		border-radius: var(--r-m);
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
 	}
-
 	.segmentos label {
 		position: relative;
 		cursor: pointer;
 	}
-
 	.segmentos input {
 		position: absolute;
 		opacity: 0;
@@ -305,178 +286,131 @@
 		margin: 0;
 		cursor: pointer;
 	}
-
 	.segmentos span {
 		display: block;
-		padding: 6px 16px;
-		border-radius: 99px;
-		font-weight: 800;
-		font-size: 14px;
-		color: var(--cinza);
+		height: 30px;
+		line-height: 30px;
+		padding: 0 12px;
+		border-radius: var(--r-s);
+		font-size: 13.5px;
+		font-weight: 500;
+		color: var(--ink-2);
 	}
-
 	.segmentos input:checked + span {
-		background: var(--verde);
-		color: var(--creme);
+		background: var(--raise);
+		color: var(--ink);
+		box-shadow: var(--sh-card);
 	}
-
+	:global(.tema-escuro) .segmentos input:checked + span {
+		background: rgba(247, 241, 230, 0.09);
+		box-shadow: none;
+	}
 	.segmentos input:focus-visible + span {
-		outline: 3px solid var(--azul);
+		outline: 2px solid var(--ink-3);
 		outline-offset: 1px;
 	}
-
 	.acoes {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 12px;
+		gap: 16px;
 	}
-
-	.nota {
-		margin: 0;
-		font-size: 13px;
-		color: var(--tinta-suave);
-		min-width: 0;
-	}
-
-	.jogar {
-		flex: none;
-		border: 0;
-		background: var(--coral);
-		color: var(--verde-escuro);
-		font-weight: 850;
-		font-size: 16px;
-		border-radius: 14px;
-		padding: 12px 26px;
-		box-shadow: var(--sombra-botao) var(--coral-escuro);
-	}
-
-	.jogar:active:not(:disabled) {
-		transform: translateY(2px);
-		box-shadow: 0 1px 0 var(--coral-escuro);
-	}
-
-	.jogar:disabled {
-		opacity: 0.6;
-		cursor: default;
-	}
-
 	.erro {
 		margin: 0;
-		color: var(--coral-escuro);
-		font-weight: 700;
-		font-size: 14px;
+		color: var(--terra-ink);
+		font-size: 13.5px;
 	}
 
-	.recentes {
-		margin-top: 28px;
+	.recentes .eyebrow {
+		margin: 0 0 8px;
 	}
-
-	.recentes ul {
+	.vazio {
+		margin: 0;
+		padding: 18px 0;
+		color: var(--ink-3);
+	}
+	.songs {
 		list-style: none;
-		margin: 12px 0 0;
 		padding: 0;
+		margin: 0 -14px;
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
 	}
-
-	.recentes a {
-		display: flex;
+	.song {
+		display: grid;
+		grid-template-columns: 84px minmax(0, 1fr) auto auto auto;
+		gap: 18px;
 		align-items: center;
-		gap: 12px;
-		padding: 8px 12px 8px 8px;
-		background: var(--papel);
-		border: 1.5px solid var(--linha);
-		border-radius: var(--raio);
+		padding: 10px 14px;
+		border-radius: var(--r-m);
+		color: inherit;
 		text-decoration: none;
-		color: var(--tinta);
+		transition: background-color 0.15s;
 	}
-
-	.recentes a:hover {
-		border-color: var(--salvia);
+	.song:hover {
+		background: var(--hover);
 	}
-
-	.miniatura {
-		flex: none;
+	.art {
 		width: 84px;
 		aspect-ratio: 16 / 9;
-		border-radius: 10px;
+		border-radius: var(--r-s);
 		overflow: hidden;
-		background: var(--verde);
+		background: var(--tile);
 	}
-
-	.miniatura img {
+	.art img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
 		display: block;
 	}
-
 	.texto {
-		flex: 1;
-		min-width: 0;
 		display: flex;
 		flex-direction: column;
+		min-width: 0;
 	}
-
-	.texto strong {
-		color: var(--verde);
+	.texto b {
+		font: 600 15.5px/1.3 var(--f-head);
+		letter-spacing: -0.01em;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-
-	.artista {
-		font-size: 14px;
-		color: var(--tinta-suave);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.selo {
-		font-size: 11px;
-		font-weight: 850;
-		letter-spacing: 0.05em;
-		border-radius: 6px;
-		padding: 2px 7px;
-		background: var(--salvia-claro);
-		color: var(--verde);
-	}
-
-	.selo.it {
-		background: #f6e2c2;
-		color: #7a4b12;
-	}
-
-	.data {
+	.texto span {
 		font-size: 13px;
-		color: var(--cinza);
-		font-weight: 650;
+		color: var(--ink-3);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
-
-	.vazio {
-		margin-top: 12px;
-		border: 1.5px dashed var(--linha);
-		border-radius: var(--raio);
-		padding: 18px;
-		text-align: center;
-		color: var(--tinta-suave);
-		font-weight: 600;
-	}
-
-	.vazio p {
-		margin: 0;
+	.data {
+		font-size: 12.5px;
+		color: var(--ink-3);
+		font-variant-numeric: tabular-nums;
 	}
 
 	@media (min-width: 640px) {
 		.linha {
 			flex-direction: row;
 		}
-
 		.cresce {
 			flex: 1;
+		}
+	}
+	@media (max-width: 768px) {
+		.song {
+			grid-template-columns: 72px minmax(0, 1fr) auto;
+			gap: 12px;
+		}
+		.art {
+			width: 72px;
+		}
+		.song .data,
+		.song .btn {
+			display: none;
+		}
+		.acoes {
+			flex-direction: column;
+			align-items: stretch;
 		}
 	}
 </style>

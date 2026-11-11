@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { onMount, tick, untrack } from 'svelte';
-	import { applyAction, enhance } from '$app/forms';
-	import { invalidate, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import mascote from '#lib/assets/mascote.png';
+	import { onMount, tick, untrack } from 'svelte';
+	import { applyAction, enhance, type SubmitFunction } from '$app/forms';
+	import { invalidate, invalidateAll } from '$app/navigation';
 	import {
 		GRADE_LABELS,
 		GRADES,
@@ -15,9 +14,13 @@
 		undoLast,
 		type Grade
 	} from '#lib/review.ts';
-	import { ORIGIN_LABELS, type Origin } from '#lib/items.ts';
 	import { LANGUAGE_LABELS } from '#lib/languages.ts';
-	import type { PageProps, SubmitFunction } from './$types';
+	import { isTypingTarget, shortcutFor } from '#lib/shortcuts.ts';
+	import { toast } from '#lib/ui/app-state.svelte.ts';
+	import Icon from '#lib/ui/Icon.svelte';
+	import Mark from '#lib/ui/Mark.svelte';
+	import { ORIGIN_ICONS } from '#lib/ui/origins.ts';
+	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
@@ -25,19 +28,22 @@
 	let session = $state(startSession(untrack(() => data.queue)));
 	let flipped = $state(false);
 	let pending = $state(false);
+	let hit = $state<Grade | null>(null);
 	let message = $state<string | null>(null);
 	let canSpeak = $state(false);
 
 	let rateForm: HTMLFormElement | undefined = $state();
 	let undoForm: HTMLFormElement | undefined = $state();
-	let frontButton: HTMLButtonElement | undefined = $state();
-	let back: HTMLElement | undefined = $state();
+	let showButton: HTMLButtonElement | undefined = $state();
+	let grades: HTMLElement | undefined = $state();
 
 	const current = $derived(session.queue[0]);
 	const progress = $derived(sessionProgress(session));
 	const total = $derived(session.answered + session.queue.length);
-
-	const WAVE = 'M6 18 Q 43 6 80 16 T 155 16 T 230 14 T 294 12';
+	const languageName = $derived(LANGUAGE_LABELS[data.language].toLowerCase());
+	const remaining = $derived(
+		data.shell?.summary?.languages.find((l) => l.language === data.language)?.toReview ?? 0
+	);
 
 	onMount(() => {
 		canSpeak = 'speechSynthesis' in window;
@@ -47,13 +53,14 @@
 		if (!current || flipped) return;
 		flipped = true;
 		await tick();
-		back?.focus();
+		grades?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
 	}
 
 	async function showFront() {
 		flipped = false;
+		hit = null;
 		await tick();
-		frontButton?.focus();
+		showButton?.focus({ preventScroll: true });
 	}
 
 	function speak() {
@@ -68,28 +75,30 @@
 		speechSynthesis.speak(utterance);
 	}
 
-	function onkeydown(e: KeyboardEvent) {
-		if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-		if ((e.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable]'))
-			return;
-
-		if (e.key === ' ') {
-			if (!current) return;
-			e.preventDefault();
-			flip();
-		} else if (/^[1-4]$/.test(e.key) && flipped && !pending) {
-			e.preventDefault();
-			rateForm?.requestSubmit(rateForm.querySelector<HTMLButtonElement>(`[value="${e.key}"]`));
-		} else if (e.key.toLowerCase() === 'z' && session.last && !pending) {
-			e.preventDefault();
-			undoForm?.requestSubmit();
-		}
+	function rate(grade: Grade) {
+		rateForm?.requestSubmit(rateForm.querySelector<HTMLButtonElement>(`[value="${grade}"]`));
 	}
 
-	const submitRate: SubmitFunction = ({ cancel }) => {
+	function onkeydown(e: KeyboardEvent) {
+		const action = shortcutFor(e, {
+			screen: 'revisar',
+			typing: isTypingTarget(e.target),
+			dialogOpen: !!document.querySelector('dialog[open], details.lang-wrap[open]'),
+			flipped
+		});
+		if (!action) return;
+		if (action.type === 'virar' && current) flip();
+		else if (action.type === 'nota' && current && !pending) rate(action.grade);
+		else if (action.type === 'desfazer' && session.last && !pending) undoForm?.requestSubmit();
+		else return;
+		e.preventDefault();
+	}
+
+	const submitRate: SubmitFunction = ({ cancel, submitter }) => {
 		if (pending) return cancel();
 		pending = true;
 		message = null;
+		hit = Number(submitter?.getAttribute('value')) as Grade;
 		return async ({ result }) => {
 			pending = false;
 			if (result.type === 'success' && result.data && 'item' in result.data) {
@@ -103,18 +112,20 @@
 				await showFront();
 				invalidate(REVIEW_DEPENDENCY);
 			} else if (result.type === 'failure') {
-				message = result.data?.message ?? 'Não deu para salvar agora.';
-				const data = result.data;
-				const cardId = data && 'cardId' in data ? data.cardId : null;
+				hit = null;
+				message = (result.data as { message?: string } | undefined)?.message ?? null;
+				message ??= 'Não deu para salvar agora.';
+				const failed = result.data as { cardId?: string } | undefined;
 				// Cartão avaliado em outra aba, item apagado ou marcado como conhecido: sai da fila.
 				if (result.status === 409 || result.status === 404) {
-					session.queue = session.queue.filter((i) => i.cardId !== cardId);
+					session.queue = session.queue.filter((i) => i.cardId !== failed?.cardId);
 					await showFront();
 					invalidate(REVIEW_DEPENDENCY);
 				}
 			} else if (result.type === 'redirect') {
 				await applyAction(result);
 			} else {
+				hit = null;
 				message = 'Não deu para salvar agora. Tente de novo.';
 			}
 		};
@@ -128,12 +139,12 @@
 			pending = false;
 			if (result.type === 'success' && result.data && 'undone' in result.data) {
 				session = undoLast(session, result.data.undone);
-				flipped = false;
+				flipped = true;
+				toast('Última avaliação desfeita');
 				invalidate(REVIEW_DEPENDENCY);
-				await tick();
-				frontButton?.focus();
 			} else if (result.type === 'failure') {
-				message = result.data?.message ?? 'Não deu para desfazer agora.';
+				message = (result.data as { message?: string } | undefined)?.message ?? null;
+				message ??= 'Não deu para desfazer agora.';
 				session.last = null;
 			} else if (result.type === 'redirect') {
 				await applyAction(result);
@@ -153,643 +164,636 @@
 <svelte:window {onkeydown} />
 
 <svelte:head>
-	<title>Revisar · Linguarudo</title>
+	<title>Revisar · Linguetta</title>
 </svelte:head>
 
-{#snippet sourceIcon(source: Origin)}
-	<span class="origem" title={`Origem: ${ORIGIN_LABELS[source]}`}>
-		<svg
-			viewBox="0 0 24 24"
-			width="18"
-			height="18"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-		>
-			{#if source === 'stremio'}
-				<rect x="3" y="5" width="18" height="12" rx="2" /><path d="M10 9l4 2-4 2z M8 21h8" />
-			{:else if source === 'ereader'}
-				<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" /><path d="M5 17a3 3 0 0 1 3-3h11" />
-			{:else if source === 'musica'}
-				<path d="M9 18V5l11-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="17" cy="16" r="3" />
-			{:else}
-				<path d="M4 20l4-1 11-11-3-3L5 16z" /><path d="M14 6l3 3" />
+{#snippet source()}
+	{#if current}
+		<div class="fh">
+			<span class="src">
+				<Icon name={ORIGIN_ICONS[current.origin ?? 'manual']} size="sm" />
+				{current.sourceDetail || 'Guardada à mão'}
+			</span>
+			{#if canSpeak}
+				<button class="icon-btn" type="button" onclick={speak} aria-label="Ouvir" title="Ouvir">
+					<Icon name="sound" size="sm" />
+				</button>
 			{/if}
-		</svg>
-		<span class="visually-hidden">Origem: {ORIGIN_LABELS[source]}</span>
-	</span>
+		</div>
+	{/if}
 {/snippet}
 
-{#snippet wave(value: number)}
-	<svg
-		class="onda"
-		viewBox="0 0 300 30"
-		preserveAspectRatio="none"
-		role="progressbar"
-		aria-label="Progresso da sessão"
-		aria-valuemin={0}
-		aria-valuemax={100}
-		aria-valuenow={value}
-	>
-		<path class="fundo" d={WAVE} pathLength="100" />
-		<path class="cheia" d={WAVE} pathLength="100" style:stroke-dashoffset={100 - value} />
-	</svg>
+{#snippet sentence(underline: boolean)}
+	{#if current?.sentence}
+		<p class="ctx" lang={current.language}>
+			{#each highlightParts(current.sentence, current.highlight || current.lemma) as part, i (i)}
+				{#if part.hit}<u class:plain={!underline}>{part.text}</u>{:else}{part.text}{/if}
+			{/each}
+		</p>
+	{/if}
 {/snippet}
 
-<form
-	method="POST"
-	action="?/undo"
-	use:enhance={submitUndo}
-	bind:this={undoForm}
-	class="desfazer-form"
->
+<form method="POST" action="?/undo" use:enhance={submitUndo} bind:this={undoForm} hidden>
 	<input type="hidden" name="logId" value={session.last?.logId ?? ''} />
 </form>
 
-{#if current}
-	<div class="topo">
-		<a class="fechar" href={resolve('/palavras')} aria-label="Sair da revisão">
-			<svg
-				viewBox="0 0 24 24"
-				width="20"
-				height="20"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2.4"
-				stroke-linecap="round"
-				aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg
-			>
-		</a>
-		{@render wave(progress)}
-		<span class="contador" aria-label={`${session.answered} de ${total} respondidos`}
-			>{session.answered}/{total}</span
-		>
-	</div>
-
-	{#if flipped}
-		<section class="cartao virado" aria-label="Cartão" tabindex="-1" bind:this={back}>
-			<p class="selo {current.language}" title={LANGUAGE_LABELS[current.language]}>
-				{current.language.toUpperCase()}
-			</p>
-			<p class="termo" lang={current.language}>{current.lemma}</p>
-			<hr />
-			<p class="traducao" class:sem={!current.sense}>
-				{current.sense || 'Sem sentido guardado'}
-			</p>
-			{#if current.sentence}
-				<p class="contexto" lang={current.language}>
-					{#each highlightParts(current.sentence, current.highlight || current.lemma) as part, i (i)}
-						{#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}
-					{/each}
-				</p>
-			{/if}
-			<div class="rodape">
-				{#if current.origin}{@render sourceIcon(current.origin)}{/if}
-				{#if current.sourceDetail}<span class="origem-detalhe">{current.sourceDetail}</span>{/if}
-				{#if canSpeak}
-					<button class="ouvir" type="button" onclick={speak}>
-						<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-							<path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor" />
-							<path
-								d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-							/>
-						</svg>
-						Ouvir
-					</button>
-				{/if}
-			</div>
-		</section>
-
-		<form
-			class="notas"
-			method="POST"
-			action="?/rate"
-			use:enhance={submitRate}
-			bind:this={rateForm}
-			aria-label="Como foi?"
-		>
-			<input type="hidden" name="cardId" value={current.cardId} />
-			<input type="hidden" name="reps" value={current.reps} />
-			{#each GRADES as grade (grade)}
-				<button class="nota n{grade}" name="rating" value={grade} disabled={pending}>
-					<span class="rotulo">{GRADE_LABELS[grade]}</span>
-					<span class="intervalo">{current.intervals[grade]}</span>
-					<kbd aria-hidden="true">{grade}</kbd>
-				</button>
-			{/each}
-		</form>
-	{:else}
-		<button class="cartao frente" type="button" onclick={flip} bind:this={frontButton}>
-			<span class="selo {current.language}" title={LANGUAGE_LABELS[current.language]}>
-				{current.language.toUpperCase()}
-			</span>
-			{#if current.kind === 'produzir'}
-				<span class="pergunta"
-					>Como se diz em {LANGUAGE_LABELS[current.language].toLowerCase()}?</span
-				>
-				<span class="termo">{current.sense}</span>
+{#if session.answered === 0 && !current}
+	<div class="ph"><div><h1>Revisar</h1></div></div>
+	<div class="empty">
+		<div>
+			<Mark class="mark mark-hero" />
+			<h2>Nada para revisar</h2>
+			{#if data.nextDue}
+				<p>A próxima palavra em {languageName} volta {data.nextDue}.</p>
 			{:else}
-				<span class="termo" lang={current.language}>{current.lemma}</span>
+				<p>Quando você guardar palavras em {languageName}, elas aparecem aqui no dia certo.</p>
 			{/if}
-			<span class="dica">Toque para virar <kbd aria-hidden="true">Espaço</kbd></span>
-		</button>
-
-		<button class="mostrar" type="button" onclick={flip}>Mostrar resposta</button>
-	{/if}
-{:else if session.answered > 0}
-	<section class="fim" aria-labelledby="fim-titulo">
-		{@render wave(100)}
-		<img class="mascote" src={mascote} alt="" width="140" height="140" />
-		<h1 id="fim-titulo">Sessão concluída!</h1>
-		<p class="placar">
-			<strong>{session.correct} de {session.answered}</strong>
-			{session.answered === 1 ? 'resposta certa' : 'respostas certas'}
-		</p>
-		{#if data.review && data.review.count > 0}
-			<p class="proximo">Ainda tem {data.review.count} para revisar.</p>
-			<button class="primario" type="button" onclick={continueReviewing}>Continuar revisando</button
-			>
-		{:else if data.review?.next}
-			<p class="proximo">O próximo cartão vence {data.review.next}.</p>
-		{/if}
-		<a class="secundario" href={resolve('/palavras')}>Voltar para Minhas palavras</a>
-	</section>
+			<div class="acts">
+				<a class="btn btn-primary btn-lg" href={resolve('/revisar?guardar')} data-sveltekit-noscroll
+					><Icon name="plus" />Guardar palavra</a
+				>
+				<a class="btn btn-soft btn-lg" href={resolve('/inicio')}>Voltar ao início</a>
+			</div>
+		</div>
+	</div>
 {:else}
-	<section class="fim vazio" aria-labelledby="vazio-titulo">
-		<img class="mascote" src={mascote} alt="" width="140" height="140" />
-		<h1 id="vazio-titulo">Nada para revisar agora</h1>
-		{#if data.review?.next}
-			<p class="proximo">O próximo cartão vence {data.review.next}.</p>
+	<div class="rv">
+		<div class="rv-top">
+			<span class="l"><Icon name="repeat" size="sm" />Revisão de hoje</span>
+			<span
+				class="bar"
+				role="progressbar"
+				aria-label="Progresso da revisão"
+				aria-valuemin={0}
+				aria-valuemax={100}
+				aria-valuenow={current ? progress : 100}
+				><i style:width="{current ? progress : 100}%"></i></span
+			>
+			<span class="r">
+				<span data-testid="contador">{current ? session.answered + 1 : total} de {total}</span>
+				<a class="icon-btn" href={resolve('/inicio')} aria-label="Sair da revisão" title="Sair"
+					><Icon name="x" /></a
+				>
+			</span>
+		</div>
+
+		{#if current}
+			<div class="rv-stage">
+				{#key current.cardId}
+					<div class="card3d enter" class:flipped data-testid="cartao">
+						<div class="card-in">
+							<section class="face front" inert={flipped} aria-label="Frente do cartão">
+								{@render source()}
+								<div class="mid">
+									{#if current.kind === 'produzir'}
+										<div class="ask">Como se diz em {languageName}?</div>
+										<div class="word">{current.sense}</div>
+									{:else}
+										<div class="word" lang={current.language}>{current.lemma}</div>
+										{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
+									{/if}
+								</div>
+								{#if current.kind === 'reconhecer'}{@render sentence(true)}{/if}
+							</section>
+							<section class="face back" inert={!flipped} aria-label="Verso do cartão">
+								{@render source()}
+								<div class="mid">
+									{#if current.kind === 'produzir'}
+										<div class="small-w">{current.sense}</div>
+										<div class="tr" lang={current.language}>{current.lemma}</div>
+										{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
+									{:else}
+										<div class="small-w">
+											<b lang={current.language}>{current.lemma}</b>{#if current.ipa}&nbsp;· {current.ipa}{/if}
+										</div>
+										<div class="tr" class:none={!current.sense}>
+											{current.sense || 'Sem tradução guardada'}
+										</div>
+									{/if}
+								</div>
+								{@render sentence(false)}
+							</section>
+						</div>
+					</div>
+				{/key}
+
+				<div class="rv-acts">
+					<form
+						class="grades"
+						class:shown={flipped}
+						method="POST"
+						action="?/rate"
+						use:enhance={submitRate}
+						bind:this={rateForm}
+						aria-label="Como foi?"
+						hidden={!flipped}
+					>
+						<input type="hidden" name="cardId" value={current.cardId} />
+						<input type="hidden" name="reps" value={current.reps} />
+						<div class="grade-row" bind:this={grades}>
+							{#each GRADES as grade (grade)}
+								<button
+									class="gbtn"
+									class:hit={hit === grade}
+									data-g={grade}
+									name="rating"
+									value={grade}
+									disabled={pending}
+								>
+									<b>{GRADE_LABELS[grade]}</b>
+									<span>{current.intervals[grade]}</span>
+									<kbd aria-hidden="true">{grade}</kbd>
+								</button>
+							{/each}
+						</div>
+					</form>
+					{#if !flipped}
+						<button
+							class="btn btn-primary btn-lg show"
+							type="button"
+							onclick={flip}
+							bind:this={showButton}>Mostrar resposta<kbd aria-hidden="true">Espaço</kbd></button
+						>
+					{/if}
+				</div>
+			</div>
+			<div class="rv-hint" aria-hidden="true">
+				<span><kbd>Espaço</kbd> vira</span>
+				<span><kbd>1</kbd>–<kbd>4</kbd> avalia</span>
+				<span><kbd>Z</kbd> desfaz</span>
+			</div>
 		{:else}
-			<p class="proximo">Guarde palavras novas e elas viram cartões.</p>
+			<section class="done" aria-labelledby="fim-titulo">
+				<div>
+					<div class="eyebrow">Revisão concluída</div>
+					<h2 id="fim-titulo">{remaining > 0 ? 'Pronto por agora' : 'Pronto por hoje'}</h2>
+					<p>
+						Você revisou {session.answered}
+						{session.answered === 1 ? 'palavra' : 'palavras'}.
+						{#if remaining === 0}Até a próxima.{/if}
+					</p>
+					<div class="sum" data-testid="resumo">
+						{#each GRADES as grade (grade)}
+							<div data-g={grade}>
+								<b>{session.byGrade[grade]}</b><span>{GRADE_LABELS[grade]}</span>
+							</div>
+						{/each}
+					</div>
+					{#if remaining > 0}
+						<div class="tomorrow">
+							Ainda {remaining === 1 ? 'tem 1 palavra' : `tem ${remaining} palavras`} para revisar.
+						</div>
+					{:else if data.nextDue}
+						<div class="tomorrow">A próxima volta {data.nextDue}.</div>
+					{/if}
+					<div class="acts">
+						{#if remaining > 0}
+							<button class="btn btn-primary btn-lg" type="button" onclick={continueReviewing}
+								>Continuar revisando</button
+							>
+							<a class="btn btn-soft btn-lg" href={resolve('/inicio')}>Voltar ao início</a>
+						{:else}
+							<a class="btn btn-primary btn-lg" href={resolve('/inicio')}>Voltar ao início</a>
+							<a class="btn btn-soft btn-lg" href={resolve('/palavras')}>Ver minhas palavras</a>
+						{/if}
+					</div>
+				</div>
+			</section>
 		{/if}
-		<a class="primario" href={resolve('/palavras')}>Ir para Minhas palavras</a>
-	</section>
+	</div>
 {/if}
 
 {#if message}<p class="aviso" role="alert">{message}</p>{/if}
 
-{#if session.last}
+{#if session.last && current}
 	<button
-		class="desfazer"
+		class="btn btn-soft undo"
 		type="button"
 		disabled={pending}
 		onclick={() => undoForm?.requestSubmit()}
 	>
-		<svg
-			viewBox="0 0 24 24"
-			width="18"
-			height="18"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2.2"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg
-		>
-		Desfazer <kbd aria-hidden="true">Z</kbd>
+		<Icon name="undo" size="sm" />Desfazer<kbd aria-hidden="true">Z</kbd>
 	</button>
 {/if}
 
 <style>
-	.topo {
+	.rv {
+		display: flex;
+		flex-direction: column;
+		min-height: calc(100vh - 20px - 100px);
+	}
+	.rv-top {
+		display: grid;
+		grid-template-columns: 1fr minmax(0, 520px) 1fr;
+		align-items: center;
+		gap: 24px;
+	}
+	.rv-top .l {
+		font: 500 14px var(--f-body);
+		color: var(--ink-2);
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		margin-bottom: 18px;
+		gap: 8px;
 	}
-
-	.fechar {
-		flex: none;
-		display: grid;
-		place-items: center;
-		width: 40px;
-		height: 40px;
-		border-radius: var(--raio-p);
-		color: var(--cinza);
-	}
-
-	.fechar:hover {
-		background: var(--linha);
-	}
-
-	.onda {
-		flex: 1;
-		height: 30px;
-		min-width: 120px;
-		overflow: visible;
-	}
-
-	.onda path {
-		fill: none;
-		stroke-linecap: round;
-		stroke-width: 9;
-	}
-
-	.onda .fundo {
-		stroke: var(--linha);
-	}
-
-	.onda .cheia {
-		stroke: var(--salvia);
-		stroke-dasharray: 100 200;
-		transition: stroke-dashoffset 0.6s cubic-bezier(0.3, 1.4, 0.5, 1);
-	}
-
-	.contador {
-		flex: none;
-		min-width: 44px;
-		text-align: right;
-		color: var(--cinza);
-		font-weight: 750;
+	.rv-top .r {
+		display: flex;
+		justify-content: flex-end;
+		align-items: center;
+		gap: 10px;
+		font: 500 13px var(--f-body);
 		font-variant-numeric: tabular-nums;
+		color: var(--ink-3);
 	}
-
-	.cartao {
-		width: 100%;
-		min-height: min(52dvh, 420px);
+	.rv-stage {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 12px;
-		padding: 28px 20px;
-		background: var(--papel);
-		border: 2px solid var(--linha);
-		border-radius: 28px;
-		box-shadow: 0 6px 0 var(--linha);
-		text-align: center;
-		animation: entra 0.25s ease-out;
+		padding: 36px 0 12px;
 	}
 
-	.cartao.frente {
-		cursor: pointer;
-		color: inherit;
+	.card3d {
+		width: min(580px, 100%);
+		height: 340px;
+		perspective: 1600px;
 	}
-
-	.cartao.frente:active {
-		transform: translateY(3px);
-		box-shadow: 0 3px 0 var(--linha);
+	.card3d.enter {
+		animation: cardIn 0.4s var(--ease) both;
 	}
-
-	.cartao.virado {
-		justify-content: flex-start;
-		animation-name: vira;
-	}
-
-	.cartao.virado:focus {
-		outline: none;
-	}
-
-	@keyframes entra {
+	@keyframes cardIn {
 		from {
 			opacity: 0;
-			transform: translateY(8px);
+			transform: translateY(10px);
 		}
 	}
-
-	@keyframes vira {
-		from {
-			transform: perspective(800px) rotateY(-12deg);
-			opacity: 0.4;
-		}
+	.card-in {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		transform-style: preserve-3d;
+		transition: transform 0.65s var(--ease);
 	}
-
-	.selo {
-		margin: 0;
-		font-size: 12px;
-		font-weight: 800;
-		letter-spacing: 0.04em;
-		padding: 3px 8px;
-		border-radius: 6px;
-		color: #fff;
+	.flipped .card-in {
+		transform: rotateY(180deg);
 	}
-
-	.selo.en {
-		background: var(--azul);
+	.face {
+		position: absolute;
+		inset: 0;
+		backface-visibility: hidden;
+		-webkit-backface-visibility: hidden;
+		background: var(--raise);
+		border-radius: var(--r-l);
+		box-shadow: var(--sh-lift);
+		padding: 20px 26px 26px;
+		display: flex;
+		flex-direction: column;
 	}
-
-	.selo.it {
-		background: var(--ouro);
+	:global(.tema-escuro) .face {
+		background: #1a3626;
 	}
-
-	.termo {
-		margin: 0;
-		font-size: clamp(32px, 9vw, 48px);
-		font-weight: 850;
-		line-height: 1.1;
-		color: var(--verde);
-		letter-spacing: -0.01em;
-		overflow-wrap: anywhere;
+	.face.back {
+		transform: rotateY(180deg);
 	}
-
-	.virado .termo {
-		font-size: clamp(26px, 7vw, 36px);
-	}
-
-	.pergunta {
-		margin-bottom: 10px;
-		color: var(--cinza);
-		font-size: 15px;
-		font-weight: 700;
-	}
-
-	.dica {
-		margin-top: 18px;
-		color: var(--cinza);
-		font-size: 14px;
-		font-weight: 650;
-	}
-
-	hr {
-		width: 60%;
-		border: 0;
-		border-top: 2px dashed var(--linha);
-		margin: 4px 0;
-	}
-
-	.traducao {
-		margin: 0;
-		font-size: 24px;
-		font-weight: 750;
-		color: var(--tinta);
-		overflow-wrap: anywhere;
-	}
-
-	.traducao.sem {
-		color: var(--cinza);
-		font-weight: 600;
-		font-size: 18px;
-	}
-
-	.contexto {
-		margin: 4px 0 0;
-		max-width: 34em;
-		padding: 10px 14px;
-		border-radius: 14px;
-		background: #fff;
-		border-left: 4px solid var(--salvia-claro);
-		color: var(--cinza);
-		font-style: italic;
-		text-align: left;
-		white-space: pre-line;
-		overflow-wrap: anywhere;
-	}
-
-	mark {
-		background: var(--salvia-claro);
-		color: var(--verde);
-		font-weight: 800;
-		font-style: normal;
-		border-radius: 4px;
-		padding: 0 2px;
-	}
-
-	.rodape {
-		margin-top: auto;
-		padding-top: 12px;
+	.fh {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		justify-content: space-between;
+		min-height: 32px;
 	}
-
-	.origem-detalhe {
-		color: var(--cinza);
-		font-size: 14px;
-		font-weight: 650;
-		min-width: 0;
-		overflow-wrap: anywhere;
-	}
-
-	.origem {
-		display: grid;
-		place-items: center;
-		width: 40px;
-		height: 40px;
-		border-radius: 99px;
-		background: var(--salvia-claro);
-		color: var(--verde);
-	}
-
-	.ouvir {
+	.src {
 		display: inline-flex;
 		align-items: center;
-		gap: 8px;
-		min-height: 44px;
-		padding: 8px 18px;
-		border: 2px solid var(--linha);
-		border-radius: 99px;
-		background: #fff;
-		color: var(--verde);
-		font-weight: 800;
+		gap: 7px;
+		font-size: 12.5px;
+		color: var(--ink-3);
+		min-width: 0;
 	}
-
-	.ouvir:hover {
-		border-color: var(--salvia);
-	}
-
-	.mostrar,
-	.primario {
-		display: block;
-		width: 100%;
-		margin-top: 18px;
-		min-height: 56px;
-		border: 0;
-		border-radius: 18px;
-		background: var(--verde);
-		color: var(--creme);
-		font-weight: 800;
-		font-size: 18px;
-		text-align: center;
-		text-decoration: none;
-		padding: 15px;
-		box-shadow: var(--sombra-botao) var(--verde-escuro);
-	}
-
-	.mostrar:active,
-	.primario:active,
-	.nota:active {
-		transform: translateY(2px);
-		box-shadow: none;
-	}
-
-	.notas {
-		margin-top: 18px;
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 10px;
-	}
-
-	.nota {
-		position: relative;
-		min-height: 68px;
-		border: 0;
-		border-radius: 18px;
+	.mid {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 2px;
-		color: #fff;
-		font-weight: 800;
-		box-shadow: var(--sombra-botao) var(--sombra, #0003);
+		text-align: center;
+		min-height: 0;
+	}
+	.word {
+		font: 600 56px/1.05 var(--f-head);
+		letter-spacing: -0.035em;
+		overflow-wrap: anywhere;
+	}
+	.ask {
+		font-size: 14px;
+		color: var(--ink-3);
+		margin-bottom: 12px;
+	}
+	.front .ask + .word {
+		font-size: 40px;
+		line-height: 1.15;
+	}
+	.ipa {
+		margin-top: 10px;
+		color: var(--ink-3);
+		font: 400 15px var(--f-body);
+	}
+	.ctx {
+		text-align: center;
+		font-size: 15.5px;
+		line-height: 1.55;
+		color: var(--ink-2);
+		max-width: 460px;
+		margin: 0 auto;
+		text-wrap: balance;
+	}
+	.ctx u {
+		text-decoration: none;
+		color: var(--ink);
+		font-weight: 500;
+		box-shadow: inset 0 -1.5px 0 var(--line-2);
+	}
+	.ctx u.plain {
+		box-shadow: none;
+	}
+	.small-w {
+		font: 400 14px var(--f-body);
+		color: var(--ink-3);
+	}
+	.small-w b {
+		font: 600 15px var(--f-head);
+		color: var(--ink-2);
+	}
+	.tr {
+		font: 600 38px/1.15 var(--f-head);
+		letter-spacing: -0.03em;
+		margin-top: 8px;
+		overflow-wrap: anywhere;
+	}
+	.tr.none {
+		font-size: 22px;
+		color: var(--ink-3);
 	}
 
-	.nota:disabled {
-		opacity: 0.6;
+	.rv-acts {
+		margin-top: 28px;
+		min-height: 80px;
+		display: grid;
+		place-items: start center;
+		width: min(580px, 100%);
+	}
+	.rv-acts .show {
+		width: 280px;
+	}
+	.grades {
+		width: 100%;
+	}
+	.grades[hidden] {
+		display: none;
+	}
+	.grade-row {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 8px;
+		width: 100%;
+		animation: viewIn 0.3s var(--ease) both;
+	}
+	.gbtn {
+		position: relative;
+		height: 64px;
+		border: 0;
+		border-radius: var(--r-m);
+		background: var(--raise);
+		box-shadow: var(--sh-card);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 1px;
+		transition:
+			box-shadow 0.18s,
+			background-color 0.18s;
+	}
+	:global(.tema-escuro) .gbtn {
+		background: rgba(247, 241, 230, 0.05);
+	}
+	.gbtn:hover:not(:disabled) {
+		background: var(--tile);
+	}
+	:global(.tema-escuro) .gbtn:hover:not(:disabled) {
+		background: rgba(247, 241, 230, 0.09);
+	}
+	.gbtn:active,
+	.gbtn.hit {
+		background: var(--sel);
+	}
+	.gbtn:disabled {
 		cursor: default;
 	}
-
-	.rotulo {
-		font-size: 18px;
+	.gbtn b {
+		font: 500 15px/1.2 var(--f-body);
 	}
-
-	.intervalo {
-		font-size: 14px;
-		font-weight: 700;
-		opacity: 0.9;
+	.gbtn span {
+		font-size: 12.5px;
+		color: var(--ink-3);
 	}
-
-	.n1 {
-		background: var(--coral);
-		--sombra: var(--coral-escuro);
-	}
-
-	.n2 {
-		background: var(--ouro);
-		--sombra: #b97f37;
-	}
-
-	.n3 {
-		background: var(--salvia);
-		--sombra: #5d8664;
-	}
-
-	.n4 {
-		background: var(--azul);
-		--sombra: #4f6f9d;
-	}
-
-	kbd {
-		display: none;
-		font: inherit;
-		font-size: 12px;
-		font-weight: 800;
-		padding: 0 6px;
-		border-radius: 6px;
-		background: #0000001a;
-	}
-
-	.nota kbd {
+	.gbtn kbd {
 		position: absolute;
-		top: 8px;
-		right: 10px;
+		top: 7px;
+		right: 7px;
+		min-width: 18px;
+		height: 18px;
+		font-size: 10.5px;
 	}
-
-	.dica kbd,
-	.desfazer kbd {
-		background: var(--linha);
-		color: var(--cinza);
-	}
-
-	/* Atalhos só fazem sentido com teclado e ponteiro fino (desktop). */
-	@media (hover: hover) and (pointer: fine) {
-		kbd {
-			display: inline-block;
-		}
-	}
-
-	.desfazer {
+	.rv-hint {
+		text-align: center;
+		font-size: 12.5px;
+		color: var(--ink-3);
 		display: flex;
-		width: fit-content;
+		gap: 16px;
+		justify-content: center;
 		align-items: center;
+	}
+	.rv-hint span {
+		display: inline-flex;
+		gap: 6px;
+		align-items: center;
+	}
+
+	.done {
+		flex: 1;
+		display: grid;
+		place-items: center;
+		text-align: center;
+		padding: 30px 0;
+		animation: viewIn 0.5s var(--ease) both;
+	}
+	.done .eyebrow {
+		justify-content: center;
+		margin-bottom: 14px;
+	}
+	.done h2 {
+		margin: 0;
+		font: 600 44px/1.1 var(--f-head);
+		letter-spacing: -0.035em;
+	}
+	.done p {
+		color: var(--ink-2);
+		margin: 12px 0 36px;
+		font-size: 16px;
+		text-wrap: pretty;
+	}
+	.sum {
+		display: inline-grid;
+		grid-template-columns: repeat(4, 112px);
+		margin-bottom: 30px;
+		border-top: 1px solid var(--line);
+		border-bottom: 1px solid var(--line);
+	}
+	.sum div {
+		padding: 18px 10px 16px;
+	}
+	.sum div + div {
+		box-shadow: inset 1px 0 0 var(--line);
+	}
+	.sum b {
+		display: block;
+		font: 600 30px/1 var(--f-head);
+		font-variant-numeric: tabular-nums;
+		letter-spacing: -0.02em;
+	}
+	.sum span {
+		font-size: 12.5px;
+		color: var(--ink-3);
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 8px;
+	}
+	.sum span::before {
+		content: '';
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--g);
+	}
+	.tomorrow {
+		font-size: 13px;
+		color: var(--ink-3);
+		margin-bottom: 24px;
+	}
+	.done .acts {
+		display: flex;
 		gap: 8px;
-		margin: 18px auto 0;
-		min-height: 44px;
-		padding: 8px 16px;
-		border: 2px solid var(--linha);
-		border-radius: 99px;
-		background: #fff;
-		color: var(--cinza);
-		font-weight: 750;
-	}
-
-	.desfazer:hover {
-		color: var(--verde);
-		border-color: var(--salvia);
-	}
-
-	.desfazer-form {
-		display: none;
+		justify-content: center;
 	}
 
 	.aviso {
-		margin: 14px 0 0;
-		padding: 12px 14px;
-		border-radius: 14px;
-		background: var(--coral-claro);
-		color: #a53b3b;
-		font-weight: 650;
-	}
-
-	.fim {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		text-align: center;
-		gap: 6px;
-		max-width: 440px;
-		margin: 0 auto;
-	}
-
-	.fim .onda {
-		width: 100%;
-		margin-bottom: 18px;
-	}
-
-	.mascote {
-		width: 132px;
-		height: auto;
-		margin-bottom: 6px;
-	}
-
-	.fim h1 {
+		position: fixed;
+		left: 50%;
+		bottom: 24px;
+		transform: translateX(-50%);
 		margin: 0;
-		color: var(--verde);
-		font-size: 28px;
-		letter-spacing: -0.01em;
+		padding: 10px 16px;
+		border-radius: var(--r-m);
+		background: var(--toast-bg);
+		color: var(--toast-ink);
+		font-size: 14px;
+	}
+	.undo {
+		position: fixed;
+		right: 32px;
+		bottom: 28px;
 	}
 
-	.placar {
-		margin: 4px 0 0;
-		font-size: 18px;
+	@media (prefers-reduced-motion: reduce) {
+		.card-in {
+			transition: none;
+		}
+		.card3d.enter,
+		.grade-row,
+		.done {
+			animation: none;
+		}
 	}
 
-	.placar strong {
-		color: var(--verde);
-		font-size: 22px;
-	}
-
-	.proximo {
-		margin: 8px 0 0;
-		color: var(--cinza);
-	}
-
-	.secundario {
-		margin-top: 14px;
-		font-weight: 750;
-	}
-
-	@media (min-width: 640px) {
-		.notas {
-			grid-template-columns: repeat(4, 1fr);
+	@media (max-width: 768px) {
+		.rv {
+			min-height: calc(100dvh - 50px - var(--tab-h) - 110px);
+		}
+		.rv-top {
+			grid-template-columns: 1fr auto;
+			grid-template-areas: 'l r' 'w w';
+			gap: 12px;
+		}
+		.rv-top .l {
+			grid-area: l;
+		}
+		.rv-top .r {
+			grid-area: r;
+		}
+		.rv-top .bar {
+			grid-area: w;
+		}
+		.rv-stage {
+			padding: 22px 0 4px;
+			justify-content: flex-start;
+		}
+		.card3d {
+			height: 380px;
+		}
+		.face {
+			padding: 16px 20px 22px;
+		}
+		.word {
+			font-size: 44px;
+		}
+		.front .ask + .word {
+			font-size: 32px;
+		}
+		.ctx {
+			font-size: 15px;
+		}
+		.tr {
+			font-size: 31px;
+		}
+		.rv-acts {
+			margin-top: 18px;
+			min-height: 0;
+		}
+		.rv-acts .show {
+			width: 100%;
+		}
+		.grade-row {
+			gap: 6px;
+		}
+		.gbtn {
+			height: 60px;
+		}
+		.gbtn kbd {
+			display: none;
+		}
+		.gbtn b {
+			font-size: 14.5px;
+		}
+		.rv-hint {
+			display: none;
+		}
+		.done h2 {
+			font-size: 34px;
+		}
+		.sum {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+			width: 100%;
+		}
+		.done .acts {
+			flex-direction: column;
+		}
+		.undo {
+			right: 16px;
+			bottom: calc(var(--tab-h) + 16px);
+		}
+		.aviso {
+			bottom: calc(var(--tab-h) + 16px);
 		}
 	}
 </style>

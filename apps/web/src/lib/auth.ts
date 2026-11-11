@@ -1,6 +1,13 @@
-export const HOME_AFTER_LOGIN = '/palavras';
+export const HOME_AFTER_LOGIN = '/inicio';
 
-const PROTECTED_PREFIXES = ['/palavras', '/revisar', '/integracoes', '/musica'];
+const PROTECTED_PREFIXES = [
+	'/inicio',
+	'/palavras',
+	'/revisar',
+	'/integracoes',
+	'/musica',
+	'/perfil'
+];
 
 /** Só aceita caminhos internos ("/algo"), para não virar open redirect. */
 export function safeNext(next: string | null | undefined): string {

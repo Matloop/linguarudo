@@ -1,0 +1,17 @@
+{
+	"name": "Linguetta",
+	"short_name": "Linguetta",
+	"description": "Guarde as palavras que você encontra e revise no dia certo.",
+	"lang": "pt-BR",
+	"start_url": "/inicio",
+	"scope": "/",
+	"display": "standalone",
+	"background_color": "#f7f1e6",
+	"theme_color": "#11261a",
+	"icons": [
+		{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+		{ "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+		{ "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+		{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+	]
+}

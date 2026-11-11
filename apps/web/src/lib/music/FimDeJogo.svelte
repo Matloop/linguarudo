@@ -1,5 +1,5 @@
 <script lang="ts">
-	import mascote from '#lib/assets/mascote.png';
+	import Mark from '#lib/ui/Mark.svelte';
 
 	interface Props {
 		/** Texto da linha em que o tempo acabou. */
@@ -21,7 +21,7 @@
 
 <div class="tela" role="presentation">
 	<div class="cartao" role="alertdialog" aria-labelledby="fim-titulo" aria-describedby="fim-sub">
-		<img src={mascote} alt="" width="372" height="352" />
+		<span class="simbolo"><Mark /></span>
 		<h2 id="fim-titulo">Fim de jogo</h2>
 		<p id="fim-sub" class="sub">
 			O tempo acabou sem resposta para a lacuna de
@@ -84,12 +84,18 @@
 		}
 	}
 
-	img {
-		width: 120px;
-		height: auto;
+	.simbolo {
 		display: block;
-		margin: -4px auto 0;
-		filter: grayscale(0.35);
+		width: 40px;
+		height: 44px;
+		margin: 4px auto 12px;
+		color: var(--cinza);
+	}
+
+	.simbolo :global(svg) {
+		width: 100%;
+		height: 100%;
+		display: block;
 	}
 
 	h2 {

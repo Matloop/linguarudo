@@ -530,7 +530,7 @@
 </script>
 
 <svelte:head>
-	<title>{song.title} · Música · Linguarudo</title>
+	<title>{song.title} · Música · Linguetta</title>
 </svelte:head>
 
 <svelte:window onkeydown={onKeydown} onkeyup={onKeyup} onresize={center} />

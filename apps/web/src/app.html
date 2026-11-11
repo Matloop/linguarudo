@@ -1,9 +1,21 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="%linguetta.tema%">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="text-scale" content="scale" />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<script>
+			// Sem tema escolhido (cookie), segue o sistema antes da primeira pintura.
+			(function (r) {
+				if (!/\btema-/.test(r.className)) {
+					var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+					r.classList.add(dark ? 'tema-escuro' : 'tema-claro');
+				}
+			})(document.documentElement);
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

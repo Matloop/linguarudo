@@ -99,7 +99,7 @@ describe('findSyncedLyrics', () => {
 		expect(calls[0].url.searchParams.get('duration')).toBe('200');
 		const headers = new Headers(calls[0].init?.headers);
 		expect(headers.get('user-agent')).toBe(USER_AGENT);
-		expect(USER_AGENT).toBe('Linguarudo (https://linguarudo-app.vercel.app)');
+		expect(USER_AGENT).toBe('Linguetta (https://linguarudo-app.vercel.app)');
 	});
 
 	test('se /api/get não acha (404), cai para a busca e escolhe o melhor', async () => {

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { login, SUPABASE_URL } from '../../e2e/auth.ts';
+import { login, SUPABASE_URL, switchLanguage } from '../../e2e/auth.ts';
 
 const FORK_ORIGIN = 'http://lingoblend.peario.xyz.localhost:8080';
 
@@ -196,18 +196,23 @@ test('API v1: salvar com encontro e obra, repetir, listar com prefer, visto e CO
 		state: 0
 	});
 
-	// O item aparece em /palavras com o encontro e no Revisar com o destaque e a origem.
+	// O item aparece em /palavras (italiano) com o encontro e no Revisar com o destaque e a origem.
 	await page.goto('/palavras');
-	const item = page.getByRole('list', { name: 'Palavras' }).locator(':scope > li').filter({
-		hasText: 'festa'
-	});
-	await expect(item).toContainText('festa, celebração');
-	await expect(item).toContainText('Stremio · Kaguya · T1E2, 42:10');
+	await switchLanguage(page, 'Italiano', 'IT');
+	const row = page.getByRole('list', { name: 'Palavras' }).getByRole('link', { name: /festa/ });
+	await expect(row).toContainText('festa, celebração');
+	await row.click();
+	const drawer = page.getByRole('region', { name: 'Detalhes de “festa”' });
+	await expect(drawer).toContainText('Kaguya · T1E2, 42:10');
+	await expect(drawer.locator('mark')).toHaveText('feste');
+
 	await page.goto('/revisar');
-	await expect(page.getByRole('button', { name: /festa/ })).toBeVisible();
+	const front = page.locator('section[aria-label="Frente do cartão"]');
+	await expect(front).toContainText('festa');
+	await expect(front.locator('u')).toHaveText('feste');
+	await expect(front).toContainText('Kaguya · T1E2, 42:10');
 	await page.getByRole('button', { name: 'Mostrar resposta' }).click();
-	const cartao = page.getByRole('region', { name: 'Cartão' });
-	await expect(cartao.locator('mark')).toHaveText('feste');
-	await expect(cartao).toContainText('Kaguya · T1E2, 42:10');
-	await expect(cartao.getByText('Origem: Stremio')).toBeAttached();
+	await expect(page.locator('section[aria-label="Verso do cartão"]')).toContainText(
+		'festa, celebração'
+	);
 });

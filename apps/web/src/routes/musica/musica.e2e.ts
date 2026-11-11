@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { login } from '../../e2e/auth.ts';
+import { login, saveWord } from '../../e2e/auth.ts';
 import { installFakeYoutube } from '../../e2e/fake-youtube.ts';
 import { VERSES, VIDEOS } from '../../e2e/fixtures.ts';
 
@@ -24,16 +24,13 @@ const calls = (page: Page, name: string) => page.evaluate((n) => window.__fakeYT
 
 async function addWord(page: Page, lemma: string, sense: string) {
 	await page.goto('/palavras');
-	const form = page.getByRole('form', { name: 'Guardar palavra' });
-	await form.getByLabel('Palavra ou expressão').fill(lemma);
-	await form.getByLabel('Sentido').fill(sense);
-	await form.getByRole('radio', { name: 'EN' }).check();
-	await form.getByRole('button', { name: 'Guardar' }).click();
-	await expect(form.getByRole('status')).toHaveText(`“${lemma}” guardada.`);
+	const dialog = await saveWord(page, lemma, sense);
+	await expect(dialog).toBeHidden();
+	await expect(page.locator('.toast[role="status"]')).toHaveText(`“${lemma}” guardada.`);
 }
 
 const bankItem = (page: Page, lemma: string) =>
-	page.getByRole('list', { name: 'Palavras' }).locator(':scope > li').filter({ hasText: lemma });
+	page.getByRole('list', { name: 'Palavras' }).getByRole('link').filter({ hasText: lemma });
 
 async function pickSong(
 	page: Page,
@@ -241,7 +238,10 @@ test('jogo: responde com a música tocando, espera, pausa, fim de jogo e resumo 
 	const item = bankItem(page, word3.toLowerCase());
 	await expect(item).toBeVisible();
 	await expect(item).toContainText(VERSES[3]);
-	await expect(item).toContainText(`Música · ${VIDEOS.ok.title} · ${VIDEOS.ok.artist}`);
+	await item.click();
+	await expect(page.getByRole('region', { name: /^Detalhes de/ })).toContainText(
+		`${VIDEOS.ok.title} · ${VIDEOS.ok.artist}`
+	);
 });
 
 test('errar não salva no banco sozinho; tentar de novo zera o jogo; sair volta para /musica', async ({

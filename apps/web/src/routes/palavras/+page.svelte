@@ -1,823 +1,1029 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { enhance } from '$app/forms';
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { LIMITS } from '#lib/items.ts';
-	import { LANGUAGE_LABELS, LANGUAGES, type Language } from '#lib/languages.ts';
+	import { LANGUAGE_LABELS } from '#lib/languages.ts';
+	import {
+		GRADE_LABELS,
+		STRENGTH_LABELS,
+		formatAgo,
+		highlightParts,
+		type Grade
+	} from '#lib/review.ts';
+	import Icon from '#lib/ui/Icon.svelte';
+	import Mark from '#lib/ui/Mark.svelte';
+	import { openSave, toast } from '#lib/ui/app-state.svelte.ts';
+	import { ORIGIN_ICONS } from '#lib/ui/origins.ts';
 	import type { PageProps, SubmitFunction } from './$types';
 
 	let { data, form }: PageProps = $props();
 
-	let lemmaInput: HTMLInputElement | undefined = $state();
-	let saving = $state(false);
-	let busy = $state<string | null>(null);
+	type Filter = 'todas' | 'hoje' | 'novas' | 'dominadas';
+	const FILTERS: [Filter, string][] = [
+		['todas', 'Todas'],
+		['hoje', 'Para revisar'],
+		['novas', 'Novas'],
+		['dominadas', 'Dominadas']
+	];
+	const parseFilter = (v: string | null): Filter =>
+		FILTERS.some(([k]) => k === v) ? (v as Filter) : 'todas';
 
-	const addForm = $derived(form?.action === 'add' ? form : null);
-	const errors = $derived((addForm && 'errors' in addForm ? addForm.errors : null) ?? {});
-	const values = $derived(addForm && 'values' in addForm ? addForm.values : null);
-	const addMessage = $derived(addForm && 'message' in addForm ? addForm.message : null);
-	const editForm = $derived(form?.action === 'edit' ? form : null);
-	const listError = $derived(
-		(form?.action === 'delete' || form?.action === 'known') && 'message' in form
-			? form.message
-			: null
+	// Filtro e busca são locais (sem ir ao servidor); a URL guarda os dois.
+	let filter = $derived(parseFilter(page.url.searchParams.get('f')));
+	let q = $derived(page.url.searchParams.get('q') ?? '');
+	let editing = $state(false);
+	let busy = $state(false);
+	let canSpeak = $state(false);
+	let drawerEl: HTMLElement | undefined = $state();
+
+	const now = $derived(new Date(data.now));
+	const langName = $derived(LANGUAGE_LABELS[data.language].toLowerCase());
+	const counts = $derived({
+		todas: data.items.length,
+		hoje: data.items.filter((i) => i.dueToday).length,
+		novas: data.items.filter((i) => i.status === 'ativo' && i.strength === 0).length,
+		dominadas: data.items.filter((i) => i.strength === 4).length
+	});
+	const rows = $derived.by(() => {
+		const needle = q.trim().toLocaleLowerCase();
+		return data.items.filter((i) => {
+			if (filter === 'hoje' && !i.dueToday) return false;
+			if (filter === 'novas' && !(i.status === 'ativo' && i.strength === 0)) return false;
+			if (filter === 'dominadas' && i.strength !== 4) return false;
+			return (
+				!needle ||
+				i.lemma.toLocaleLowerCase().includes(needle) ||
+				i.sense.toLocaleLowerCase().includes(needle)
+			);
+		});
+	});
+	const selected = $derived(data.items.find((i) => i.id === data.selectedId) ?? null);
+	const editErrors = $derived(
+		form?.action === 'edit' && 'errors' in form && form.id === selected?.id ? form.errors : null
 	);
-	const languagesForm = $derived(form?.action === 'languages' ? form : null);
-	const toReview = $derived(data.review?.count ?? 0);
 
-	// Sem JS, o action troca a query da URL; repetir o filtro mantém a lista igual depois do POST.
-	const filterQuery = $derived(data.language ? `&lang=${data.language}` : '');
-	const defaultLanguage: Language = $derived.by(() => {
-		const wanted = values?.language ?? data.language;
-		return data.studyLanguages.find((l) => l === wanted) ?? data.studyLanguages[0];
+	onMount(() => {
+		canSpeak = 'speechSynthesis' in window;
+	});
+	// Trocar de palavra fecha a edição.
+	$effect(() => {
+		void data.selectedId;
+		editing = false;
+	});
+	$effect(() => {
+		if (selected && drawerEl) drawerEl.focus({ preventScroll: true });
 	});
 
-	const filters = $derived([
-		{ language: null, label: 'Todas' },
-		...data.studyLanguages.map((language) => ({ language, label: LANGUAGE_LABELS[language] }))
-	]);
-
-	function editErrors(id: string) {
-		return editForm && editForm.id === id && 'errors' in editForm ? editForm.errors : null;
+	/**
+	 * Action que mantém a busca atual (item, filtro): depois do POST o SvelteKit troca a URL
+	 * pela do formulário, e sem isso o painel fecharia.
+	 */
+	function actionKeeping(name: string) {
+		const rest = page.url.search.slice(1);
+		return `?/${name}${rest ? `&${rest}` : ''}`;
 	}
 
-	const submitAdd: SubmitFunction = () => {
-		saving = true;
+	/** Busca da URL atual com as mudanças aplicadas (`?…` ou vazia). */
+	function searchWith(changes: Record<string, string | null>): `?${string}` | '' {
+		const url = new URL(page.url.href);
+		for (const [k, v] of Object.entries(changes)) {
+			if (v === null || v === '' || (k === 'f' && v === 'todas')) url.searchParams.delete(k);
+			else url.searchParams.set(k, v);
+		}
+		return url.search as `?${string}` | '';
+	}
+
+	function syncUrl() {
+		replaceState(resolve(`/palavras${searchWith({ f: filter, q: q.trim() || null })}`), page.state);
+	}
+
+	function pickFilter(e: MouseEvent, f: Filter) {
+		if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+		e.preventDefault();
+		filter = f;
+		syncUrl();
+	}
+
+	function closeDrawer() {
+		goto(resolve(`/palavras${searchWith({ item: null })}`), { reset: false, replace: true });
+	}
+
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && selected && !document.querySelector('dialog[open]')) {
+			if (editing) editing = false;
+			else closeDrawer();
+		}
+	}
+
+	function speak(text: string) {
+		const u = new SpeechSynthesisUtterance(text);
+		u.lang = data.language;
+		speechSynthesis.cancel();
+		speechSynthesis.speak(u);
+	}
+
+	function onSave(e: MouseEvent) {
+		if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+		e.preventDefault();
+		openSave();
+	}
+
+	const submitEdit: SubmitFunction = () => {
+		busy = true;
 		return async ({ result, update }) => {
-			await update();
-			saving = false;
-			if (result.type === 'success') lemmaInput?.focus();
+			await update({ reset: false });
+			busy = false;
+			if (result.type === 'success') {
+				editing = false;
+				toast('Alterações salvas');
+			}
 		};
 	};
 
-	const submitRow: SubmitFunction = ({ formData }) => {
-		busy = formData.get('id')?.toString() ?? null;
-		return async ({ update }) => {
+	const submitKnown: SubmitFunction = ({ formData }) => {
+		const known = formData.get('known') === 'true';
+		const lemma = selected?.lemma ?? '';
+		return async ({ result, update }) => {
 			await update({ reset: false });
-			busy = null;
+			if (result.type === 'success') {
+				toast(known ? `“${lemma}” saiu da revisão` : `“${lemma}” voltou para a revisão`);
+			} else if (result.type === 'failure') {
+				toast(
+					String(
+						(result.data as { message?: string } | undefined)?.message ??
+							'Não deu para mudar agora.'
+					)
+				);
+			}
+		};
+	};
+
+	const submitDelete: SubmitFunction = ({ cancel }) => {
+		const lemma = selected?.lemma ?? '';
+		if (!confirm(`Apagar “${lemma}” e o histórico de revisão dela?`)) {
+			cancel();
+			return;
+		}
+		return async ({ result }) => {
+			if (result.type === 'success') {
+				toast(`“${lemma}” apagada`);
+				await goto(resolve(`/palavras${searchWith({ item: null })}`), {
+					reset: false,
+					replace: true,
+					invalidateAll: true
+				});
+			} else if (result.type === 'failure') {
+				toast(
+					String(
+						(result.data as { message?: string } | undefined)?.message ??
+							'Não deu para apagar agora.'
+					)
+				);
+			}
 		};
 	};
 </script>
 
 <svelte:head>
-	<title>Minhas palavras · Linguarudo</title>
+	<title>Minhas palavras · Linguetta</title>
 </svelte:head>
 
-<div class="topo">
-	<h1>Minhas palavras</h1>
-	<p class="total">
-		{data.items.length}
-		{data.items.length === 1 ? 'palavra' : 'palavras'}
-		{data.language ? `em ${LANGUAGE_LABELS[data.language].toLowerCase()}` : ''}
-	</p>
-</div>
+<svelte:window onkeydown={onKeydown} />
 
-{#if toReview > 0}
-	<a class="revisar" href={resolve('/revisar')}>
-		<span class="revisar-texto">
-			<strong>{toReview} para revisar</strong>
-			<span>Leva poucos minutos.</span>
-		</span>
-		<span class="revisar-botao" aria-hidden="true">Revisar</span>
-	</a>
-{/if}
+{#snippet strength(level: number)}
+	<span class="str" title={STRENGTH_LABELS[level]} aria-label="Força: {STRENGTH_LABELS[level]}">
+		{#each [1, 2, 3, 4] as n (n)}<i class:on={n <= level}></i>{/each}
+	</span>
+{/snippet}
 
-<form
-	class="nova"
-	method="POST"
-	action={`?/add${filterQuery}`}
-	use:enhance={submitAdd}
-	aria-labelledby="nova-titulo"
->
-	<h2 id="nova-titulo">Guardar palavra</h2>
+{#snippet sentence(text: string, term: string)}
+	{#each highlightParts(text, term) as part, i (i)}{#if part.hit}<mark>{part.text}</mark
+			>{:else}{part.text}{/if}{/each}
+{/snippet}
 
-	<div class="campo">
-		<label for="lemma">Palavra ou expressão</label>
-		<input
-			bind:this={lemmaInput}
-			id="lemma"
-			name="lemma"
-			required
-			maxlength={LIMITS.lemma}
-			autocomplete="off"
-			autocapitalize="off"
-			spellcheck="false"
-			value={values?.lemma ?? ''}
-			aria-invalid={errors.lemma ? 'true' : undefined}
-			aria-describedby={errors.lemma ? 'lemma-erro' : undefined}
-		/>
-		{#if errors.lemma}<p id="lemma-erro" class="erro" role="alert">{errors.lemma}</p>{/if}
-	</div>
-
-	<div class="linha">
-		<div class="campo cresce">
-			<label for="sense">Sentido</label>
-			<input
-				id="sense"
-				name="sense"
-				maxlength={LIMITS.sense}
-				autocomplete="off"
-				placeholder="O que quer dizer"
-				value={values?.sense ?? ''}
-				aria-invalid={errors.sense ? 'true' : undefined}
-			/>
-			{#if errors.sense}<p class="erro" role="alert">{errors.sense}</p>{/if}
-		</div>
-
-		<fieldset class="idioma">
-			<legend>Idioma</legend>
-			<div class="segmentos">
-				{#each data.studyLanguages as language (language)}
-					<label>
-						<input
-							type="radio"
-							name="language"
-							value={language}
-							checked={defaultLanguage === language}
-						/>
-						<span title={LANGUAGE_LABELS[language]}>{language.toUpperCase()}</span>
-					</label>
-				{/each}
-			</div>
-			{#if errors.language}<p class="erro" role="alert">{errors.language}</p>{/if}
-		</fieldset>
-	</div>
-
-	<div class="campo">
-		<label for="sentence">Frase <span class="opcional">(opcional)</span></label>
-		<textarea
-			id="sentence"
-			name="sentence"
-			rows="2"
-			maxlength={LIMITS.sentence}
-			placeholder="A frase onde você viu ou ouviu"
-			aria-invalid={errors.sentence ? 'true' : undefined}>{values?.sentence ?? ''}</textarea
-		>
-		{#if errors.sentence}<p class="erro" role="alert">{errors.sentence}</p>{/if}
-	</div>
-
-	{#if errors.form}<p class="erro" role="alert">{errors.form}</p>{/if}
-
-	<div class="acoes">
-		<p class="status" role="status">{addMessage ?? ''}</p>
-		<button class="guardar" type="submit" disabled={saving}>
-			{saving ? 'Guardando…' : 'Guardar'}
-		</button>
-	</div>
-</form>
-
-<nav class="filtros" aria-label="Filtrar por idioma">
-	{#each filters as f (f.label)}
-		<a
-			href={f.language ? resolve(`/palavras?lang=${f.language}`) : resolve('/palavras')}
-			aria-current={data.language === f.language ? 'page' : undefined}
-			data-sveltekit-noscroll
-			data-sveltekit-replacestate>{f.label}</a
-		>
-	{/each}
-</nav>
-
-{#if listError}<p class="erro" role="alert">{listError}</p>{/if}
-
-{#if data.items.length === 0}
-	<div class="vazio">
+<div class="ph">
+	<div>
+		<h1>Minhas palavras</h1>
 		<p>
-			{data.language
-				? `Nenhuma palavra em ${LANGUAGE_LABELS[data.language].toLowerCase()} ainda.`
-				: 'Seu banco está vazio. Guarde a primeira palavra aí em cima.'}
+			{#if data.items.length === 0}
+				Nenhuma palavra em {langName} ainda.
+			{:else}
+				{data.items.length}
+				{data.items.length === 1 ? 'palavra' : 'palavras'} em {langName}{#if counts.hoje > 0}
+					· {counts.hoje} para revisar hoje{/if}
+			{/if}
 		</p>
 	</div>
+</div>
+
+{#if data.items.length === 0}
+	<div class="empty">
+		<div>
+			<Mark class="mark mark-hero" />
+			<h2>Seu banco está vazio</h2>
+			<p>
+				Guarde palavras à mão ou toque nelas na legenda do Stremio. Elas aparecem aqui, com a frase
+				onde você as viu.
+			</p>
+			<div class="acts">
+				<a class="btn btn-primary btn-lg" href={resolve('/palavras?guardar')} onclick={onSave}
+					><Icon name="plus" />Guardar palavra</a
+				>
+			</div>
+		</div>
+	</div>
 {:else}
-	<ul class="lista" aria-label="Palavras">
-		{#each data.items as item (item.id)}
-			{@const known = item.status === 'conhecido'}
-			{@const itemErrors = editErrors(item.id)}
-			<li class:saindo={busy === item.id} class:conhecida={known}>
-				<div class="texto">
-					<p class="termo">
-						<span lang={item.language}>{item.lemma}</span>
-						<span class="selo {item.language}" title={LANGUAGE_LABELS[item.language]}
-							>{item.language.toUpperCase()}</span
+	<div class="tools">
+		<nav class="seg" aria-label="Filtro">
+			{#each FILTERS as [key, label] (key)}
+				<a
+					href={resolve(`/palavras${searchWith({ f: key, item: null })}`)}
+					data-f={key}
+					aria-current={filter === key ? 'page' : undefined}
+					onclick={(e) => pickFilter(e, key)}>{label}<span class="c">{counts[key]}</span></a
+				>
+			{/each}
+		</nav>
+		<form class="search" method="GET" role="search" onsubmit={(e) => e.preventDefault()}>
+			<Icon name="search" size="sm" />
+			<label class="visually-hidden" for="busca">Buscar</label>
+			{#if filter !== 'todas'}<input type="hidden" name="f" value={filter} />{/if}
+			<input
+				id="busca"
+				name="q"
+				type="search"
+				placeholder="Buscar palavra ou tradução"
+				autocomplete="off"
+				bind:value={q}
+				oninput={syncUrl}
+				onkeydown={(e) => e.key === 'Escape' && (e.currentTarget as HTMLInputElement).blur()}
+			/>
+			<kbd>/</kbd>
+		</form>
+	</div>
+
+	{#if rows.length === 0}
+		<div class="no-res">
+			<b>Nada por aqui</b>{q.trim()
+				? `Nenhuma palavra com “${q.trim()}”.`
+				: 'Nenhuma palavra neste filtro.'}
+		</div>
+	{:else}
+		<ul class="list" aria-label="Palavras">
+			{#each rows as item (item.id)}
+				{@const enc = item.encounters[0]}
+				<li>
+					<a
+						class="wrow"
+						class:sel={item.id === data.selectedId}
+						href={resolve(`/palavras${searchWith({ item: item.id })}`)}
+						data-sveltekit-noscroll
+						data-sveltekit-keepfocus
+						data-sveltekit-replacestate
+						aria-current={item.id === data.selectedId ? 'true' : undefined}
+					>
+						<span class="w"><b>{item.lemma}</b><span>{item.sense || 'Sem tradução'}</span></span>
+						<span class="ctx"
+							>{#if enc?.sentence}{@render sentence(
+									enc.sentence,
+									enc.highlight || item.lemma
+								)}{/if}</span
 						>
-						{#if known}<span class="selo estado">Conhecida</span>
-						{:else if item.mastered}<span class="selo dominada">Dominada</span>{/if}
-					</p>
-					{#if item.sense}<p class="sentido">{item.sense}</p>{/if}
-					{#if item.note}<p class="nota">{item.note}</p>{/if}
-					{#if item.encounters.length > 0}
-						<ul class="encontros" aria-label={`Encontros de “${item.lemma}”`}>
-							{#each item.encounters as encounter (encounter.id)}
+						<span class="src-ic" title={enc ? enc.source || enc.originLabel : 'Guardada à mão'}
+							><Icon name={ORIGIN_ICONS[enc?.origin ?? 'manual']} /></span
+						>
+						{@render strength(item.strength)}
+						<span class="next" class:hoje={item.dueToday}
+							>{item.status === 'conhecido' ? 'Já sei' : item.next}</span
+						>
+					</a>
+				</li>
+			{/each}
+		</ul>
+		<div class="list-foot">
+			<span class="legend"><Icon name="tv" size="sm" />Stremio</span>
+			<span class="legend"><Icon name="music" size="sm" />Música</span>
+			<span class="legend"><Icon name="pencil" size="sm" />À mão</span>
+			<span class="legend force">{@render strength(3)}Força da memória</span>
+		</div>
+	{/if}
+{/if}
+
+{#if selected}
+	{@const enc = selected.encounters[0]}
+	<a
+		class="drawer-scrim"
+		href={resolve(`/palavras${searchWith({ item: null })}`)}
+		aria-hidden="true"
+		tabindex="-1"><span class="visually-hidden">Fechar</span></a
+	>
+	<section
+		class="drawer"
+		aria-label="Detalhes de “{selected.lemma}”"
+		tabindex="-1"
+		bind:this={drawerEl}
+		data-drawer-open
+	>
+		<div class="dr-h">
+			<span class="eyebrow"
+				><Icon name={ORIGIN_ICONS[enc?.origin ?? 'manual']} size="sm" />{enc
+					? enc.source || enc.originLabel
+					: 'Guardada à mão'}</span
+			>
+			<a
+				class="icon-btn"
+				href={resolve(`/palavras${searchWith({ item: null })}`)}
+				aria-label="Fechar"
+				data-sveltekit-noscroll><Icon name="x" /></a
+			>
+		</div>
+
+		{#if editing}
+			<form
+				class="dr-body edit"
+				method="POST"
+				action={actionKeeping('edit')}
+				use:enhance={submitEdit}
+				aria-label="Editar “{selected.lemma}”"
+			>
+				<input type="hidden" name="id" value={selected.id} />
+				<label
+					>Palavra<input
+						name="lemma"
+						value={selected.lemma}
+						maxlength={LIMITS.lemma}
+						required
+						aria-invalid={editErrors?.lemma ? 'true' : undefined}
+					/></label
+				>
+				{#if editErrors?.lemma}<p class="err" role="alert">{editErrors.lemma}</p>{/if}
+				<label>Tradução<input name="sense" value={selected.sense} maxlength={LIMITS.sense} /></label
+				>
+				<label
+					>Nota<textarea name="note" rows="3" maxlength={LIMITS.note} value={selected.note}
+					></textarea></label
+				>
+				{#if editErrors?.form}<p class="err" role="alert">{editErrors.form}</p>{/if}
+				<div class="edit-acts">
+					<button class="btn btn-primary" disabled={busy}>Salvar</button>
+					<button type="button" class="btn btn-ghost" onclick={() => (editing = false)}
+						>Cancelar</button
+					>
+				</div>
+			</form>
+		{:else}
+			<div class="dr-body">
+				<h2 class="dr-word">{selected.lemma}</h2>
+				{#if selected.ipa || canSpeak}
+					<div class="dr-ipa">
+						{#if selected.ipa}<span>{selected.ipa}</span>{/if}
+						{#if canSpeak}<button class="listen" type="button" onclick={() => speak(selected.lemma)}
+								><Icon name="sound" size="sm" />Ouvir</button
+							>{/if}
+					</div>
+				{/if}
+				<div class="dr-tr" class:faint={!selected.sense}>{selected.sense || 'Sem tradução'}</div>
+				{#if selected.note}<p class="note">{selected.note}</p>{/if}
+
+				<section class="dr-sec">
+					<h3>Próxima revisão</h3>
+					<div class="next-box">
+						{#if selected.status === 'conhecido'}
+							<div><b>Fora da revisão</b><span>Você marcou que já sabe</span></div>
+						{:else}
+							<div>
+								<b class:hoje={selected.dueToday}
+									>{selected.next.charAt(0).toUpperCase() + selected.next.slice(1)}</b
+								><span
+									>{selected.dueToday
+										? 'Está na fila de agora'
+										: 'Você não precisa fazer nada até lá'}</span
+								>
+							</div>
+						{/if}
+						<div class="str-l">
+							{@render strength(selected.strength)}<span>{STRENGTH_LABELS[selected.strength]}</span>
+						</div>
+					</div>
+				</section>
+
+				<section class="dr-sec">
+					<h3>{selected.encounters.length > 1 ? 'Contextos' : 'Contexto'}</h3>
+					{#each selected.encounters as e (e.id)}
+						<div class="quote">
+							<div class="qs">
+								<Icon name={ORIGIN_ICONS[e.origin]} size="sm" />{e.source || e.originLabel} · {formatAgo(
+									new Date(e.seenAt),
+									now
+								)}
+							</div>
+							{#if e.sentence}<p>
+									{@render sentence(e.sentence, e.highlight || selected.lemma)}
+								</p>{/if}
+							{#if e.sense && e.sense !== selected.sense}<div class="pt">{e.sense}</div>{/if}
+						</div>
+					{:else}
+						<p class="faint small">
+							Guardada sem frase. A próxima vez que ela aparecer, a frase entra aqui.
+						</p>
+					{/each}
+				</section>
+
+				<section class="dr-sec">
+					<h3>Histórico</h3>
+					{#if data.history.length === 0}
+						<p class="faint small">Ainda não revisada. Ela entra na revisão como palavra nova.</p>
+					{:else}
+						<ul class="hist">
+							{#each data.history as h, i (i)}
 								<li>
-									{#if encounter.sentence}<p class="frase" lang={item.language}>
-											{encounter.sentence}
-										</p>{/if}
-									<p class="fonte">
-										{[encounter.origin, encounter.source].filter(Boolean).join(' · ')}
-									</p>
+									<time datetime={h.reviewedAt}>{formatAgo(new Date(h.reviewedAt), now)}</time>
+									<span class="grade" data-g={h.rating}>{GRADE_LABELS[h.rating as Grade]}</span>
+									<span class="iv">{h.kind === 'produzir' ? 'Produzir' : 'Reconhecer'}</span>
 								</li>
 							{/each}
 						</ul>
 					{/if}
+				</section>
+			</div>
+		{/if}
 
-					<details class="editar" open={itemErrors ? true : undefined}>
-						<summary>Editar</summary>
-						<form method="POST" action={`?/edit${filterQuery}`} use:enhance={submitRow}>
-							<input type="hidden" name="id" value={item.id} />
-							<div class="campo">
-								<label for={`lemma-${item.id}`}>Palavra</label>
-								<input
-									id={`lemma-${item.id}`}
-									name="lemma"
-									required
-									maxlength={LIMITS.lemma}
-									value={item.lemma}
-									aria-invalid={itemErrors?.lemma ? 'true' : undefined}
-								/>
-								{#if itemErrors?.lemma}<p class="erro" role="alert">{itemErrors.lemma}</p>{/if}
-							</div>
-							<div class="campo">
-								<label for={`sense-${item.id}`}>Sentido</label>
-								<input
-									id={`sense-${item.id}`}
-									name="sense"
-									maxlength={LIMITS.sense}
-									value={item.sense}
-									aria-invalid={itemErrors?.sense ? 'true' : undefined}
-								/>
-								{#if itemErrors?.sense}<p class="erro" role="alert">{itemErrors.sense}</p>{/if}
-							</div>
-							<div class="campo">
-								<label for={`note-${item.id}`}>Nota</label>
-								<textarea
-									id={`note-${item.id}`}
-									name="note"
-									rows="2"
-									maxlength={LIMITS.note}
-									aria-invalid={itemErrors?.note ? 'true' : undefined}>{item.note}</textarea
-								>
-								{#if itemErrors?.note}<p class="erro" role="alert">{itemErrors.note}</p>{/if}
-							</div>
-							{#if itemErrors?.form}<p class="erro" role="alert">{itemErrors.form}</p>{/if}
-							<button class="salvar" type="submit">Salvar</button>
-						</form>
-					</details>
-				</div>
-				<form method="POST" action={`?/known${filterQuery}`} use:enhance={submitRow}>
-					<input type="hidden" name="id" value={item.id} />
-					<input type="hidden" name="known" value={known ? 'false' : 'true'} />
-					<button
-						class="icone"
-						type="submit"
-						aria-label={known
-							? `Voltar “${item.lemma}” para a revisão`
-							: `Marcar “${item.lemma}” como conhecida`}
-						title={known ? 'Voltar para a revisão' : 'Já conheço'}
-					>
-						<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-							{#if known}
-								<path
-									d="M4 12a8 8 0 1 0 3-6.2M4 4v4h4"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-							{:else}
-								<path
-									d="M5 12.5l4.5 4.5L19 7"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2.4"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-							{/if}
-						</svg>
-					</button>
-				</form>
-				<form method="POST" action={`?/delete${filterQuery}`} use:enhance={submitRow}>
-					<input type="hidden" name="id" value={item.id} />
-					<button class="icone apagar" type="submit" aria-label={`Apagar “${item.lemma}”`}>
-						<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-							<path
-								d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
-						</svg>
-					</button>
-				</form>
-			</li>
-		{/each}
-	</ul>
+		<div class="dr-foot">
+			{#if selected.dueToday}
+				<a class="btn btn-primary" href={resolve('/revisar')}>Revisar agora</a>
+			{/if}
+			<button type="button" class="btn btn-ghost" onclick={() => (editing = !editing)}
+				><Icon name="pencil" size="sm" />Editar</button
+			>
+			<form method="POST" action={actionKeeping('known')} use:enhance={submitKnown}>
+				<input type="hidden" name="id" value={selected.id} />
+				<input
+					type="hidden"
+					name="known"
+					value={selected.status === 'conhecido' ? 'false' : 'true'}
+				/>
+				<button
+					class="btn btn-ghost"
+					aria-label={selected.status === 'conhecido'
+						? `Voltar “${selected.lemma}” para a revisão`
+						: `Marcar “${selected.lemma}” como conhecida`}
+					><Icon
+						name={selected.status === 'conhecido' ? 'refresh' : 'check'}
+						size="sm"
+					/>{selected.status === 'conhecido' ? 'Revisar de novo' : 'Já sei'}</button
+				>
+			</form>
+			<form method="POST" action="?/delete" use:enhance={submitDelete} class="del">
+				<input type="hidden" name="id" value={selected.id} />
+				<button class="btn btn-danger" aria-label="Apagar “{selected.lemma}”">Apagar</button>
+			</form>
+		</div>
+	</section>
 {/if}
 
-<details class="idiomas" open={languagesForm && 'message' in languagesForm ? true : undefined}>
-	<summary>Idiomas de estudo</summary>
-	<form method="POST" action={`?/languages${filterQuery}`} use:enhance>
-		<fieldset>
-			<legend>Quais idiomas você estuda?</legend>
-			{#each LANGUAGES as language (language)}
-				<label class="marcar">
-					<input
-						type="checkbox"
-						name="languages"
-						value={language}
-						checked={data.studyLanguages.includes(language)}
-					/>
-					{LANGUAGE_LABELS[language]}
-				</label>
-			{/each}
-		</fieldset>
-		{#if languagesForm && 'message' in languagesForm}
-			<p class="erro" role="alert">{languagesForm.message}</p>
-		{/if}
-		<button class="salvar" type="submit">Salvar idiomas</button>
-	</form>
-</details>
-
 <style>
-	.topo {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 12px;
-		flex-wrap: wrap;
-		margin-bottom: 16px;
-	}
-
-	h1 {
-		margin: 0;
-		font-size: 28px;
-		color: var(--verde);
-		letter-spacing: -0.01em;
-	}
-
-	.total {
-		margin: 0;
-		color: var(--cinza);
-		font-weight: 650;
-	}
-
-	.nova {
-		background: var(--papel);
-		border: 1.5px solid var(--linha);
-		border-radius: 22px;
-		padding: 18px 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-
-	h2 {
-		margin: 0;
-		font-size: 16px;
-		color: var(--verde);
-	}
-
-	.campo {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		min-width: 0;
-	}
-
-	.linha {
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-
-	label,
-	legend {
-		font-weight: 700;
-		font-size: 14px;
-		color: var(--verde);
-	}
-
-	.opcional {
-		font-weight: 550;
-		color: var(--cinza);
-	}
-
-	input:not([type='radio'], [type='checkbox']),
-	textarea {
-		width: 100%;
-		border: 2px solid var(--linha);
-		background: #fff;
-		border-radius: var(--raio-p);
-		padding: 11px 13px;
-		font-size: 16px;
-	}
-
-	#lemma {
-		font-size: 20px;
-		font-weight: 750;
-		color: var(--verde);
-	}
-
-	textarea {
-		resize: vertical;
-		min-height: 64px;
-	}
-
-	input:focus,
-	textarea:focus {
-		border-color: var(--salvia);
-		outline: none;
-	}
-
-	[aria-invalid='true'] {
-		border-color: var(--coral) !important;
-	}
-
-	.idioma {
-		border: 0;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.idioma legend {
-		padding: 0;
-		margin-bottom: 6px;
-	}
-
-	.segmentos {
-		display: inline-flex;
-		align-self: flex-start;
-		background: #fff;
-		border: 2px solid var(--linha);
-		border-radius: 99px;
-		padding: 3px;
-	}
-
-	.segmentos label {
-		position: relative;
-		cursor: pointer;
-	}
-
-	.segmentos input {
-		position: absolute;
-		opacity: 0;
-		inset: 0;
-		margin: 0;
-		cursor: pointer;
-	}
-
-	.segmentos span {
-		display: block;
-		padding: 6px 16px;
-		border-radius: 99px;
-		font-weight: 800;
-		font-size: 14px;
-		color: var(--cinza);
-	}
-
-	.segmentos input:checked + span {
-		background: var(--verde);
-		color: var(--creme);
-	}
-
-	.segmentos input:focus-visible + span {
-		outline: 3px solid var(--azul);
-		outline-offset: 1px;
-	}
-
-	.acoes {
+	.tools {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 12px;
+		gap: 16px;
+		margin-bottom: 14px;
 	}
-
-	.status {
+	.seg .c {
+		font: 500 12px/1 var(--f-body);
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-3);
+	}
+	.seg [data-f='hoje'] .c {
+		color: var(--terra-ink);
+	}
+	.search {
+		position: relative;
+		width: 280px;
 		margin: 0;
-		color: var(--verde);
-		font-weight: 700;
-		font-size: 14px;
-		min-width: 0;
-		overflow-wrap: anywhere;
 	}
-
-	.guardar {
-		flex: none;
+	.search > :global(.ic) {
+		position: absolute;
+		left: 12px;
+		top: 50%;
+		translate: 0 -50%;
+		color: var(--ink-3);
+		pointer-events: none;
+	}
+	.search input {
+		width: 100%;
+		height: 36px;
+		padding: 0 40px 0 36px;
 		border: 0;
-		background: var(--coral);
-		color: #fff;
-		border-radius: 14px;
-		padding: 12px 26px;
-		font-weight: 800;
-		font-size: 16px;
-		box-shadow: var(--sombra-botao) var(--coral-escuro);
+		border-radius: var(--r-m);
+		outline: none;
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
+		transition:
+			box-shadow 0.18s,
+			background-color 0.18s;
 	}
-
-	.guardar:active {
-		transform: translateY(2px);
-		box-shadow: none;
+	.search input::placeholder {
+		color: var(--ink-3);
 	}
-
-	.guardar:disabled {
-		opacity: 0.7;
-		cursor: default;
+	.search input:focus {
+		background: var(--raise);
+		box-shadow:
+			inset 0 0 0 1px var(--line-2),
+			0 0 0 3px var(--ring);
 	}
-
-	.erro {
-		margin: 0;
-		color: #a53b3b;
-		font-weight: 600;
-		font-size: 14px;
+	.search kbd {
+		position: absolute;
+		right: 9px;
+		top: 50%;
+		translate: 0 -50%;
 	}
-
-	.filtros {
-		display: flex;
-		gap: 8px;
-		margin: 24px 0 12px;
-		overflow-x: auto;
-	}
-
-	.filtros a {
-		flex: none;
-		text-decoration: none;
-		border: 2px solid var(--linha);
-		background: #fff;
-		color: var(--cinza);
-		padding: 6px 14px;
-		border-radius: 99px;
-		font-weight: 750;
-		font-size: 14px;
-	}
-
-	.filtros a[aria-current='page'] {
-		background: var(--verde);
-		border-color: var(--verde);
-		color: var(--creme);
-	}
-
-	.lista {
-		list-style: none;
-		margin: 0;
-		padding: 0;
+	.list {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		margin: 0 -14px;
+		padding: 0;
+		list-style: none;
 	}
-
-	.lista li {
-		display: flex;
-		align-items: flex-start;
-		gap: 10px;
-		background: #fff;
-		border: 1.5px solid var(--linha);
-		border-radius: var(--raio);
-		padding: 12px 10px 12px 16px;
+	.list li {
+		position: relative;
+	}
+	.wrow {
+		display: grid;
+		grid-template-columns: minmax(170px, 1fr) minmax(0, 2.1fr) 28px 44px 84px;
+		align-items: center;
+		gap: 22px;
+		padding: 13px 16px;
+		border-radius: var(--r-m);
+		text-align: left;
+		width: 100%;
+		position: relative;
+		color: inherit;
+		text-decoration: none;
+		transition: background-color 0.15s;
+	}
+	li + li .wrow::before {
+		content: '';
+		position: absolute;
+		left: 16px;
+		right: 16px;
+		top: 0;
+		height: 1px;
+		background: var(--line);
 		transition: opacity 0.15s;
 	}
-
-	.lista li.saindo {
-		opacity: 0.4;
+	.wrow:hover {
+		background: var(--hover);
 	}
-
-	.texto {
-		flex: 1;
+	.wrow.sel {
+		background: var(--sel);
+	}
+	.wrow:hover::before,
+	.wrow.sel::before,
+	li:hover + li .wrow::before,
+	li:has(.sel) + li .wrow::before {
+		opacity: 0;
+	}
+	.w {
 		min-width: 0;
 	}
-
-	.texto p {
-		margin: 0;
+	.w b {
+		font: 600 16px/1.3 var(--f-head);
+		display: block;
+		letter-spacing: -0.01em;
 		overflow-wrap: anywhere;
 	}
-
-	.termo {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		flex-wrap: wrap;
-		font-weight: 800;
-		font-size: 18px;
-		color: var(--verde);
-	}
-
-	.selo {
-		font-size: 11px;
-		font-weight: 800;
-		letter-spacing: 0.04em;
-		padding: 2px 7px;
-		border-radius: 6px;
-		color: #fff;
-		background: var(--verde);
-	}
-
-	.selo.en {
-		background: var(--azul);
-	}
-
-	.selo.it {
-		background: var(--ouro);
-	}
-
-	.selo.estado {
-		background: var(--linha);
-		color: var(--cinza);
-	}
-
-	.selo.dominada {
-		background: var(--salvia);
-	}
-
-	.lista li.conhecida .termo > span:first-child,
-	.lista li.conhecida .sentido {
-		opacity: 0.6;
-	}
-
-	.revisar {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		margin-bottom: 16px;
-		padding: 14px 16px;
-		border-radius: 22px;
-		background: var(--verde);
-		color: var(--creme);
-		text-decoration: none;
-	}
-
-	.revisar-texto {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.revisar-texto strong {
-		font-size: 18px;
-	}
-
-	.revisar-texto span {
-		color: var(--salvia-claro);
-		font-size: 14px;
-	}
-
-	.revisar-botao {
-		flex: none;
-		background: var(--coral);
-		color: #fff;
-		border-radius: 14px;
-		padding: 10px 20px;
-		font-weight: 800;
-		box-shadow: var(--sombra-botao) var(--coral-escuro);
-	}
-
-	.sentido {
-		color: var(--tinta);
-		margin-top: 2px !important;
-	}
-
-	.nota {
-		margin-top: 4px !important;
-		color: var(--cinza);
-		font-size: 14px;
-		white-space: pre-line;
-	}
-
-	.encontros {
-		list-style: none;
-		margin: 8px 0 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.encontros li {
-		padding-left: 10px;
-		border-left: 3px solid var(--salvia-claro);
-	}
-
-	.frase {
-		color: var(--tinta);
-		font-size: 14px;
-		font-style: italic;
-		white-space: pre-line;
-	}
-
-	.fonte {
-		color: var(--cinza);
-		font-size: 12px;
-		font-weight: 650;
-	}
-
-	.editar {
-		margin-top: 8px;
-	}
-
-	.editar summary,
-	.idiomas summary {
-		cursor: pointer;
-		color: var(--cinza);
-		font-weight: 700;
+	.w span {
 		font-size: 13px;
+		color: var(--ink-3);
+		display: block;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
-
-	.editar form,
-	.idiomas form {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		margin-top: 10px;
+	.ctx {
+		font-size: 13.5px;
+		color: var(--ink-2);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
-
-	.salvar {
-		align-self: flex-start;
-		border: 0;
-		background: var(--verde);
-		color: var(--creme);
-		border-radius: 12px;
-		padding: 8px 18px;
-		font-weight: 800;
-		font-size: 14px;
-	}
-
-	.idiomas {
-		margin-top: 28px;
-		background: var(--papel);
-		border: 1.5px solid var(--linha);
-		border-radius: 22px;
-		padding: 14px 16px;
-	}
-
-	.idiomas fieldset {
-		border: 0;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px 16px;
-	}
-
-	.idiomas legend {
-		padding: 0;
-		margin-bottom: 8px;
-	}
-
-	.marcar {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		font-weight: 600;
-		color: var(--tinta);
-	}
-
-	.icone {
-		flex: none;
-		border: 0;
-		background: none;
-		color: var(--cinza);
-		width: 40px;
-		height: 40px;
-		border-radius: var(--raio-p);
+	.src-ic {
+		color: var(--ink-3);
 		display: grid;
 		place-items: center;
 	}
-
-	.icone:hover {
-		background: var(--salvia-claro);
-		color: var(--verde);
+	.next {
+		font-size: 13px;
+		color: var(--ink-3);
+		text-align: right;
+		white-space: nowrap;
 	}
-
-	.apagar:hover {
-		background: var(--coral-claro);
-		color: #a53b3b;
+	.next.hoje {
+		color: var(--terra-ink);
+		font-weight: 500;
 	}
-
-	.vazio {
-		border: 2px dashed var(--linha);
-		border-radius: var(--raio);
-		padding: 28px 16px;
+	.list-foot {
+		margin-top: 22px;
+		font-size: 12.5px;
+		color: var(--ink-3);
+		display: flex;
+		gap: 18px;
+		align-items: center;
+	}
+	.legend {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.legend.force {
+		margin-left: auto;
+	}
+	.no-res {
 		text-align: center;
-		color: var(--cinza);
+		padding: 56px 0;
+		color: var(--ink-3);
+	}
+	.no-res b {
+		display: block;
+		color: var(--ink);
+		font: 600 17px var(--f-head);
+		margin-bottom: 4px;
 	}
 
-	.vazio p {
+	/* Painel lateral: preso à janela, por cima do canto direito do painel. */
+	.drawer-scrim {
+		display: none;
+	}
+	.drawer {
+		position: fixed;
+		z-index: 45;
+		top: 18px;
+		right: 18px;
+		bottom: 18px;
+		width: 420px;
+		max-width: calc(100vw - 36px);
+		background: var(--raise);
+		border-radius: var(--r-l);
+		box-shadow: var(--sh-pop);
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		animation: drawerIn 0.4s var(--ease) both;
+	}
+	:global(.tema-escuro) .drawer {
+		background: #183223;
+	}
+	.drawer:focus {
+		outline: none;
+	}
+	@keyframes drawerIn {
+		from {
+			transform: translateX(calc(100% + 24px));
+		}
+	}
+	.dr-h {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 12px 12px 0 16px;
+	}
+	.dr-h .eyebrow {
+		min-width: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.dr-body {
+		flex: 1;
+		overflow-y: auto;
+		padding: 14px 28px 28px;
 		margin: 0;
 	}
+	.dr-word {
+		font: 600 40px/1.1 var(--f-head);
+		letter-spacing: -0.03em;
+		margin: 8px 0 0;
+		overflow-wrap: anywhere;
+	}
+	.dr-ipa {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-top: 10px;
+		color: var(--ink-3);
+		font-size: 15px;
+	}
+	.listen {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		height: 28px;
+		padding: 0 11px 0 9px;
+		border: 0;
+		border-radius: var(--r-s);
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--accent-ink);
+		background: var(--sel);
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+	.listen:hover {
+		background: var(--press);
+	}
+	.dr-tr {
+		font-size: 18px;
+		margin-top: 16px;
+	}
+	.note {
+		margin: 8px 0 0;
+		color: var(--ink-2);
+		font-size: 14px;
+	}
+	.small {
+		margin: 0;
+		font-size: 13.5px;
+	}
+	.dr-sec {
+		margin-top: 30px;
+	}
+	.dr-sec h3 {
+		margin: 0 0 12px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ink-3);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+	.quote {
+		padding: 14px 16px;
+		border-radius: var(--r-m);
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
+	}
+	.quote + .quote {
+		margin-top: 8px;
+	}
+	.quote p {
+		margin: 0;
+		font-size: 14.5px;
+		line-height: 1.55;
+	}
+	.quote .pt {
+		color: var(--ink-3);
+		font-size: 13px;
+		margin-top: 6px;
+	}
+	.quote .qs {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 12px;
+		color: var(--ink-3);
+		margin-bottom: 8px;
+	}
+	.next-box {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 14px 16px;
+		border-radius: var(--r-m);
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
+	}
+	.next-box b {
+		font: 600 17px/1.2 var(--f-head);
+		display: block;
+	}
+	.next-box b.hoje {
+		color: var(--terra-ink);
+	}
+	.next-box span {
+		font-size: 12.5px;
+		color: var(--ink-3);
+	}
+	.str-l {
+		text-align: right;
+		flex: none;
+	}
+	.str-l > span:last-child {
+		display: block;
+		margin-top: 4px;
+	}
+	.hist {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.hist li {
+		display: grid;
+		grid-template-columns: 84px 1fr auto;
+		gap: 12px;
+		align-items: center;
+		padding: 8px 2px;
+		font-size: 13.5px;
+	}
+	.hist li + li {
+		border-top: 1px solid var(--line);
+	}
+	.hist time,
+	.hist .iv {
+		color: var(--ink-3);
+		font-size: 12.5px;
+	}
+	.dr-foot {
+		padding: 14px 20px;
+		display: flex;
+		gap: 4px;
+		border-top: 1px solid var(--line);
+	}
+	.dr-foot form {
+		margin: 0;
+	}
+	.dr-foot .btn-primary {
+		flex: 1;
+	}
+	.dr-foot .del {
+		margin-left: auto;
+	}
+	.edit label {
+		display: block;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ink-3);
+		margin-top: 16px;
+	}
+	.edit input,
+	.edit textarea {
+		display: block;
+		width: 100%;
+		margin-top: 6px;
+		padding: 9px 12px;
+		border: 0;
+		border-radius: var(--r-m);
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
+		font-size: 15px;
+		color: var(--ink);
+		resize: vertical;
+		outline: none;
+	}
+	.edit input:focus,
+	.edit textarea:focus {
+		background: var(--raise);
+		box-shadow:
+			inset 0 0 0 1px var(--line-2),
+			0 0 0 3px var(--ring);
+	}
+	.edit input[name='lemma'] {
+		font: 600 22px/1.3 var(--f-head);
+	}
+	.edit .err {
+		margin: 6px 0 0;
+		color: var(--terra-ink);
+		font-size: 12.5px;
+	}
+	.edit-acts {
+		display: flex;
+		gap: 6px;
+		margin-top: 20px;
+	}
 
-	@media (min-width: 640px) {
-		.nova {
-			padding: 22px 24px;
+	@media (max-width: 1180px) {
+		.wrow {
+			grid-template-columns: minmax(150px, 1fr) minmax(0, 1.6fr) 28px 44px 80px;
+			gap: 16px;
 		}
-
-		.linha {
-			flex-direction: row;
-			align-items: flex-start;
+	}
+	@media (max-width: 980px) {
+		.wrow .ctx {
+			display: none;
 		}
-
-		.cresce {
-			flex: 1;
+		.wrow {
+			grid-template-columns: minmax(0, 1fr) 28px 44px 84px;
+		}
+	}
+	@media (max-width: 768px) {
+		.tools {
+			flex-direction: column-reverse;
+			align-items: stretch;
+			gap: 12px;
+		}
+		.search {
+			width: 100%;
+		}
+		.search kbd {
+			display: none;
+		}
+		.seg {
+			overflow-x: auto;
+			scrollbar-width: none;
+			justify-content: flex-start;
+		}
+		.seg::-webkit-scrollbar {
+			display: none;
+		}
+		.seg > a {
+			flex: none;
+			padding: 0 11px;
+		}
+		.list {
+			margin: 0 -8px;
+		}
+		.wrow {
+			grid-template-columns: minmax(0, 1fr) auto;
+			grid-template-areas: 'w n' 'c c';
+			gap: 4px 12px;
+			padding: 13px 10px;
+		}
+		.wrow .w {
+			grid-area: w;
+		}
+		.wrow .ctx {
+			display: -webkit-box;
+			grid-area: c;
+			white-space: normal;
+			-webkit-line-clamp: 1;
+			line-clamp: 1;
+			-webkit-box-orient: vertical;
+			margin-top: 2px;
+		}
+		.wrow .src-ic,
+		.wrow :global(.str) {
+			display: none;
+		}
+		.wrow .next {
+			grid-area: n;
+			align-self: start;
+			padding-top: 3px;
+		}
+		li + li .wrow::before {
+			left: 10px;
+			right: 10px;
+		}
+		.list-foot {
+			flex-wrap: wrap;
+			gap: 10px 16px;
+		}
+		.drawer-scrim {
+			display: block;
+			position: fixed;
+			inset: 0;
+			z-index: 50;
+			background: var(--scrim);
+			animation: fade 0.25s var(--ease) both;
+		}
+		.drawer {
+			z-index: 51;
+			top: auto;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			width: auto;
+			max-width: none;
+			max-height: 88dvh;
+			border-radius: var(--r-l) var(--r-l) 0 0;
+			animation-name: sheetIn;
+		}
+		.drawer::before {
+			content: '';
+			position: absolute;
+			top: 8px;
+			left: 50%;
+			translate: -50% 0;
+			width: 36px;
+			height: 4px;
+			border-radius: 4px;
+			background: var(--line-2);
+		}
+		.dr-h {
+			padding-top: 18px;
+		}
+		.dr-body {
+			padding: 8px 22px 22px;
+		}
+		.dr-word {
+			font-size: 36px;
+		}
+		.dr-foot {
+			padding-bottom: calc(14px + var(--safe-b));
+			flex-wrap: wrap;
+		}
+	}
+	@keyframes sheetIn {
+		from {
+			transform: translateY(105%);
+		}
+	}
+	@keyframes fade {
+		from {
+			opacity: 0;
 		}
 	}
 </style>

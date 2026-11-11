@@ -7,15 +7,15 @@ describe('safeNext', () => {
 	});
 
 	test('sem valor cai no padrão', () => {
-		expect(safeNext(null)).toBe('/palavras');
-		expect(safeNext('')).toBe('/palavras');
+		expect(safeNext(null)).toBe('/inicio');
+		expect(safeNext('')).toBe('/inicio');
 	});
 
 	test('recusa URLs externas e protocol-relative', () => {
-		expect(safeNext('https://evil.example')).toBe('/palavras');
-		expect(safeNext('//evil.example')).toBe('/palavras');
-		expect(safeNext('/\\evil.example')).toBe('/palavras');
-		expect(safeNext('javascript:alert(1)')).toBe('/palavras');
+		expect(safeNext('https://evil.example')).toBe('/inicio');
+		expect(safeNext('//evil.example')).toBe('/inicio');
+		expect(safeNext('/\\evil.example')).toBe('/inicio');
+		expect(safeNext('javascript:alert(1)')).toBe('/inicio');
 	});
 });
 
@@ -23,6 +23,11 @@ describe('isProtectedPath', () => {
 	test('/palavras e subrotas exigem login', () => {
 		expect(isProtectedPath('/palavras')).toBe(true);
 		expect(isProtectedPath('/palavras/123')).toBe(true);
+	});
+
+	test('/inicio e /perfil exigem login', () => {
+		expect(isProtectedPath('/inicio')).toBe(true);
+		expect(isProtectedPath('/perfil')).toBe(true);
 	});
 
 	test('/revisar exige login', () => {

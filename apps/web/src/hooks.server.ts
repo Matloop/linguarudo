@@ -3,6 +3,7 @@ import type { Handle } from '@sveltejs/kit/hooks';
 import { HOME_AFTER_LOGIN, isProtectedPath } from '#lib/auth.ts';
 import { createRequestClient } from '#lib/server/supabase.ts';
 import { corsHeaders } from '#lib/server/api.ts';
+import { THEME_COOKIE, parseTheme, themeClass } from '#lib/prefs.ts';
 
 /** /api: só token (sem cookie de sessão) e CORS para as origens do fork. */
 const handleApi: Handle = async ({ event, resolve }) => {
@@ -43,9 +44,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 		redirect(303, HOME_AFTER_LOGIN);
 	}
 
+	// O tema escolhido entra como classe na raiz, já no HTML do servidor (sem piscar).
+	const theme = themeClass(parseTheme(event.cookies.get(THEME_COOKIE)));
 	const response = await resolve(event, {
 		filterSerializedResponseHeaders: (name) =>
-			name === 'content-range' || name === 'x-supabase-api-version'
+			name === 'content-range' || name === 'x-supabase-api-version',
+		transformPageChunk: ({ html }) => html.replace('%linguetta.tema%', theme)
 	});
 	pendingHeaders.forEach((value, key) => response.headers.set(key, value));
 	return response;

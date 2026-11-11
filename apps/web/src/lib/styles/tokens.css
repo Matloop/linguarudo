@@ -1,32 +1,137 @@
-/* Marca do Linguarudo. Componentes usam estas variáveis no CSS com escopo. */
+/* Marca do Linguetta. Componentes usam estas variáveis no CSS com escopo.
+ * O tema vem de uma classe na raiz: .tema-claro ou .tema-escuro. Sem classe vale
+ * o claro; o script do app.html escolhe pelo sistema quando não há cookie. */
 :root {
-	--verde: #0c4033;
-	--verde-escuro: #073026;
-	--verde-medio: #11503f;
-	/* texto claro em cima do verde */
-	--verde-texto: #b9cebb;
-	--salvia: #7fa886;
-	--salvia-claro: #dce8d6;
-	--creme: #fdf4e3;
-	--creme-escuro: #f6e8cc;
-	--papel: #fffbf3;
-	--coral: #f07c7c;
-	--coral-escuro: #d65f5f;
-	--coral-claro: #fbe1dd;
-	--ouro: #e0a458;
-	--azul: #6c8ebf;
-	--tinta: #16302a;
-	--tinta-suave: #47625a;
-	--cinza: #6e7f78;
-	--linha: #e7dcc6;
+	--f-head: 'Manrope Variable', 'Manrope', 'Inter Variable', system-ui, sans-serif;
+	--f-body: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--f-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+	--verde: #11261a;
+	--verde-2: #1d3b2a;
+	--salvia: #8aa392;
+	--verde-claro: #dfe6dc;
+	--creme: #f7f1e6;
+	--terra: #a8613f;
+	--ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+	--ease-in: cubic-bezier(0.5, 0, 0.75, 0);
+	--tab-h: 64px;
+	--safe-b: env(safe-area-inset-bottom, 0px);
+	--safe-t: env(safe-area-inset-top, 0px);
+	--r-s: 6px;
+	--r-m: 8px;
+	--r-l: 12px;
 
-	--fonte: ui-rounded, 'SF Pro Rounded', 'Nunito Variable', 'Nunito', system-ui, sans-serif;
-	--fonte-livro: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
-	--raio: 16px;
-	--raio-p: 10px;
+	/* Paleta antiga, remapeada para a nova. Ainda usada pela landing e pelo jogo
+	 * de música (que têm fundo próprio e não trocam de tema). */
+	--verde-escuro: #0b1a12;
+	--verde-medio: #1d3b2a;
+	--verde-texto: #c9d1c6;
+	--salvia-claro: #dfe6dc;
+	--creme-escuro: #ece4d5;
+	--papel: #fbf8f2;
+	--coral: #a8613f;
+	--coral-escuro: #8a4d30;
+	--coral-claro: #f1e2d7;
+	--ouro: #b88a4a;
+	--azul: #1a3626;
+	--tinta: #16231b;
+	--tinta-suave: #545c55;
+	--cinza: #7d8178;
+	--linha: #e4dccd;
+	--fonte: var(--f-body);
+	--fonte-livro: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+	--raio: 12px;
+	--raio-p: 8px;
 	--sombra-botao: 0 3px 0;
+}
 
+:root,
+.tema-claro {
 	color-scheme: light;
+	--page: #f1ebdf;
+	--panel: #fbf8f2;
+	--raise: #ffffff;
+	--raise-2: #ffffff;
+	--tile: #f6f2ea;
+	--sunk: #efe9de;
+	--hover: rgba(17, 38, 26, 0.04);
+	--press: rgba(17, 38, 26, 0.07);
+	--sel: rgba(17, 38, 26, 0.05);
+	--line: rgba(17, 38, 26, 0.08);
+	--line-2: rgba(17, 38, 26, 0.14);
+	--ink: #16231b;
+	--ink-2: #545c55;
+	--ink-3: #8a8d84;
+	--primary: #1a3626;
+	--primary-hover: #11261a;
+	--on-primary: #f7f1e6;
+	--accent-ink: #1a3626;
+	--nav-active: #ffffff;
+	--prog: #1a3626;
+	--prog-track: rgba(17, 38, 26, 0.09);
+	--terra-ink: #9a5536;
+	--terra-soft: rgba(168, 97, 63, 0.1);
+	--hl: #e3e8dd;
+	--hl-ink: #11261a;
+	--ring: rgba(26, 54, 38, 0.28);
+	--scrim: rgba(17, 30, 22, 0.18);
+	--mark-soft: rgba(17, 38, 26, 0.1);
+	--g4: #1a3626;
+	--soft-bg: var(--raise);
+	--soft-hover: var(--tile);
+	--kbd-on-primary: rgba(247, 241, 230, 0.12);
+	--kbd-on-primary-ink: rgba(247, 241, 230, 0.75);
+	--toast-bg: #11261a;
+	--toast-ink: #f3ede1;
+	--sh-panel: 0 0 0 1px rgba(17, 38, 26, 0.05), 0 1px 2px rgba(17, 38, 26, 0.03);
+	--sh-card: 0 0 0 1px rgba(17, 38, 26, 0.07), 0 1px 1px rgba(17, 38, 26, 0.03);
+	--sh-lift: 0 0 0 1px rgba(17, 38, 26, 0.07), 0 4px 14px -8px rgba(17, 38, 26, 0.16);
+	--sh-pop: 0 0 0 1px rgba(17, 38, 26, 0.08), 0 12px 32px -14px rgba(17, 30, 22, 0.24);
+	--art-1: #ece6da;
+}
+
+.tema-escuro {
+	color-scheme: dark;
+	--page: #0d1f15;
+	--panel: #12281c;
+	--raise: #173022;
+	/* Superfícies que flutuam (diálogo, painel, cartão): um pouco mais claras. */
+	--raise-2: #183223;
+	--tile: rgba(247, 241, 230, 0.035);
+	--sunk: rgba(0, 0, 0, 0.16);
+	--hover: rgba(247, 241, 230, 0.045);
+	--press: rgba(247, 241, 230, 0.075);
+	--sel: rgba(247, 241, 230, 0.06);
+	--line: rgba(247, 241, 230, 0.08);
+	--line-2: rgba(247, 241, 230, 0.14);
+	--ink: #f3ede1;
+	--ink-2: #b9c0b6;
+	--ink-3: #87938a;
+	--primary: #f3ede1;
+	--primary-hover: #ffffff;
+	--on-primary: #11261a;
+	--accent-ink: #f3ede1;
+	--nav-active: rgba(247, 241, 230, 0.07);
+	--prog: #e9e2d3;
+	--prog-track: rgba(247, 241, 230, 0.1);
+	--terra-ink: #d79b7b;
+	--terra-soft: rgba(215, 155, 123, 0.12);
+	--hl: rgba(138, 163, 146, 0.24);
+	--hl-ink: #f3ede1;
+	--ring: rgba(243, 237, 225, 0.35);
+	--scrim: rgba(0, 8, 4, 0.5);
+	--mark-soft: rgba(247, 241, 230, 0.09);
+	--g4: #f3ede1;
+	--soft-bg: rgba(247, 241, 230, 0.05);
+	--soft-hover: rgba(247, 241, 230, 0.09);
+	--kbd-on-primary: rgba(17, 38, 26, 0.08);
+	--kbd-on-primary-ink: rgba(17, 38, 26, 0.6);
+	--toast-bg: #f3ede1;
+	--toast-ink: #11261a;
+	--sh-panel: 0 0 0 1px rgba(247, 241, 230, 0.05);
+	--sh-card: 0 0 0 1px rgba(247, 241, 230, 0.07);
+	--sh-lift: 0 0 0 1px rgba(247, 241, 230, 0.08), 0 8px 20px -12px rgba(0, 0, 0, 0.6);
+	--sh-pop: 0 0 0 1px rgba(247, 241, 230, 0.1), 0 16px 40px -16px rgba(0, 0, 0, 0.7);
+	--art-1: #1a3426;
 }
 
 *,
@@ -42,9 +147,12 @@ html {
 body {
 	margin: 0;
 	min-height: 100dvh;
-	background: var(--creme);
-	color: var(--tinta);
-	font: 16px/1.45 var(--fonte);
+	background: var(--page);
+	color: var(--ink);
+	font: 400 14.5px/1.5 var(--f-body);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	font-feature-settings: 'cv11', 'ss01';
 }
 
 button,
@@ -60,12 +168,16 @@ button {
 }
 
 a {
-	color: var(--verde);
+	color: inherit;
 }
 
 :focus-visible {
-	outline: 3px solid var(--azul);
+	outline: 2px solid var(--ring);
 	outline-offset: 2px;
+}
+
+::selection {
+	background: var(--hl);
 }
 
 .visually-hidden {
@@ -78,8 +190,12 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-	* {
-		animation: none !important;
-		transition: none !important;
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
 	}
 }

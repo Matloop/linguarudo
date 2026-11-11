@@ -20,14 +20,15 @@ type Client = SupabaseClient<Database>;
 const CARD_COLUMNS =
 	'id, kind, due_at, stability, stability_fast, difficulty, state, schedule_status, last_review_at, reps, lapses, scheduled_days, learning_step, created_at';
 
-const CARD_WITH_ITEM = `${CARD_COLUMNS}, items!inner(lemma, sense, language, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
+const CARD_WITH_ITEM = `${CARD_COLUMNS}, items!inner(lemma, sense, ipa, language, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
 
 /**
  * Cartões revisáveis do usuário: o item está ativo e não foi apagado. Cada um vem
- * com o encontro mais recente (a frase que aparece no verso).
+ * com o encontro mais recente (a frase que aparece no verso). Com `language`, só
+ * os daquele idioma.
  */
-export function reviewableCards(supabase: Client, userId: string) {
-	return supabase
+export function reviewableCards(supabase: Client, userId: string, language?: Language) {
+	const query = supabase
 		.from('cards')
 		.select(CARD_WITH_ITEM)
 		.eq('user_id', userId)
@@ -36,6 +37,7 @@ export function reviewableCards(supabase: Client, userId: string) {
 		.is('items.encounters.deleted_at', null)
 		.order('seen_at', { referencedTable: 'items.encounters', ascending: false })
 		.limit(1, { referencedTable: 'items.encounters' });
+	return language ? query.eq('items.language', language) : query;
 }
 
 export type ReviewCardRow = CardRow &
@@ -44,6 +46,7 @@ export type ReviewCardRow = CardRow &
 		items: {
 			lemma: string;
 			sense: string;
+			ipa: string;
 			language: string;
 			encounters: {
 				sentence: string;
@@ -81,6 +84,7 @@ export async function toReviewItem(row: ReviewCardRow, now: Date): Promise<Revie
 		dueAt: row.due_at,
 		lemma: row.items.lemma,
 		sense: row.items.sense,
+		ipa: row.items.ipa,
 		language: row.items.language as Language,
 		sentence: encounter?.sentence ?? '',
 		highlight: encounter?.highlight ?? '',

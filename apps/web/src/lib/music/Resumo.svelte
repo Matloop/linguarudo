@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import mascote from '#lib/assets/mascote.png';
+	import Mark from '#lib/ui/Mark.svelte';
 	import type { SessionGap } from './session.ts';
 
 	interface Props {
@@ -46,7 +46,7 @@
 	$effect(() => {
 		if (saved.length > lastSaved) {
 			gulp = false;
-			// Reinicia a animação do Rudo a cada palavra nova.
+			// Reinicia a animação do símbolo a cada palavra nova.
 			requestAnimationFrame(() => (gulp = true));
 		}
 		lastSaved = saved.length;
@@ -58,13 +58,13 @@
 
 <div class="tela" role="presentation">
 	<div class="cartao" role="dialog" aria-labelledby="resumo-titulo">
-		<div class="rudo" class:feliz={perfect} class:engole={gulp}>
-			<img src={mascote} alt="" width="372" height="352" />
+		<div class="simbolo" class:engole={gulp}>
+			<Mark />
 		</div>
 		<h2 id="resumo-titulo">{perfect ? 'Todas de primeira!' : 'Música fechada!'}</h2>
 		<p class="sub">
 			{#if perfect}
-				O Rudo até mudou de cor.
+				Nenhum erro na música inteira.
 			{:else if wrong.length > 0}
 				As que você errou ficam para revisar. Errar aqui não custa nada.
 			{:else}
@@ -184,28 +184,20 @@
 		}
 	}
 
-	.rudo {
-		width: 140px;
-		margin: -6px auto 0;
+	.simbolo {
+		width: 44px;
+		height: 48px;
+		margin: 4px auto 12px;
+		color: var(--verde);
 	}
 
-	.rudo img {
-		width: 140px;
-		height: auto;
+	.simbolo :global(svg) {
+		width: 100%;
+		height: 100%;
 		display: block;
 	}
 
-	.rudo.feliz img {
-		animation: cor 5s ease-in-out infinite;
-	}
-
-	@keyframes cor {
-		50% {
-			filter: hue-rotate(-60deg) saturate(1.3);
-		}
-	}
-
-	.rudo.engole img {
+	.simbolo.engole {
 		animation: engole 0.4s;
 	}
 

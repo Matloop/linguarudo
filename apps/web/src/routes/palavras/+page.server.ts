@@ -7,18 +7,21 @@ import {
 	parseItemInput,
 	type ItemEditField,
 	type ItemField,
+	type CardKind,
 	type ItemStatus,
 	type Origin,
 	type SaveEntry
 } from '#lib/items.ts';
-import { parseLanguage, parseStudyLanguages, type Language } from '#lib/languages.ts';
-import { isMastered } from '#lib/review.ts';
+import type { Language } from '#lib/languages.ts';
+import { formatNextReview, isDueToday, itemStrength } from '#lib/review.ts';
 import { loadSettings } from '#lib/server/settings.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const PAGE_SIZE = 500;
 /** Encontros mostrados por item; o mais recente primeiro. */
 const ENCOUNTERS_SHOWN = 5;
+/** Revisões mostradas no painel do item. */
+const HISTORY_SHOWN = 8;
 
 type AddErrors = Partial<Record<ItemField | 'form', string>>;
 type EditErrors = Partial<Record<ItemEditField | 'form', string>>;
@@ -34,45 +37,74 @@ function formId(form: FormData): string | null {
 	return typeof id === 'string' && id !== '' ? id : null;
 }
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals, url, parent }) => {
 	const user = await requireUser(locals);
-	const language = parseLanguage(url.searchParams.get('lang'));
-	const settings = await loadSettings(locals.supabase, user.id);
+	const { shell } = await parent();
+	if (!shell) error(401, 'Entre para ver suas palavras.');
+	const language = shell.active;
+	const now = new Date();
 
-	let query = locals.supabase
+	const { data, error: dbError } = await locals.supabase
 		.from('items')
 		.select(
-			'id, language, lemma, sense, note, status, seen_count, created_at, cards(kind, state, stability), encounters(id, sentence, highlight, sense, origin, position, works(title, subtitle))'
+			'id, language, lemma, sense, ipa, note, status, seen_count, created_at, cards(id, kind, state, stability, due_at), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
 		)
 		.eq('user_id', user.id)
+		.eq('language', language)
 		.is('deleted_at', null)
 		.is('encounters.deleted_at', null)
 		.order('created_at', { ascending: false })
 		.order('seen_at', { referencedTable: 'encounters', ascending: false })
 		.limit(ENCOUNTERS_SHOWN, { referencedTable: 'encounters' })
 		.limit(PAGE_SIZE);
-	if (language) query = query.eq('language', language);
-
-	const { data, error: dbError } = await query;
 	if (dbError) error(500, 'Não deu para carregar suas palavras agora.');
 
-	const items = data.map(({ cards, encounters, seen_count, ...item }) => ({
-		...item,
-		language: item.language as Language,
-		status: item.status as ItemStatus,
-		mastered: isMastered(cards),
-		hasProduce: cards.some((c) => c.kind === 'produzir'),
-		seenCount: seen_count,
-		encounters: encounters.map((e) => ({
-			id: e.id,
-			sentence: e.sentence,
-			highlight: e.highlight,
-			sense: e.sense,
-			origin: ORIGIN_LABELS[e.origin as Origin],
-			source: formatWorkSource(e.works, e.position)
-		}))
-	}));
-	return { items, language, studyLanguages: settings.studyLanguages };
+	const items = data.map(({ cards, encounters, seen_count, created_at, ...item }) => {
+		const status = item.status as ItemStatus;
+		const dueAts = status === 'ativo' ? cards.map((c) => c.due_at) : [];
+		return {
+			...item,
+			language: item.language as Language,
+			status,
+			createdAt: created_at,
+			seenCount: seen_count,
+			strength: itemStrength(cards),
+			hasProduce: cards.some((c) => c.kind === 'produzir'),
+			dueToday: status === 'ativo' && isDueToday(dueAts, now),
+			next: status === 'ativo' ? formatNextReview(dueAts, now) : '',
+			encounters: encounters.map((e) => ({
+				id: e.id,
+				sentence: e.sentence,
+				highlight: e.highlight,
+				sense: e.sense,
+				origin: e.origin as Origin,
+				originLabel: ORIGIN_LABELS[e.origin as Origin],
+				source: formatWorkSource(e.works, e.position),
+				seenAt: e.seen_at
+			}))
+		};
+	});
+
+	// O painel lateral (?item=) traz o histórico de revisões daquele item.
+	const selectedId = url.searchParams.get('item');
+	const selected = items.find((i) => i.id === selectedId) ?? null;
+	let history: { rating: number; reviewedAt: string; kind: CardKind }[] = [];
+	if (selected) {
+		const { data: logs } = await locals.supabase
+			.from('review_logs')
+			.select('rating, reviewed_at, cards!inner(item_id, kind)')
+			.eq('user_id', user.id)
+			.eq('cards.item_id', selected.id)
+			.order('reviewed_at', { ascending: false })
+			.limit(HISTORY_SHOWN);
+		history = (logs ?? []).map((l) => ({
+			rating: l.rating,
+			reviewedAt: l.reviewed_at,
+			kind: (l.cards as unknown as { kind: CardKind }).kind
+		}));
+	}
+
+	return { items, language, selectedId: selected?.id ?? null, history, now: now.toISOString() };
 };
 
 export const actions: Actions = {
@@ -196,25 +228,5 @@ export const actions: Actions = {
 			return fail(500, { action: 'delete' as const, message: 'Não deu para apagar agora.' });
 		}
 		return { action: 'delete' as const, deleted: id };
-	},
-
-	languages: async ({ locals, request }) => {
-		const user = await requireUser(locals);
-		const settings = await loadSettings(locals.supabase, user.id);
-		const study = parseStudyLanguages(
-			(await request.formData()).getAll('languages'),
-			settings.nativeLanguage
-		);
-		if (!study) {
-			return fail(400, { action: 'languages' as const, message: 'Escolha pelo menos um idioma.' });
-		}
-		const { error: dbError } = await locals.supabase
-			.from('user_settings')
-			.update({ study_languages: study })
-			.eq('user_id', user.id);
-		if (dbError) {
-			return fail(500, { action: 'languages' as const, message: 'Não deu para salvar agora.' });
-		}
-		return { action: 'languages' as const, saved: study };
 	}
 };

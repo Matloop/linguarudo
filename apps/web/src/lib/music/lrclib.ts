@@ -48,7 +48,7 @@ export function pickSynced(records: readonly LrclibRecord[], wanted: Wanted): st
 // ---------- busca ----------
 
 /** Identificação genérica pedida pelo LRCLIB. Sem e-mail nem dado pessoal. */
-export const USER_AGENT = 'Linguarudo (https://linguarudo-app.vercel.app)';
+export const USER_AGENT = 'Linguetta (https://linguarudo-app.vercel.app)';
 
 const TIMEOUT_MS = 8_000;
 

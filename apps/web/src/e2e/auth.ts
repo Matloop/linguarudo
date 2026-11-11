@@ -34,6 +34,29 @@ export async function login(page: Page, email = uniqueEmail()) {
 	await page.getByRole('button', { name: 'Mandar link' }).click();
 	await expect(page.getByRole('status')).toContainText(`Link enviado para ${email}`);
 	await page.goto(await magicLinkFor(email));
-	await expect(page).toHaveURL(/\/palavras$/);
-	await expect(page.getByRole('heading', { name: 'Minhas palavras' })).toBeVisible();
+	await expect(page).toHaveURL(/\/inicio$/);
+	await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
+}
+
+/** Abre o diálogo Guardar pelo atalho N e guarda a palavra no idioma ativo. */
+export async function saveWord(page: Page, lemma: string, sense = '', sentence = '') {
+	const dialog = page.getByRole('dialog', { name: /Guardar em/ });
+	// Logo depois de navegar, a tecla pode chegar antes da hidratação: tenta de novo.
+	await expect(async () => {
+		if (!(await dialog.isVisible())) await page.keyboard.press('n');
+		await expect(dialog).toBeVisible({ timeout: 1000 });
+	}).toPass();
+	await dialog.getByRole('textbox', { name: 'Palavra' }).fill(lemma);
+	if (sense) await dialog.getByLabel('Tradução').fill(sense);
+	if (sentence) await dialog.getByLabel('Contexto').fill(sentence);
+	await dialog.getByRole('button', { name: 'Guardar' }).click();
+	return dialog;
+}
+
+/** Troca o idioma ativo pelo seletor da barra lateral. */
+export async function switchLanguage(page: Page, name: string, code: string) {
+	const side = page.getByRole('complementary', { name: 'Navegação' });
+	await side.getByLabel(/Trocar idioma/).click();
+	await side.getByRole('menuitemradio', { name: new RegExp(name) }).click();
+	await expect(side.getByTestId('idioma-ativo')).toHaveText(code);
 }
