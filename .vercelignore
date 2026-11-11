@@ -1,0 +1,8 @@
+# O CLI do Vercel não lê o .gitignore: sem isto, os .env locais (com segredos) sobem no deploy.
+# Produção usa as variáveis do projeto no Vercel.
+.env
+.env.*
+!.env.example
+prototypes/
+test-results/
+playwright-report/

@@ -91,6 +91,13 @@ test('API v1: salvar com encontro e obra, repetir, listar com prefer, visto e CO
 	expect((await api(page.request, null).get('/api/v1/me')).status()).toBe(401);
 	expect((await api(page.request, 'lr_' + 'x'.repeat(43)).get('/api/v1/me')).status()).toBe(401);
 
+	// Rota que não existe (as de antes da v1 inclusive): 404 em JSON, com CORS.
+	for (const path of ['/api/me', '/api/words', '/api/v1/nada']) {
+		const missing = await client.get(path);
+		expect(missing.status()).toBe(404);
+		expect(await missing.json()).toEqual({ message: 'Rota não encontrada.' });
+	}
+
 	// CORS: preflight do fork passa; origem estranha não ganha cabeçalho.
 	const pre = await page.request.fetch('/api/v1/items', {
 		method: 'OPTIONS',

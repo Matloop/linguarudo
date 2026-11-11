@@ -8,7 +8,10 @@ import { corsHeaders } from '#lib/server/api.ts';
 const handleApi: Handle = async ({ event, resolve }) => {
 	const cors = corsHeaders(event.request.headers.get('origin'));
 	if (event.request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-	const response = await resolve(event);
+	// Sem rota, o resolve renderizaria a página de erro, que precisa da sessão que /api não monta.
+	const response = event.route.id
+		? await resolve(event)
+		: Response.json({ message: 'Rota não encontrada.' }, { status: 404 });
 	cors.forEach((value, key) => response.headers.set(key, value));
 	response.headers.set('Cache-Control', 'no-store');
 	return response;
