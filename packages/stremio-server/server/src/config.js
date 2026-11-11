@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { createMockProvider } from './providers/mock.js';
 import { createClaudeProvider, DEFAULT_EFFORT, DEFAULT_MODEL } from './providers/claude.js';
 import { createClaudeCodeProvider, DEFAULT_CLI_MODEL } from './providers/claude-code.js';
+import { createOpusMtTranslator, DEFAULT_MT_THREADS } from './mt/opus-mt.js';
+import { openDictionaries } from './dict/wiktionary.js';
 
 const PROVIDERS = ['claude', 'claude-code', 'mock'];
 
@@ -35,4 +37,24 @@ export function selectProvider(env = process.env, { claudeCli } = {}) {
     model: env.LINGOBLEND_MODEL || DEFAULT_MODEL,
     effort: env.LINGOBLEND_EFFORT ?? DEFAULT_EFFORT,
   });
+}
+
+/**
+ * Tradutor local (OPUS-MT em ONNX). LINGOBLEND_MT_DIR: pasta do modelo (padrão: defaultDir);
+ * LINGOBLEND_MT_THREADS: threads do onnxruntime por fala (padrão 4). Sem modelo instalado o
+ * tradutor volta com available: false e o servidor sobe do mesmo jeito.
+ */
+export function selectTranslator(env = process.env, { defaultDir, log = console } = {}) {
+  const raw = (env.LINGOBLEND_MT_THREADS ?? '').trim();
+  const threads = raw ? Number(raw) : DEFAULT_MT_THREADS;
+  if (!Number.isInteger(threads) || threads < 1) throw new Error(`LINGOBLEND_MT_THREADS inválido: "${raw}" (use um inteiro ≥ 1)`);
+  return createOpusMtTranslator({ dir: env.LINGOBLEND_MT_DIR || defaultDir, threads, log });
+}
+
+/**
+ * Dicionários locais do cartão de palavra (Wiktionary). LINGOBLEND_DICT_DIR: pasta dos
+ * <idioma>.sqlite (padrão: defaultDir). Pasta vazia ou ausente: nenhum dicionário, o servidor sobe igual.
+ */
+export function selectDictionaries(env = process.env, { defaultDir, log = console } = {}) {
+  return openDictionaries({ dir: env.LINGOBLEND_DICT_DIR || defaultDir, log });
 }

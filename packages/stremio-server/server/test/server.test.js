@@ -258,7 +258,7 @@ test('HTTP: /health, /annotate (mock), CORS, erros', async () => {
       let r = await fetch(`${base}/health`);
       assert.equal(r.status, 200);
       assert.equal(r.headers.get('access-control-allow-origin'), '*');
-      assert.deepEqual(await r.json(), { ok: true, provider: 'mock', model: 'mock-dict-v1' });
+      assert.deepEqual(await r.json(), { ok: true, provider: 'mock', model: 'mock-dict-v1', mt: { available: false, model: null }, dict: { languages: {} } });
 
       r = await fetch(`${base}/annotate`, { method: 'OPTIONS', headers: { Origin: 'http://localhost:8080', 'Access-Control-Request-Method': 'POST' } });
       assert.equal(r.status, 204);

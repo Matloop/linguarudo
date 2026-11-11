@@ -3,6 +3,8 @@
 #   ./start.sh            → servidor + addon de teste + UI em :8080 + abre o Stremio
 #   Traduções: usa o Claude Code logado (assinatura, Haiku) se o `claude` estiver instalado;
 #   com ANTHROPIC_API_KEY usa a API; LINGOBLEND_PROVIDER=mock força o dicionário offline.
+#   Tecla T (tradução da fala): modelo local OPUS-MT, se instalado com server/scripts/setup-mt.sh
+#   (sem ele, o player oferece "Traduzir com IA").
 #   LINGOBLEND_BUILD=1 ./start.sh             → recompila o stremio-web antes
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"

@@ -111,17 +111,18 @@ Cues sem anotação podem ficar fora do mapa. O cliente manda lotes de até ~80 
 
 | Status | `code` |
 |---|---|
-| 400 | `invalid_json`, `invalid_body`, `missing_source_lang`, `invalid_source_lang`, `missing_target_lang`, `invalid_target_lang`, `missing_native_language`, `invalid_native_language`, `missing_lang`, `invalid_lang` (`/lookup`), `empty_text`, `text_too_long`, `invalid_density`, `invalid_cues`, `too_many_cues`, `invalid_prefer_words`, `too_many_prefer_words` |
+| 400 | `invalid_json`, `invalid_body`, `missing_source_lang`, `invalid_source_lang`, `missing_target_lang`, `invalid_target_lang`, `missing_native_language`, `invalid_native_language`, `missing_lang`, `invalid_lang` (`/lookup`), `empty_text`, `text_too_long`, `invalid_density`, `invalid_cues`, `too_many_cues`, `invalid_prefer_words`, `too_many_prefer_words`, `invalid_engine` (`/translate`, `/lookup`) |
 | 404 | `not_found` |
 | 405 | `method_not_allowed` |
 | 413 | `body_too_large` (corpo > 2 MB; 64 KB em `/lookup` e `/translate`) |
+| 422 | `local_unavailable` (`/translate` com `engine: "local"` sem rota local ou sem o modelo) |
 | 501 | `not_supported` (provider sem `lookup`/`translate`) |
 | 502 | `provider_error` (falha no provider/Claude) |
-| 500 | `internal` |
+| 500 | `internal`, `local_error` (falha da tradução local) |
 
 `missing_*` = campo ausente ou vazio; `invalid_*` = não é uma tag BCP 47 válida.
 
-`GET /health` → `{ ok: true, provider: "claude"|"claude-code"|"mock", model }`. CORS liberado para qualquer origem local.
+`GET /health` → `{ ok: true, provider: "claude"|"claude-code"|"mock", model, mt: { available, model, reason? } }` (`mt` = tradução local da seção 6; `reason` diz como instalar o modelo). CORS liberado para qualquer origem local.
 
 ## 5. Linguetta: `/api/v1` com token
 
@@ -258,32 +259,69 @@ lingoBlend.getVisibleCues();        // [{ id, text }] das falas na tela
 ### Servidor: `POST /lookup`
 
 ```js
-// pedido
-{ lang: "it", nativeLanguage: "pt-BR", text: "facevo finta di", sentence: "Facevo finta di dormire, ma ti ho sentito." }
-// resposta
-{ lemma: "fare finta di", reading: "", ipa: "/ˈfa.re ˈfin.ta di/", pos: "expr.", meaning: "fingir", translation: "Eu fingia dormir, mas te ouvi." }
-// japonês, nativa inglês
-{ lang: "ja", nativeLanguage: "en", text: "食べ", sentence: "私は毎朝パンを食べます" }
-→ { lemma: "食べる", reading: "たべる", ipa: "/ta.be.ɾɯ/", pos: "verb (ichidan)", meaning: "to eat", translation: "I eat bread every morning." }
+// pedido (engine é opcional; padrão "local")
+{ lang: "it", nativeLanguage: "pt-BR", text: "Pulitissima", sentence: "Pulitissima, come la mia coscienza.", engine: "local" }
+// resposta local: dicionário (Wiktionary) + tradução local (OPUS-MT)
+{
+  lemma: "pulito", reading: "", ipa: "/puˈli.to/", pos: "adj.",
+  meaning: "limpo",                                    // tradução local do lema
+  translation: "Limpíssima, como a minha consciência.", // tradução local da fala
+  engine: "local", found: true,
+  senses: ["clean", "(figuratively) pure, honest", …],   // acepções do Wiktionary em inglês, até 5
+  grammar: ["feminine singular of pulitissimo", "superlative degree of pulito"], // caminho da forma até o lema
+  source: { name: "Wiktionary", license: "CC BY-SA 4.0", via: "kaikki.org (Wiktextract)", url: "https://en.wiktionary.org/wiki/pulito#Italian" }
+}
+// engine: "ai" — a resposta de sempre, gerada pelo provider (Claude), com os campos novos fixos
+{ lemma: "fare finta di", reading: "", ipa: "/ˈfa.re ˈfin.ta di/", pos: "expr.", meaning: "fingir", translation: "Eu fingia dormir, mas te ouvi.",
+  engine: "ai", found: true, senses: [], grammar: [], source: null }
+// japonês, nativa inglês, engine "ai"
+{ lang: "ja", nativeLanguage: "en", text: "食べ", sentence: "私は毎朝パンを食べます", engine: "ai" }
+→ { lemma: "食べる", reading: "たべる", ipa: "/ta.be.ɾɯ/", pos: "verb (ichidan)", meaning: "to eat", translation: "I eat bread every morning.", engine: "ai", … }
 ```
 
 - `lang` (idioma da legenda/estudo) e `nativeLanguage` são **obrigatórios** (400 `missing_lang`/`invalid_lang`, `missing_native_language`/`invalid_native_language`).
-- `lemma` é a forma de dicionário (infinitivo onde o idioma tem, singular, masculino singular nos adjetivos com gênero, forma de dicionário dos verbos japoneses; idioma sem flexão devolve a palavra como está; expressão na forma canônica), com a caixa do dicionário ("Haus"). Sem lema, vale a seleção. Seleção toda em maiúsculas desce para minúsculas, só em escritas com caixa.
-- `reading`: sempre presente (string). Furigana em kana no japonês, pinyin com tons no chinês, romanização usual em outras escritas não latinas; vazio em escrita latina. Fica separado de `ipa`.
-- `pos`, `meaning` e `translation` vêm na língua nativa.
-- `text` até 80 caracteres, `sentence` até 500. Cache em disco por idioma, língua nativa, `lemmaKey` da seleção e fala.
+- `engine`: `"local"` (padrão) ou `"ai"`; outro valor → 400 `invalid_engine`. A IA só é chamada com `"ai"`, que o cliente só manda num clique.
+- `lemma` é a forma de dicionário (infinitivo onde o idioma tem, singular, masculino singular nos adjetivos com gênero, forma de dicionário dos verbos japoneses; idioma sem flexão devolve a palavra como está; expressão na forma canônica), com a caixa do dicionário ("Haus", "Roma"). Sem lema, vale a seleção. Seleção toda em maiúsculas desce para minúsculas, só em escritas com caixa.
+- `reading`: sempre presente (string). Furigana em kana no japonês, pinyin com tons no chinês, romanização usual em outras escritas não latinas; vazio em escrita latina e no motor local. Fica separado de `ipa`.
+- `pos`, `meaning` e `translation` vêm na língua nativa (no motor local, `pos` sai em português quando a nativa é `pt` e em inglês nos outros casos).
+- `text` até 80 caracteres, `sentence` até 500.
+
+**Motor local.** Um dicionário por idioma em `server/.dict/<base>.sqlite` (ou `LINGOBLEND_DICT_DIR`), gerado por `server/scripts/setup-dict.sh <idioma>` a partir do Wiktionary em inglês extraído pelo Wiktextract (kaikki.org). Escolhido pela subtag base (`it-CH` usa `it`). Hoje só o italiano está instalado; outro idioma é só rodar o script.
+
+- Lema: o verbete da seleção; se ele é forma flexionada ("form of", "alt of"), segue a remissão até o lema (no máximo 5 saltos, sem ciclos), e cada salto vira uma nota em `grammar`. Também procura na tabela de formas dos lemas. Maiúscula de começo de fala vale como minúscula ("Facevo" → fare); no meio da fala, casa a caixa ("Roma" → Roma, nome). Quando a mesma forma tem verbetes de classes diferentes, a palavra anterior desempata (artigo → substantivo: "la porta" → porta; pronome → verbo: "lui porta" → portare).
+- Expressão: primeiro o verbete exato ("in bocca al lupo"); senão os lemas de cada palavra juntos, se formarem um verbete ("facevo finta" → fare finta); senão um verbete dentro da seleção com as pontas que já são lema ("facevo finta di" → "fare finta di", acepções de "fare finta"). Senão, `found: false`.
+- `found: false` (sem verbete): `lemma` = seleção, `ipa`/`pos` vazios, `senses`/`grammar` vazios, `source: null`; `meaning` e `translation` continuam vindo da tradução local.
+- `meaning` é a tradução local da palavra de cabeça do verbete (o lema, ou a expressão achada), não da forma flexionada (o OPUS-MT traduz melhor o lema: "pulito" → "limpo"; "pulitissima" sozinha vira "Limpeza."). Sem verbete, traduz a seleção. Ponto final e maiúscula inicial que o modelo acrescenta saem.
+- Sem rota local (ex.: ja→pt) ou sem o modelo: `meaning` e `translation` vazios; os campos do dicionário vêm normalmente se houver dicionário do idioma. Mesmo idioma: `meaning` vazio e `translation` = a fala.
+- `ipa` só aparece quando o lema é a própria palavra de cabeça do verbete.
+- `senses`: acepções em inglês (`"(tags) glosa"`), no máximo 5; quando o lema é remissão sem acepção própria, as notas da remissão.
+- Atribuição: com `found: true`, `source` traz nome, licença (CC BY-SA 4.0; o Wiktionary também é GFDL) e o link do verbete; o cliente mostra "Wiktionary" no cartão.
+
+**Cache em disco.** Local: chave `lookup-local` com a versão do dicionário (esquema + data de geração), o modelo local, idioma, língua nativa, seleção e fala; as traduções reaproveitam o cache do `/translate`. Uma tradução local que falhou não vai para o cache. IA: a mesma chave de antes (provider + modelo, idioma, língua nativa, `lemmaKey` da seleção e fala), então o cache antigo continua valendo. `/health` informa os dicionários instalados em `dict.languages` (`{ it: { entries, builtAt } }`), ou `dict.reason` com a dica de instalação.
 
 ### Servidor: `POST /translate`
 
 ```js
-{ sourceLang: "it", nativeLanguage: "pt-BR", text: "Ciao!" }
-→ { translation: "Oi!" }
+{ sourceLang: "it", nativeLanguage: "pt-BR", text: "Ciao!", engine: "local" }
+→ { translation: "Oi!", engine: "local" }
 ```
 
-`nativeLanguage` (**obrigatório**, sem padrão) é o idioma de destino; o antigo `targetLang` saiu. Se for o mesmo idioma de `sourceLang`, a fala volta como está. Usado ao segurar **T**: a fala na tela na língua nativa, sem pausar. Cache em disco (por idioma de origem, língua nativa e texto) e no cliente.
+`nativeLanguage` (**obrigatório**, sem padrão) é o idioma de destino; o antigo `targetLang` saiu (o cliente ainda o manda, o servidor ignora). Se for o mesmo idioma de `sourceLang`, a fala volta como está. Usado ao segurar **T**: a fala na tela na língua nativa, sem pausar.
+
+`engine` escolhe quem traduz:
+
+- `"local"` (padrão): OPUS-MT `Helsinki-NLP/opus-mt-tc-big-itc-itc` em ONNX int8, dentro do servidor (onnxruntime-node, sem rede, ~50–100 ms por fala). Só entre línguas românicas: origem no conjunto do modelo (ast, ca, es, fr, gl, it, lad, oc, pms, pt, ro) e destino com token `>>xxx<<` no vocabulário (`pt` e `pt-BR` → `>>pob<<`, outras regiões de `pt` → `>>por<<`). Sem rota ou sem o modelo instalado → **422 `local_unavailable`**; falha do modelo → 500 `local_error`. `" / "` (quebra de linha da legenda) vira espaço antes de traduzir.
+- `"ai"`: o provider (Claude), como antes.
+
+Outro valor → 400 `invalid_engine`. Cache em disco por motor e modelo (local: modelo + revisão; IA: provider + modelo), idioma de origem, língua nativa e texto; no cliente, por motor.
 
 ### No `stremio-web`
 
 - Ligar o modo escolhe a primeira faixa extra na língua-alvo, uma vez por vídeo; sem nenhuma, o menu mostra "Nenhuma legenda em <língua>".
-- O cartão abre com esqueleto, chama `/lookup` e mostra a leitura (acima do lema, quando houver), lema, IPA, classe, "Nesta fala: <seleção>" e a fala traduzida. Salvar manda `SaveItem` com o lema canônico, `encounter.form` = seleção, `sentence` = a fala e `translation` = a fala traduzida.
+- O cartão abre com esqueleto, chama `/lookup` com `engine: "local"` e mostra a leitura (acima do lema, quando houver), lema, IPA, classe, as notas de gramática, "Nesta fala: <seleção>", o significado, as acepções em inglês ("Em inglês · Wiktionary", até 3) e a fala traduzida. O rótulo do topo diz de onde veio ("Wiktionary · tradução local" ou "✦ IA").
+- Sem verbete aparece "sem verbete no dicionário"; sem tradução local, a linha da fala diz "Sem tradução local para este idioma".
+- O botão "✦ Explicar com IA" (sempre presente no cartão local) pede `/lookup` com `engine: "ai"` e troca lema, classe, significado e tradução pela resposta da IA, marcada "✦ IA". As acepções do Wiktionary ficam só se o lema da IA for o mesmo. Cache do cliente por motor: reabrir a palavra depois de pedir a IA mostra a versão da IA.
+- Salvar manda `SaveItem` com o lema, `encounter.form` = seleção, `sentence` = a fala e `translation` = a fala traduzida. Lema: o do dicionário quando `found`, o da IA depois do botão, senão a seleção. Enquanto a IA responde, Salvar fica desabilitado.
 - Se o `/lookup` falhar, dá para salvar com a seleção como lema.
+- Segurar **T** mostra a fala traduzida pela tradução local (o rótulo diz "· tradução local" ou "· IA"). **Shift+T** vai direto para a IA. Sem rota local (422) aparece "Sem tradução local para este idioma"; em outro erro, a mensagem do erro. Nos dois casos, e junto da tradução local, há o botão "✦ Traduzir com IA" (aceita clique e não deixa o clique chegar ao player).
+- Depois que a IA traduziu uma fala, segurar **T** de novo nela mostra a versão da IA (cache do cliente por motor).
