@@ -1,6 +1,9 @@
 // Modo "só língua-alvo": a legenda já está na língua que o usuário estuda.
 //   POST /lookup    { lang, nativeLanguage, text, sentence } → { lemma, reading, ipa, pos, meaning, translation }
-//   POST /translate { sourceLang, nativeLanguage, text }     → { translation }
+//   POST /translate { sourceLang, nativeLanguage, text, engine? } → { translation, engine }
+//     engine "local" (padrão): OPUS-MT no próprio servidor (src/mt); sem rota local para o par
+//     ou sem modelo instalado → 422 local_unavailable, e o cliente oferece a IA.
+//     engine "ai": o provider (Claude / Claude Code / mock).
 // Os dois ficam no cache em disco: a mesma fala/seleção não custa de novo.
 import { lemmaKey } from '@linguetta/language';
 import { HttpError } from './errors.js';
@@ -9,6 +12,7 @@ import { cleanLemma, requireLanguage, sameLanguage } from './lang.js';
 
 export const MAX_SELECTION = 80;
 export const MAX_SENTENCE = 500;
+export const ENGINES = ['local', 'ai'];
 
 const clean = (v) => (typeof v === 'string' ? v.normalize('NFC').trim() : '');
 const oneLine = (v) => clean(v).replace(/\s+/g, ' ');
@@ -39,7 +43,9 @@ export function parseTranslateRequest(raw) {
   const sourceLang = requireLanguage(b.sourceLang, 'sourceLang');
   const nativeLanguage = requireLanguage(b.nativeLanguage, 'nativeLanguage');
   const text = requireText(b.text, MAX_SENTENCE, false);
-  return { sourceLang, nativeLanguage, text };
+  const engine = b.engine === undefined || b.engine === null ? 'local' : b.engine;
+  if (!ENGINES.includes(engine)) throw new HttpError(400, 'invalid_engine', `engine deve ser ${ENGINES.map((e) => `"${e}"`).join(' ou ')}`);
+  return { sourceLang, nativeLanguage, text, engine };
 }
 
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -80,10 +86,34 @@ export async function lookup({ provider, cache }, req) {
   return { result: out.value, cached: out.cached };
 }
 
-export async function translate({ provider, cache }, req) {
-  needs(provider, 'translate');
-  if (sameLanguage(req.sourceLang, req.nativeLanguage)) return { translation: req.text, cached: false };
-  const key = lookupKey('translate', provider.name, provider.model, [req.sourceLang, req.nativeLanguage, req.text]);
-  const out = await cached(cache, key, async () => ({ translation: str(await provider.translate(req), MAX_SENTENCE * 2) }));
-  return { translation: out.value.translation, cached: out.cached };
+/**
+ * Tradução da fala inteira para a língua nativa.
+ * translator: tradutor local (src/mt/opus-mt.js) ou null; { name, model, revision?, available, route, translate }.
+ */
+export async function translate({ provider, translator = null, cache }, req) {
+  const engine = req.engine ?? 'local';
+  if (sameLanguage(req.sourceLang, req.nativeLanguage)) return { translation: req.text, engine, cached: false };
+  const parts = [req.sourceLang, req.nativeLanguage, req.text];
+  let key;
+  let compute;
+  if (engine === 'local') {
+    if (!translator?.available || !translator.route(req.sourceLang, req.nativeLanguage)) {
+      throw new HttpError(422, 'local_unavailable', `sem tradução local ${req.sourceLang}->${req.nativeLanguage}`);
+    }
+    const model = translator.revision ? `${translator.model}@${translator.revision}` : translator.model;
+    key = lookupKey('translate-local', translator.name, model, parts);
+    compute = async () => {
+      try {
+        return { translation: str(await translator.translate(req), MAX_SENTENCE * 2) };
+      } catch (e) {
+        throw new HttpError(500, 'local_error', `tradução local falhou: ${e.message}`);
+      }
+    };
+  } else {
+    needs(provider, 'translate');
+    key = lookupKey('translate-ai', provider.name, provider.model, parts);
+    compute = async () => ({ translation: str(await provider.translate(req), MAX_SENTENCE * 2) });
+  }
+  const out = await cached(cache, key, compute);
+  return { translation: out.value.translation, engine, cached: out.cached };
 }

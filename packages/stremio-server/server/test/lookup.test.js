@@ -33,8 +33,10 @@ test('parseLookupRequest normaliza idiomas, espaço da seleção e exige texto e
   assert.throws(() => parseLookupRequest([]), code('invalid_body'));
 });
 
-test('parseTranslateRequest: traduz para nativeLanguage, sem padrão', () => {
-  assert.deepEqual(parseTranslateRequest({ sourceLang: 'it', nativeLanguage: 'de', text: ' Ciao ' }), { sourceLang: 'it', nativeLanguage: 'de', text: 'Ciao' });
+test('parseTranslateRequest: traduz para nativeLanguage, sem padrão; engine local por padrão', () => {
+  assert.deepEqual(parseTranslateRequest({ sourceLang: 'it', nativeLanguage: 'de', text: ' Ciao ' }), { sourceLang: 'it', nativeLanguage: 'de', text: 'Ciao', engine: 'local' });
+  assert.equal(parseTranslateRequest({ sourceLang: 'it', nativeLanguage: 'pt', text: 'Ciao', engine: 'ai' }).engine, 'ai');
+  assert.throws(() => parseTranslateRequest({ sourceLang: 'it', nativeLanguage: 'pt', text: 'Ciao', engine: 'gpt' }), code('invalid_engine'));
   assert.throws(() => parseTranslateRequest({ sourceLang: 'it', text: 'Ciao' }), code('missing_native_language'));
   assert.throws(() => parseTranslateRequest({ sourceLang: 'it', nativeLanguage: 'pt', text: '' }), code('empty_text'));
 });
@@ -94,7 +96,7 @@ test('lookup e translate usam o cache em disco', async () => {
     assert.equal((await lookup({ provider, cache }, { ...req, nativeLanguage: 'en' })).cached, false);
     assert.equal(lookups, 2);
 
-    const t = { sourceLang: 'it', nativeLanguage: 'pt', text: SENT };
+    const t = { sourceLang: 'it', nativeLanguage: 'pt', text: SENT, engine: 'ai' };
     assert.equal((await translate({ provider, cache }, t)).translation, 'Eu fingia dormir.');
     assert.equal((await translate({ provider, cache }, t)).cached, true);
     assert.equal(translations, 1);
@@ -157,9 +159,13 @@ test('HTTP: /lookup e /translate', async () => {
     r = await post('/translate', { sourceLang: 'it', text: 'Ciao' });
     assert.equal(r.status, 400);
     assert.equal((await r.json()).code, 'missing_native_language');
-    r = await post('/translate', { sourceLang: 'it', nativeLanguage: 'pt', text: 'Ciao' });
+    r = await post('/translate', { sourceLang: 'it', nativeLanguage: 'pt', text: 'Ciao', engine: 'ai' });
     assert.equal(r.status, 200);
-    assert.deepEqual(await r.json(), { translation: '' });
+    assert.deepEqual(await r.json(), { translation: '', engine: 'ai' });
+    // sem tradutor local: o padrão (local) dá 422 para o cliente oferecer a IA
+    r = await post('/translate', { sourceLang: 'it', nativeLanguage: 'pt', text: 'Ciao' });
+    assert.equal(r.status, 422);
+    assert.equal((await r.json()).code, 'local_unavailable');
     r = await fetch(`${base}/lookup`);
     assert.equal(r.status, 405);
   } finally {

@@ -111,17 +111,18 @@ Cues sem anotação podem ficar fora do mapa. O cliente manda lotes de até ~80 
 
 | Status | `code` |
 |---|---|
-| 400 | `invalid_json`, `invalid_body`, `missing_source_lang`, `invalid_source_lang`, `missing_target_lang`, `invalid_target_lang`, `missing_native_language`, `invalid_native_language`, `missing_lang`, `invalid_lang` (`/lookup`), `empty_text`, `text_too_long`, `invalid_density`, `invalid_cues`, `too_many_cues`, `invalid_prefer_words`, `too_many_prefer_words` |
+| 400 | `invalid_json`, `invalid_body`, `missing_source_lang`, `invalid_source_lang`, `missing_target_lang`, `invalid_target_lang`, `missing_native_language`, `invalid_native_language`, `missing_lang`, `invalid_lang` (`/lookup`), `empty_text`, `text_too_long`, `invalid_density`, `invalid_cues`, `too_many_cues`, `invalid_prefer_words`, `too_many_prefer_words`, `invalid_engine` (`/translate`) |
 | 404 | `not_found` |
 | 405 | `method_not_allowed` |
 | 413 | `body_too_large` (corpo > 2 MB; 64 KB em `/lookup` e `/translate`) |
+| 422 | `local_unavailable` (`/translate` com `engine: "local"` sem rota local ou sem o modelo) |
 | 501 | `not_supported` (provider sem `lookup`/`translate`) |
 | 502 | `provider_error` (falha no provider/Claude) |
-| 500 | `internal` |
+| 500 | `internal`, `local_error` (falha da tradução local) |
 
 `missing_*` = campo ausente ou vazio; `invalid_*` = não é uma tag BCP 47 válida.
 
-`GET /health` → `{ ok: true, provider: "claude"|"claude-code"|"mock", model }`. CORS liberado para qualquer origem local.
+`GET /health` → `{ ok: true, provider: "claude"|"claude-code"|"mock", model, mt: { available, model, reason? } }` (`mt` = tradução local da seção 6; `reason` diz como instalar o modelo). CORS liberado para qualquer origem local.
 
 ## 5. Linguetta: `/api/v1` com token
 
@@ -276,14 +277,23 @@ lingoBlend.getVisibleCues();        // [{ id, text }] das falas na tela
 ### Servidor: `POST /translate`
 
 ```js
-{ sourceLang: "it", nativeLanguage: "pt-BR", text: "Ciao!" }
-→ { translation: "Oi!" }
+{ sourceLang: "it", nativeLanguage: "pt-BR", text: "Ciao!", engine: "local" }
+→ { translation: "Oi!", engine: "local" }
 ```
 
-`nativeLanguage` (**obrigatório**, sem padrão) é o idioma de destino; o antigo `targetLang` saiu. Se for o mesmo idioma de `sourceLang`, a fala volta como está. Usado ao segurar **T**: a fala na tela na língua nativa, sem pausar. Cache em disco (por idioma de origem, língua nativa e texto) e no cliente.
+`nativeLanguage` (**obrigatório**, sem padrão) é o idioma de destino; o antigo `targetLang` saiu (o cliente ainda o manda, o servidor ignora). Se for o mesmo idioma de `sourceLang`, a fala volta como está. Usado ao segurar **T**: a fala na tela na língua nativa, sem pausar.
+
+`engine` escolhe quem traduz:
+
+- `"local"` (padrão): OPUS-MT `Helsinki-NLP/opus-mt-tc-big-itc-itc` em ONNX int8, dentro do servidor (onnxruntime-node, sem rede, ~50–100 ms por fala). Só entre línguas românicas: origem no conjunto do modelo (ast, ca, es, fr, gl, it, lad, oc, pms, pt, ro) e destino com token `>>xxx<<` no vocabulário (`pt` e `pt-BR` → `>>pob<<`, outras regiões de `pt` → `>>por<<`). Sem rota ou sem o modelo instalado → **422 `local_unavailable`**; falha do modelo → 500 `local_error`. `" / "` (quebra de linha da legenda) vira espaço antes de traduzir.
+- `"ai"`: o provider (Claude), como antes.
+
+Outro valor → 400 `invalid_engine`. Cache em disco por motor e modelo (local: modelo + revisão; IA: provider + modelo), idioma de origem, língua nativa e texto; no cliente, por motor.
 
 ### No `stremio-web`
 
 - Ligar o modo escolhe a primeira faixa extra na língua-alvo, uma vez por vídeo; sem nenhuma, o menu mostra "Nenhuma legenda em <língua>".
 - O cartão abre com esqueleto, chama `/lookup` e mostra a leitura (acima do lema, quando houver), lema, IPA, classe, "Nesta fala: <seleção>" e a fala traduzida. Salvar manda `SaveItem` com o lema canônico, `encounter.form` = seleção, `sentence` = a fala e `translation` = a fala traduzida.
 - Se o `/lookup` falhar, dá para salvar com a seleção como lema.
+- Segurar **T** mostra a fala traduzida pela tradução local (o rótulo diz "· tradução local" ou "· IA"). **Shift+T** vai direto para a IA. Sem rota local (422) aparece "Sem tradução local para este idioma"; em outro erro, a mensagem do erro. Nos dois casos, e junto da tradução local, há o botão "✦ Traduzir com IA" (aceita clique e não deixa o clique chegar ao player).
+- Depois que a IA traduziu uma fala, segurar **T** de novo nela mostra a versão da IA (cache do cliente por motor).

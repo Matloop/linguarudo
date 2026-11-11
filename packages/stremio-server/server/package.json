@@ -13,7 +13,8 @@
     "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@linguetta/language": "workspace:*",
-    "@anthropic-ai/sdk": "^1.8.0"
+    "onnxruntime-node": "^1.31.1"
   }
 }
