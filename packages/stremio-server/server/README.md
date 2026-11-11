@@ -48,6 +48,22 @@ Variáveis do script: `MT_PYTHON` (Python do venv, padrão `python3`), `MT_TORCH
 
 Modelo: Helsinki-NLP / OPUS-MT ([Tiedemann & Thottingal, 2020](https://aclanthology.org/2020.eamt-1.61/); [Tiedemann et al., 2023](https://doi.org/10.1007/s10579-023-09704-w)), licença [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/). O arquivo `MODEL_CARD.md` na pasta do modelo é o card original.
 
+## Dicionário local do cartão de palavra (Wiktionary)
+
+No modo "Só <língua>", clicar numa palavra abre o cartão sem IA: lema, IPA, classe e notas de gramática vêm de um dicionário local, e o significado e a fala vêm da tradução local acima. O botão "✦ Explicar com IA" pede a versão do Claude (`/lookup` com `engine: "ai"`). Contrato em `../docs/CONTRACT.md`, seção 6.
+
+Instalar o dicionário de um idioma (uma vez; precisa de Node ≥ 22.13 e curl):
+
+```sh
+server/scripts/setup-dict.sh it
+```
+
+O script baixa a extração do Wiktionary em inglês para o idioma (`kaikki.org-dictionary-Italian.jsonl.gz`, ~75 MB) e gera `server/.dict/it.sqlite` (`node:sqlite`, ~115 MB; ~45 s com o download). O download é apagado no fim (`DICT_KEEP_DOWNLOAD=1` o guarda). A pasta `.dict/` fica fora do git. O kaikki marcou os arquivos por idioma como "deprecated"; se sumirem, `DICT_URL=https://kaikki.org/dictionary/raw-wiktextract-data.jsonl.gz` usa o dump completo (~3 GB), filtrado pelo idioma. Com um arquivo já baixado: `node scripts/build-dict.js it arquivo.jsonl.gz .dict`.
+
+Qualquer idioma que o Wiktionary em inglês cobre funciona do mesmo jeito (`setup-dict.sh fr`, `setup-dict.sh de`…); o servidor carrega todo `<pasta>/<base>.sqlite` ao subir (reinicie depois de instalar) e escolhe pelo idioma da legenda. Sem dicionário do idioma, o cartão local sai com "sem verbete no dicionário" e só as traduções.
+
+Dados: [Wiktionary](https://en.wiktionary.org/) (colaboradores do Wiktionary), licença [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) e GFDL, extraídos pelo [Wiktextract](https://github.com/tatuylonen/wiktextract) ([Ylonen, 2022](https://aclanthology.org/2022.lrec-1.140/)) e distribuídos pelo [kaikki.org](https://kaikki.org/). O cartão mostra "Wiktionary" com o link do verbete. O banco gerado é obra derivada e segue a mesma licença.
+
 ## Variáveis de ambiente
 
 | Variável | Padrão | Uso |
@@ -60,6 +76,7 @@ Modelo: Helsinki-NLP / OPUS-MT ([Tiedemann & Thottingal, 2020](https://aclanthol
 | `LINGOBLEND_EFFORT` | (vazio) | Esforço do modelo (`low`…`max`), só para modelos que aceitam, como Opus/Sonnet |
 | `LINGOBLEND_CACHE_DIR` | `server/.cache` | Pasta do cache em disco |
 | `LINGOBLEND_MT_DIR` | `server/.models/opus-mt-tc-big-itc-itc` | Pasta do modelo da tradução local (o `setup-mt.sh` usa a mesma) |
+| `LINGOBLEND_DICT_DIR` | `server/.dict` | Pasta dos dicionários locais `<idioma>.sqlite` (o `setup-dict.sh` usa a mesma) |
 | `LINGOBLEND_MT_THREADS` | `4` | Threads do onnxruntime por fala (inteiro ≥ 1; usar todos os núcleos foi mais lento) |
 
 ## Teste rápido
@@ -70,6 +87,8 @@ curl -s -X POST localhost:7979/annotate -H 'Content-Type: application/json' \
   -d '{"sourceLang":"pt","targetLang":"it","nativeLanguage":"pt-BR","density":0.1,"cues":[{"id":"c1","text":"Eu não quero só ir às festas."}]}'
 curl -s -X POST localhost:7979/translate -H 'Content-Type: application/json' \
   -d '{"sourceLang":"it","nativeLanguage":"pt-BR","text":"Ciao, come stai?","engine":"local"}'
+curl -s -X POST localhost:7979/lookup -H 'Content-Type: application/json' \
+  -d '{"lang":"it","nativeLanguage":"pt-BR","text":"Pulitissima","sentence":"Pulitissima, come la mia coscienza."}'
 ```
 
 Erros voltam como `{ "error": "...", "code": "..." }`: 400 (requisição inválida), 413 (corpo > 2 MB), 422 (sem tradução local), 502 (falha no provider).

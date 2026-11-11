@@ -135,8 +135,12 @@ function errorCode(err, status) {
   return status >= 500 ? 'internal' : 'bad_request';
 }
 
-/** translator: tradutor local (src/mt/opus-mt.js) ou null; sem ele, engine "local" dá 422. */
-export function createApp({ provider, translator = null, cache = null, log = console }) {
+/**
+ * translator: tradutor local (src/mt/opus-mt.js) ou null; sem ele, /translate local dá 422.
+ * dictionaries: dicionários locais (src/dict/wiktionary.js) ou null; sem eles, /lookup local
+ * responde found: false (só com as traduções locais).
+ */
+export function createApp({ provider, translator = null, dictionaries = null, cache = null, log = console }) {
   return createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     try {
@@ -146,7 +150,8 @@ export function createApp({ provider, translator = null, cache = null, log = con
         const mt = translator?.available
           ? { available: true, model: translator.model }
           : { available: false, model: null, ...(translator?.reason ? { reason: translator.reason } : {}) };
-        return send(res, 200, { ok: true, provider: provider.name, model: provider.model, mt });
+        const dict = { languages: dictionaries?.status() ?? {}, ...(dictionaries?.reason ? { reason: dictionaries.reason } : {}) };
+        return send(res, 200, { ok: true, provider: provider.name, model: provider.model, mt, dict });
       }
       if (url.pathname === '/lookup' || url.pathname === '/translate') {
         if (req.method !== 'POST') throw new HttpError(405, 'method_not_allowed', 'use POST');
@@ -154,8 +159,9 @@ export function createApp({ provider, translator = null, cache = null, log = con
         const t0 = Date.now();
         if (url.pathname === '/lookup') {
           const parsed = parseLookupRequest(body);
-          const out = await lookup({ provider, cache }, parsed);
-          log.info?.(`[lookup] ${parsed.lang}/${parsed.nativeLanguage} "${parsed.text}" → ${out.result.lemma}, ${out.cached ? 'cache' : provider.name} ${Date.now() - t0}ms`);
+          const out = await lookup({ provider, translator, dictionaries, cache }, parsed);
+          const by = parsed.engine === 'local' ? `local${out.result.found ? '' : ' sem verbete'}` : provider.name;
+          log.info?.(`[lookup] ${parsed.lang}/${parsed.nativeLanguage} ${parsed.engine} "${parsed.text}" → ${out.result.lemma}, ${out.cached ? 'cache' : by} ${Date.now() - t0}ms`);
           return send(res, 200, out.result);
         }
         const parsed = parseTranslateRequest(body);

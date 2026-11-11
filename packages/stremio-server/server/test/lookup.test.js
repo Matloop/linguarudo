@@ -21,7 +21,10 @@ test('parseLookupRequest normaliza idiomas, espaço da seleção e exige texto e
     nativeLanguage: 'pt-BR',
     text: 'facevo finta di',
     sentence: SENT,
+    engine: 'local',
   });
+  assert.equal(parseLookupRequest({ lang: 'it', nativeLanguage: 'pt', text: 'ciao', engine: 'ai' }).engine, 'ai');
+  assert.throws(() => parseLookupRequest({ lang: 'it', nativeLanguage: 'pt', text: 'ciao', engine: 'gpt' }), code('invalid_engine'));
   assert.equal(parseLookupRequest({ lang: 'zh-Hant', nativeLanguage: 'en', text: '學習' }).lang, 'zh-Hant');
   assert.equal(parseLookupRequest({ lang: 'it', nativeLanguage: 'pt', text: 'ciao' }).sentence, 'ciao');
   assert.throws(() => parseLookupRequest({ lang: 'it', nativeLanguage: 'pt', text: ' ' }), code('empty_text'));
@@ -52,7 +55,7 @@ test('validateLookup corta campos e cai na seleção quando falta o lema', () =>
 
 test('lookup em alemão mantém a maiúscula do substantivo (Haus)', async () => {
   const provider = { name: 'fake', model: 'm', lookup: async () => ({ lemma: 'Haus', reading: '', ipa: '/haʊ̯s/', pos: 'Subst. n.', meaning: 'casa', translation: '' }) };
-  const r = await lookup({ provider, cache: null }, { lang: 'de', nativeLanguage: 'pt', text: 'Häuser', sentence: 'Die Häuser sind alt.' });
+  const r = await lookup({ provider, cache: null }, { lang: 'de', nativeLanguage: 'pt', text: 'Häuser', sentence: 'Die Häuser sind alt.', engine: 'ai' });
   assert.equal(r.result.lemma, 'Haus');
   // seleção toda em maiúsculas cai para minúsculas só em escrita com caixa
   assert.equal(validateLookup('HAUS', {}, 'de').lemma, 'haus');
@@ -62,16 +65,16 @@ test('lookup em alemão mantém a maiúscula do substantivo (Haus)', async () =>
 
 test('mock: acha a palavra italiana pela forma ou pelo lema', async () => {
   const p = createMockProvider();
-  const r = await lookup({ provider: p, cache: null }, { lang: 'it', nativeLanguage: 'pt-BR', text: 'giorni', sentence: 'Tre giorni fa.' });
+  const r = await lookup({ provider: p, cache: null }, { lang: 'it', nativeLanguage: 'pt-BR', text: 'giorni', sentence: 'Tre giorni fa.', engine: 'ai' });
   assert.equal(r.result.lemma, 'giorno');
   assert.ok(r.result.meaning);
-  const miss = await lookup({ provider: p, cache: null }, { lang: 'it', nativeLanguage: 'pt', text: 'Pippo', sentence: 'Pippo.' });
+  const miss = await lookup({ provider: p, cache: null }, { lang: 'it', nativeLanguage: 'pt', text: 'Pippo', sentence: 'Pippo.', engine: 'ai' });
   assert.equal(miss.result.lemma, 'Pippo'); // nome próprio: a caixa fica
   assert.equal(miss.result.meaning, '');
   // par sem dicionário: formato válido, vazio
-  const other = await lookup({ provider: p, cache: null }, { lang: 'ja', nativeLanguage: 'en', text: '食べ', sentence: '食べます' });
-  assert.deepEqual(other.result, { lemma: '食べ', reading: '', ipa: '', pos: '', meaning: '', translation: '' });
-  assert.equal((await lookup({ provider: p, cache: null }, { lang: 'it', nativeLanguage: 'en', text: 'giorni', sentence: 'x' })).result.meaning, '');
+  const other = await lookup({ provider: p, cache: null }, { lang: 'ja', nativeLanguage: 'en', text: '食べ', sentence: '食べます', engine: 'ai' });
+  assert.deepEqual(other.result, { lemma: '食べ', reading: '', ipa: '', pos: '', meaning: '', translation: '', engine: 'ai', found: true, senses: [], grammar: [], source: null });
+  assert.equal((await lookup({ provider: p, cache: null }, { lang: 'it', nativeLanguage: 'en', text: 'giorni', sentence: 'x', engine: 'ai' })).result.meaning, '');
 });
 
 test('lookup e translate usam o cache em disco', async () => {
@@ -86,7 +89,7 @@ test('lookup e translate usam o cache em disco', async () => {
       translate: async () => (translations++, 'Eu fingia dormir.'),
     };
     const cache = createDiskCache(dir);
-    const req = { lang: 'it', nativeLanguage: 'pt', text: 'Facevo finta di', sentence: SENT };
+    const req = { lang: 'it', nativeLanguage: 'pt', text: 'Facevo finta di', sentence: SENT, engine: 'ai' };
     assert.equal((await lookup({ provider, cache }, req)).cached, false);
     const again = await lookup({ provider, cache }, { ...req, text: 'facevo finta di' });
     assert.equal(again.cached, true);
@@ -146,10 +149,16 @@ test('HTTP: /lookup e /translate', async () => {
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = (path, body) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   try {
-    let r = await post('/lookup', { lang: 'it', nativeLanguage: 'pt', text: 'notte', sentence: 'Buona notte.' });
+    let r = await post('/lookup', { lang: 'it', nativeLanguage: 'pt', text: 'notte', sentence: 'Buona notte.', engine: 'ai' });
     assert.equal(r.status, 200);
     assert.equal(r.headers.get('access-control-allow-origin'), '*');
     assert.equal((await r.json()).lemma, 'notte');
+    // padrão local, sem dicionário nem tradutor: abre com a seleção e found: false (nunca chama a IA)
+    r = await post('/lookup', { lang: 'it', nativeLanguage: 'pt', text: 'notti', sentence: 'Buone notti.' });
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), {
+      lemma: 'notti', reading: '', ipa: '', pos: '', meaning: '', translation: '', engine: 'local', found: false, senses: [], grammar: [], source: null,
+    });
     r = await post('/lookup', { lang: 'it', nativeLanguage: 'pt', text: '' });
     assert.equal(r.status, 400);
     assert.equal((await r.json()).code, 'empty_text');

@@ -3,6 +3,7 @@ import { createMockProvider } from './providers/mock.js';
 import { createClaudeProvider, DEFAULT_EFFORT, DEFAULT_MODEL } from './providers/claude.js';
 import { createClaudeCodeProvider, DEFAULT_CLI_MODEL } from './providers/claude-code.js';
 import { createOpusMtTranslator, DEFAULT_MT_THREADS } from './mt/opus-mt.js';
+import { openDictionaries } from './dict/wiktionary.js';
 
 const PROVIDERS = ['claude', 'claude-code', 'mock'];
 
@@ -48,4 +49,12 @@ export function selectTranslator(env = process.env, { defaultDir, log = console 
   const threads = raw ? Number(raw) : DEFAULT_MT_THREADS;
   if (!Number.isInteger(threads) || threads < 1) throw new Error(`LINGOBLEND_MT_THREADS inválido: "${raw}" (use um inteiro ≥ 1)`);
   return createOpusMtTranslator({ dir: env.LINGOBLEND_MT_DIR || defaultDir, threads, log });
+}
+
+/**
+ * Dicionários locais do cartão de palavra (Wiktionary). LINGOBLEND_DICT_DIR: pasta dos
+ * <idioma>.sqlite (padrão: defaultDir). Pasta vazia ou ausente: nenhum dicionário, o servidor sobe igual.
+ */
+export function selectDictionaries(env = process.env, { defaultDir, log = console } = {}) {
+  return openDictionaries({ dir: env.LINGOBLEND_DICT_DIR || defaultDir, log });
 }
