@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { isPausedIn, NEW_ORDERS, type NewOrder } from '#lib/decks.ts';
@@ -15,6 +16,7 @@
 	} from '#lib/decks-ui.ts';
 	import BulkBar from '#lib/ui/BulkBar.svelte';
 	import DeckPicker from '#lib/ui/DeckPicker.svelte';
+	import { clozePlain } from '#lib/fichas.ts';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Popover from '#lib/ui/Popover.svelte';
 	import { toast } from '#lib/ui/app-state.svelte.ts';
@@ -44,6 +46,17 @@
 	};
 
 	let tab = $state<DeckTab>('todas');
+
+	// Ver a resposta na lista é cola: fica escondida até a pessoa pedir.
+	const ANSWERS_KEY = 'linguetta.respostas';
+	let showAnswers = $state(false);
+	onMount(() => {
+		showAnswers = localStorage.getItem(ANSWERS_KEY) === '1';
+	});
+	function toggleAnswers() {
+		showAnswers = !showAnswers;
+		localStorage.setItem(ANSWERS_KEY, showAnswers ? '1' : '0');
+	}
 	const counts = $derived(
 		Object.fromEntries(
 			TABS.map(([k]) => [k, data.entries.filter((e) => inTab(e.flags, k)).length])
@@ -169,6 +182,12 @@
 
 	function onkeydown(e: KeyboardEvent) {
 		sel.onkeydown(e);
+		const t = e.target as HTMLElement | null;
+		const typing = t?.closest('input, textarea, select, [contenteditable]');
+		if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'h') {
+			e.preventDefault();
+			toggleAnswers();
+		}
 	}
 </script>
 
@@ -352,19 +371,31 @@
 		</div>
 	</div>
 {:else}
-	<nav class="seg tabs" aria-label="Filtro">
-		{#each tabs as [k, label] (k)}
-			<button
-				type="button"
-				data-f={k}
-				aria-pressed={tab === k}
-				onclick={() => {
-					tab = k;
-					sel.clear();
-				}}>{label}<span class="c">{counts[k]}</span></button
-			>
-		{/each}
-	</nav>
+	<div class="tabs-row">
+		<nav class="seg tabs" aria-label="Filtro">
+			{#each tabs as [k, label] (k)}
+				<button
+					type="button"
+					data-f={k}
+					aria-pressed={tab === k}
+					onclick={() => {
+						tab = k;
+						sel.clear();
+					}}>{label}<span class="c">{counts[k]}</span></button
+				>
+			{/each}
+		</nav>
+		<button
+			class="btn btn-ghost answers"
+			type="button"
+			aria-pressed={showAnswers}
+			title="Atalho: H"
+			onclick={toggleAnswers}
+			><Icon name="eye" size="sm" />{showAnswers
+				? 'Ocultar respostas'
+				: 'Mostrar respostas'}</button
+		>
+	</div>
 
 	{#if tab === 'teimosas'}
 		<p class="leech-hint faint">
@@ -393,7 +424,13 @@
 							? resolve(`/palavras?item=${e.id}&deck=${e.deckId}`)
 							: resolve('/flashcards/fichas/[id]', { id: e.id })}
 					>
-						<span class="w"><b>{e.title}</b><span>{e.sub || ' '}</span></span>
+						<span class="w"
+							><b>{e.kind === 'ficha' ? clozePlain(e.title, showAnswers) : e.title}</b
+							>{#if showAnswers}<span>{e.sub || ' '}</span>{:else}<span
+									class="veil"
+									aria-label="Resposta oculta"
+								></span>{/if}</span
+						>
 						<span class="kind" title={e.kind === 'ficha' ? 'Ficha' : 'Palavra'}
 							><Icon name={e.kind === 'ficha' ? 'cards' : 'bookmark'} size="sm" /></span
 						>
@@ -708,6 +745,23 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	.tabs-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+	.answers[aria-pressed='true'] {
+		color: var(--ink);
+	}
+	.w .veil {
+		width: 88px;
+		height: 0.8em;
+		margin-top: 7px;
+		border-radius: 999px;
+		background: var(--tile-2, var(--line));
 	}
 	.kind {
 		display: grid;

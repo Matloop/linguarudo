@@ -151,6 +151,13 @@ export function renderCloze(html: string, ord: number, reveal: boolean): string 
 	});
 }
 
+/** Texto puro para listas: todas as lacunas abertas, ou todas escondidas (dica ou […]). */
+export function clozePlain(text: string, reveal: boolean): string {
+	return text.replace(CLOZE, (_, _n: string, inner: string, hint: string | undefined) =>
+		reveal ? inner : hint ? `[${hint}]` : '[…]'
+	);
+}
+
 // ---------- Formulário ----------
 
 export interface FichaInput {

@@ -35,6 +35,7 @@
 		| 'image'
 		| 'upload'
 		| 'chart'
+		| 'eye'
 		| 'more'
 		| 'pause'
 		| 'folder';

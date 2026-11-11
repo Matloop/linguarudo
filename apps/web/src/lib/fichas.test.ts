@@ -9,6 +9,7 @@ import {
 	parseFichaInput,
 	parseFichaMedia,
 	renderCloze,
+	clozePlain,
 	sanitizeFichaHtml
 } from './fichas.ts';
 import { parseTags } from './tags.ts';
@@ -151,5 +152,15 @@ describe('mídia da ficha', () => {
 		const r = parseFichaMedia({ front_image: snd }, U);
 		expect(r.ok).toBe(false);
 		if (!r.ok) expect(Object.keys(r.errors)).toEqual(['front_image']);
+	});
+});
+
+describe('clozePlain', () => {
+	const t = 'Io {{c1::sono}} qui e {{c2::tu::verbo}} lì';
+	test('esconde todas as lacunas na lista', () => {
+		expect(clozePlain(t, false)).toBe('Io […] qui e [verbo] lì');
+	});
+	test('abre todas quando as respostas estão à mostra', () => {
+		expect(clozePlain(t, true)).toBe('Io sono qui e tu lì');
 	});
 });
