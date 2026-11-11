@@ -40,6 +40,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, cookies, request
 			uiLanguage: settings.uiLanguage,
 			nativeLanguage: settings.nativeLanguage,
 			studyLanguages: settings.studyLanguages,
+			autoplayAudio: settings.autoplayAudio,
 			active,
 			summary
 		}

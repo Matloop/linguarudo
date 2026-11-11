@@ -20,4 +20,10 @@
 	</div>
 </div>
 
-<FichaForm {values} errors={form?.errors} languages={data.languages} ui={data.ui} />
+<FichaForm
+	{values}
+	mediaUrls={form?.mediaUrls}
+	errors={form?.errors}
+	languages={data.languages}
+	ui={data.ui}
+/>

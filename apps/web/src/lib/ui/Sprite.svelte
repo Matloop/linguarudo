@@ -164,6 +164,16 @@
 	<symbol id="i-cards" viewBox="0 0 24 24"
 		><rect x="3" y="6" width="14" height="14" rx="2" /><path d="M7 3h12a2 2 0 0 1 2 2v12" /></symbol
 	>
+	<symbol id="i-image" viewBox="0 0 24 24"
+		><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.8" /><path
+			d="M21 16l-5-5-9 9"
+		/></symbol
+	>
+	<symbol id="i-upload" viewBox="0 0 24 24"
+		><path d="M12 16V4" /><path d="M7 9l5-5 5 5" /><path
+			d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"
+		/></symbol
+	>
 	<symbol id="i-archive" viewBox="0 0 24 24"
 		><path d="M7 6L17 6" /><path d="M7 9L17 9" /><path d="M9 17H15" /><path
 			d="M3 12H2.6C2.26863 12 2 12.2686 2 12.6V21.4C2 21.7314 2.26863 22 2.6 22H21.4C21.7314 22 22 21.7314 22 21.4V12.6C22 12.2686 21.7314 12 21.4 12H21M3 12V2.6C3 2.26863 3.26863 2 3.6 2H20.4C20.7314 2 21 2.26863 21 2.6V12M3 12H21"

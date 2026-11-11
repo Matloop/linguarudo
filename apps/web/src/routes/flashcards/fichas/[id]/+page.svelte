@@ -33,6 +33,7 @@
 
 <FichaForm
 	{values}
+	mediaUrls={form?.mediaUrls ?? data.mediaUrls}
 	errors={form?.errors}
 	languages={data.languages}
 	ui={data.ui}

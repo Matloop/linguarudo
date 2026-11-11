@@ -23,6 +23,10 @@ import {
 	startSession,
 	STRENGTH_LABELS,
 	undoLast,
+	reviewMedia,
+	reviewMediaPaths,
+	withMediaUrls,
+	type FichaReview,
 	type QueueFlashcard,
 	type ItemReview,
 	type ReviewItem
@@ -61,6 +65,31 @@ function item(id: string, over: Partial<ItemReview> = {}): ReviewItem {
 		sourceDetail: '',
 		tags: [],
 		intervals: { 1: '1 min', 2: '14 h', 3: '5 d', 4: '54 d' },
+		image: null,
+		audio: null,
+		...over
+	};
+}
+
+function ficha(id: string, over: Partial<FichaReview> = {}): FichaReview {
+	return {
+		flashcardId: id,
+		source: 'ficha',
+		kind: 'frente',
+		ord: 0,
+		fichaId: 'f-' + id,
+		reps: 0,
+		state: 0,
+		dueAt: '2026-11-10T12:00:00.000Z',
+		front: 'frente',
+		back: 'verso',
+		language: 'en',
+		tags: [],
+		intervals: { 1: '1 min', 2: '14 h', 3: '5 d', 4: '54 d' },
+		frontImage: 'u/fi.webp',
+		frontAudio: 'u/fa.mp3',
+		backImage: 'u/bi.webp',
+		backAudio: null,
 		...over
 	};
 }
@@ -441,5 +470,36 @@ describe('datas da interface', () => {
 		expect(estimateMinutes(1)).toBe(1);
 		expect(estimateMinutes(13)).toBe(7);
 		expect(estimateMinutes(0)).toBe(0);
+	});
+});
+
+describe('mídia na revisão', () => {
+	const media = { image: 'u/i.webp', audio: 'u/a.mp3' };
+
+	test('Reconhecer: áudio na pergunta, imagem só na resposta', () => {
+		const m = reviewMedia(item('x', media));
+		expect(m.ask).toEqual({ image: null, audio: 'u/a.mp3' });
+		expect(m.answer).toEqual(media);
+	});
+
+	test('Produzir: imagem na pergunta, áudio só ao revelar', () => {
+		const m = reviewMedia(item('x', { ...media, kind: 'produzir' }));
+		expect(m.ask).toEqual({ image: 'u/i.webp', audio: null });
+		expect(m.answer).toEqual(media);
+	});
+
+	test('ficha: cada lado leva a sua mídia; inverso troca', () => {
+		const front = { image: 'u/fi.webp', audio: 'u/fa.mp3' };
+		const back = { image: 'u/bi.webp', audio: null };
+		expect(reviewMedia(ficha('a'))).toEqual({ ask: front, answer: back });
+		expect(reviewMedia(ficha('a', { kind: 'inverso' }))).toEqual({ ask: back, answer: front });
+	});
+
+	test('caminhos e troca por URLs assinadas (sem URL some)', () => {
+		expect(reviewMediaPaths(ficha('a'))).toEqual(['u/fi.webp', 'u/fa.mp3', 'u/bi.webp']);
+		expect(reviewMediaPaths(item('x'))).toEqual([]);
+		const urls = new Map([['u/i.webp', 'https://s/i']]);
+		const signed = withMediaUrls(item('x', media), urls);
+		expect(signed.source === 'item' && [signed.image, signed.audio]).toEqual(['https://s/i', null]);
 	});
 });

@@ -1,15 +1,24 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
-	import { FICHA_LIMITS, clozeCount, fichaTextToHtml, type FichaField } from '#lib/fichas.ts';
+	import {
+		FICHA_LIMITS,
+		clozeCount,
+		fichaTextToHtml,
+		type FichaField,
+		type FichaMedia,
+		type FichaMediaField
+	} from '#lib/fichas.ts';
 	import { languageLabel, type Language, type UiLanguage } from '#lib/languages.ts';
 	import Icon from './Icon.svelte';
+	import MediaField from './MediaField.svelte';
 
 	// Formulário da ficha (nova e edição). Frente e verso são textareas com uma barra
 	// de B/I que embrulha a seleção em <b>/<i>; o servidor sanitiza (fichas.ts).
 
 	let {
 		values,
+		mediaUrls = {},
 		errors = {},
 		languages,
 		ui,
@@ -17,8 +26,17 @@
 		cloze = false,
 		submitLabel = 'Salvar ficha'
 	}: {
-		values: { language: Language; front: string; back: string; reverse: boolean; tags: string };
-		errors?: Partial<Record<FichaField | 'form', string>>;
+		values: {
+			language: Language;
+			front: string;
+			back: string;
+			reverse: boolean;
+			tags: string;
+			media?: FichaMedia;
+		};
+		/** URLs assinadas da mídia que a ficha já tem. */
+		mediaUrls?: Partial<Record<FichaMediaField, string>>;
+		errors?: Partial<Record<FichaField | FichaMediaField | 'form', string>>;
 		languages: readonly Language[];
 		ui: UiLanguage;
 		/** Action do SvelteKit ("?/save"); sem ela, a default. */
@@ -88,6 +106,29 @@
 	</span>
 {/snippet}
 
+{#snippet mediaRow(side: 'front' | 'back')}
+	{@const image: FichaMediaField = `${side}_image`}
+	{@const audio: FichaMediaField = `${side}_audio`}
+	<div class="media-row">
+		<MediaField
+			name={image}
+			kind="image"
+			label="Imagem"
+			path={values.media?.[image] ?? null}
+			url={mediaUrls[image] ?? null}
+		/>
+		<MediaField
+			name={audio}
+			kind="audio"
+			label="Áudio"
+			path={values.media?.[audio] ?? null}
+			url={mediaUrls[audio] ?? null}
+		/>
+	</div>
+	{#if errors[image]}<p class="err" role="alert">{errors[image]}</p>{/if}
+	{#if errors[audio]}<p class="err" role="alert">{errors[audio]}</p>{/if}
+{/snippet}
+
 <form
 	class="ficha-form"
 	method="POST"
@@ -117,6 +158,7 @@
 				onkeydown={(e) => onkey(e, 'front')}
 				aria-invalid={errors.front ? 'true' : undefined}></textarea>
 			{#if errors.front}<p class="err" role="alert">{errors.front}</p>{/if}
+			{@render mediaRow('front')}
 		</div>
 		<div class="fld">
 			<div class="lbl">
@@ -133,6 +175,7 @@
 				onkeydown={(e) => onkey(e, 'back')}
 				aria-invalid={errors.back ? 'true' : undefined}></textarea>
 			{#if errors.back}<p class="err" role="alert">{errors.back}</p>{/if}
+			{@render mediaRow('back')}
 		</div>
 	</div>
 
@@ -212,6 +255,12 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+	}
+	.media-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 16px;
+		margin-top: 8px;
 	}
 	.opt {
 		font-style: normal;

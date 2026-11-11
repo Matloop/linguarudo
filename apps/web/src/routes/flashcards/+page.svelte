@@ -9,6 +9,7 @@
 		REVIEW_DEPENDENCY,
 		answerItem,
 		highlightParts,
+		reviewMedia,
 		sessionProgress,
 		startSession,
 		undoLast,
@@ -95,7 +96,32 @@
 		return { ask: f.front, answer: f.back, extra: '' };
 	}
 
-	function speak() {
+	// Mídia do flashcard atual, por lado (reviewMedia segue o ADR 0003).
+	const media = $derived(current ? reviewMedia(current) : null);
+	let player: HTMLAudioElement | null = null;
+
+	function play(url: string | null) {
+		if (!url) return;
+		player?.pause();
+		player = new Audio(url);
+		// Autoplay bloqueado pelo navegador (sem interação ainda) não é erro.
+		player.play().catch(() => {});
+	}
+
+	// Com a opção do perfil ligada, o áudio toca sozinho quando o lado dele aparece.
+	// No verso, só se for outro áudio (o Reconhecer já tocou o mesmo na frente).
+	$effect(() => {
+		if (!data.autoplayAudio || !media) return;
+		const audio = flipped
+			? media.answer.audio !== media.ask.audio
+				? media.answer.audio
+				: null
+			: media.ask.audio;
+		untrack(() => play(audio));
+	});
+
+	function speak(audio: string | null = null) {
+		if (audio) return play(audio);
 		if (!current || current.source !== 'item' || !canSpeak) return;
 		const utterance = new SpeechSynthesisUtterance(current.lemma);
 		utterance.lang = current.language;
@@ -197,18 +223,29 @@
 	<title>Flashcards · Linguetta</title>
 </svelte:head>
 
-{#snippet source(item: ItemReview)}
+{#snippet source(item: ItemReview, audio: string | null)}
 	<div class="fh">
 		<span class="src">
 			<Icon name={ORIGIN_ICONS[item.origin ?? 'manual']} size="sm" />
 			{item.sourceDetail || 'Guardada à mão'}
 		</span>
-		{#if canSpeak}
-			<button class="icon-btn" type="button" onclick={speak} aria-label="Ouvir" title="Ouvir">
+		{#if audio || canSpeak}
+			<button
+				class="icon-btn"
+				class:rec={!!audio}
+				type="button"
+				onclick={() => speak(audio)}
+				aria-label="Ouvir"
+				title={audio ? 'Ouvir a pronúncia guardada' : 'Ouvir'}
+			>
 				<Icon name="sound" size="sm" />
 			</button>
 		{/if}
 	</div>
+{/snippet}
+
+{#snippet picture(url: string | null)}
+	{#if url}<img class="rv-img" src={url} alt="" />{/if}
 {/snippet}
 
 {#snippet sentence(item: ItemReview, underline: boolean)}
@@ -221,7 +258,7 @@
 	{/if}
 {/snippet}
 
-{#snippet fichaHead(f: FichaReview)}
+{#snippet fichaHead(f: FichaReview, audio: string | null)}
 	<div class="fh">
 		<span class="src">
 			<Icon name="cards" size="sm" />
@@ -229,6 +266,15 @@
 		</span>
 		<span class="src">
 			{f.kind === 'lacuna' ? `Lacuna ${f.ord}` : FICHA_KIND_LABELS[f.kind]}
+			{#if audio}
+				<button
+					class="icon-btn rec"
+					type="button"
+					onclick={() => play(audio)}
+					aria-label="Ouvir"
+					title="Ouvir"><Icon name="sound" size="sm" /></button
+				>
+			{/if}
 		</span>
 	</div>
 {/snippet}
@@ -320,16 +366,19 @@
 							{#if current.source === 'ficha'}
 								{@const faces = fichaFaces(current)}
 								<section class="face front" inert={flipped} aria-label="Frente do flashcard">
-									{@render fichaHead(current)}
+									{@render fichaHead(current, media?.ask.audio ?? null)}
 									<div class="mid">
+										{@render picture(media?.ask.image ?? null)}
 										<!-- HTML sanitizado no servidor (sanitizeFichaHtml): só b, i e br. -->
+
 										<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 										<div class="ficha-face">{@html faces.ask}</div>
 									</div>
 								</section>
 								<section class="face back" inert={!flipped} aria-label="Verso do flashcard">
-									{@render fichaHead(current)}
+									{@render fichaHead(current, media?.answer.audio ?? null)}
 									<div class="mid">
+										{@render picture(media?.answer.image ?? null)}
 										<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 										<div class="ficha-face">{@html faces.answer}</div>
 										{#if faces.extra}
@@ -341,9 +390,10 @@
 								</section>
 							{:else}
 								<section class="face front" inert={flipped} aria-label="Frente do flashcard">
-									{@render source(current)}
+									{@render source(current, media?.ask.audio ?? null)}
 									<div class="mid">
 										{#if current.kind === 'produzir'}
+											{@render picture(media?.ask.image ?? null)}
 											<div class="ask">Como se diz em {languageName}?</div>
 											<div class="word" {...native}>{current.sense}</div>
 										{:else}
@@ -357,8 +407,9 @@
 									{#if current.kind === 'reconhecer'}{@render sentence(current, true)}{/if}
 								</section>
 								<section class="face back" inert={!flipped} aria-label="Verso do flashcard">
-									{@render source(current)}
+									{@render source(current, media?.answer.audio ?? null)}
 									<div class="mid">
+										{@render picture(media?.answer.image ?? null)}
 										{#if current.kind === 'produzir'}
 											<div class="small-w" {...native}>{current.sense}</div>
 											{#if current.reading}<div class="reading" {...study}>
@@ -664,6 +715,17 @@
 	.ph + .tags {
 		margin: -12px 0 0;
 		justify-content: flex-start;
+	}
+	.rv-img {
+		display: block;
+		max-width: 100%;
+		max-height: 180px;
+		margin: 0 auto 14px;
+		border-radius: var(--r-m);
+		object-fit: contain;
+	}
+	.icon-btn.rec {
+		color: var(--accent, var(--ink));
 	}
 	.ficha-face {
 		font: 400 18px/1.45 var(--f-body);

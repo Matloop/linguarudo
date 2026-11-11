@@ -3,7 +3,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '#lib/database.types.ts';
-import { sanitizeFichaHtml, type FichaFlashcardKind } from '#lib/fichas.ts';
+import { sanitizeFichaHtml, type FichaFlashcardKind, type FichaMediaField } from '#lib/fichas.ts';
 import { formatWorkSource, type FlashcardKind, type Origin } from '#lib/items.ts';
 import type { Language } from '#lib/languages.ts';
 import {
@@ -11,9 +11,12 @@ import {
 	formatWhen,
 	nextAvailableAt,
 	reviewCount,
+	reviewMediaPaths,
+	withMediaUrls,
 	type ReviewCounts,
 	type ReviewItem
 } from '#lib/review.ts';
+import { signMedia } from './media.ts';
 import {
 	previewIntervals,
 	type FlashcardRow,
@@ -26,9 +29,9 @@ type Client = SupabaseClient<Database>;
 const FLASHCARD_COLUMNS =
 	'id, kind, ord, due_at, stability, stability_fast, difficulty, state, schedule_status, last_review_at, reps, lapses, scheduled_days, learning_step, created_at';
 
-const FLASHCARD_WITH_ITEM = `${FLASHCARD_COLUMNS}, items!inner(lemma, reading, sense, ipa, language, tags, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
+const FLASHCARD_WITH_ITEM = `${FLASHCARD_COLUMNS}, items!inner(lemma, reading, sense, ipa, language, tags, image, audio, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
 
-const FLASHCARD_WITH_FICHA = `${FLASHCARD_COLUMNS}, fichas!inner(id, front, back, language, tags)`;
+const FLASHCARD_WITH_FICHA = `${FLASHCARD_COLUMNS}, fichas!inner(id, front, back, language, tags, front_image, front_audio, back_image, back_audio)`;
 
 export interface ReviewFilter {
 	language?: Language;
@@ -79,6 +82,8 @@ export type ItemFlashcardRow = BaseRow & {
 		reading: string;
 		language: string;
 		tags: string[];
+		image: string | null;
+		audio: string | null;
 		encounters: {
 			sentence: string;
 			highlight: string;
@@ -91,7 +96,10 @@ export type ItemFlashcardRow = BaseRow & {
 
 export type FichaFlashcardRow = BaseRow & {
 	kind: FichaFlashcardKind;
-	fichas: { id: string; front: string; back: string; language: string; tags: string[] };
+	fichas: { id: string; front: string; back: string; language: string; tags: string[] } & Record<
+		FichaMediaField,
+		string | null
+	>;
 };
 
 export type ReviewFlashcardRow = ItemFlashcardRow | FichaFlashcardRow;
@@ -139,7 +147,11 @@ export async function toReviewItem(row: ReviewFlashcardRow, now: Date): Promise<
 			front: sanitizeFichaHtml(row.fichas.front),
 			back: sanitizeFichaHtml(row.fichas.back),
 			language: row.fichas.language,
-			tags: row.fichas.tags
+			tags: row.fichas.tags,
+			frontImage: row.fichas.front_image,
+			frontAudio: row.fichas.front_audio,
+			backImage: row.fichas.back_image,
+			backAudio: row.fichas.back_audio
 		};
 	}
 	const encounter = row.items.encounters[0] ?? null;
@@ -156,8 +168,21 @@ export async function toReviewItem(row: ReviewFlashcardRow, now: Date): Promise<
 		sentence: encounter?.sentence ?? '',
 		highlight: encounter?.highlight ?? '',
 		origin: (encounter?.origin as Origin | undefined) ?? null,
-		sourceDetail: encounter ? formatWorkSource(encounter.works, encounter.position) : ''
+		sourceDetail: encounter ? formatWorkSource(encounter.works, encounter.position) : '',
+		image: row.items.image,
+		audio: row.items.audio
 	};
+}
+
+/** Assina a mídia de todos os flashcards de uma vez e troca caminhos por URLs. */
+export async function attachMediaUrls<T extends ReviewItem>(
+	supabase: Client,
+	items: T[]
+): Promise<T[]> {
+	const urls = await signMedia(supabase, items.flatMap(reviewMediaPaths)).catch(
+		() => new Map<string, string>()
+	);
+	return items.map((i) => withMediaUrls(i, urls));
 }
 
 export interface ReviewSummary extends ReviewCounts {

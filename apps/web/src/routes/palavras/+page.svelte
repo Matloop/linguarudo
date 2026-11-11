@@ -14,6 +14,7 @@
 		type Grade
 	} from '#lib/review.ts';
 	import Icon from '#lib/ui/Icon.svelte';
+	import MediaField from '#lib/ui/MediaField.svelte';
 	import Mark from '#lib/ui/Mark.svelte';
 	import { openSave, toast } from '#lib/ui/app-state.svelte.ts';
 	import { ORIGIN_ICONS } from '#lib/ui/origins.ts';
@@ -393,6 +394,24 @@
 					/></label
 				>
 				{#if editErrors?.tags}<p class="err" role="alert">{editErrors.tags}</p>{/if}
+				<div class="media-row">
+					<MediaField
+						name="image"
+						kind="image"
+						label="Imagem"
+						path={selected.image}
+						url={data.selectedMedia.image}
+					/>
+					<MediaField
+						name="audio"
+						kind="audio"
+						label="Áudio"
+						path={selected.audio}
+						url={data.selectedMedia.audio}
+					/>
+				</div>
+				{#if editErrors?.image}<p class="err" role="alert">{editErrors.image}</p>{/if}
+				{#if editErrors?.audio}<p class="err" role="alert">{editErrors.audio}</p>{/if}
 				{#if editErrors?.form}<p class="err" role="alert">{editErrors.form}</p>{/if}
 				<div class="edit-acts">
 					<button class="btn btn-primary" disabled={busy}>Salvar</button>
@@ -405,11 +424,21 @@
 			<div class="dr-body">
 				{#if selected.reading}<div class="dr-reading" {...study}>{selected.reading}</div>{/if}
 				<h2 class="dr-word" {...study}>{selected.lemma}</h2>
-				{#if selected.ipa || canSpeak}
+				{#if data.selectedMedia.image}
+					<img class="dr-img" src={data.selectedMedia.image} alt="" loading="lazy" />
+				{/if}
+				{#if selected.ipa || canSpeak || data.selectedMedia.audio}
 					<div class="dr-ipa">
 						{#if selected.ipa}<span>{selected.ipa}</span>{/if}
-						{#if canSpeak}<button class="listen" type="button" onclick={() => speak(selected.lemma)}
-								><Icon name="sound" size="sm" />Ouvir</button
+						{#if data.selectedMedia.audio}
+							{@const rec = data.selectedMedia.audio}
+							<button class="listen" type="button" onclick={() => void new Audio(rec).play()}
+								><Icon name="sound" size="sm" />Ouvir gravação</button
+							>
+						{:else if canSpeak}<button
+								class="listen"
+								type="button"
+								onclick={() => speak(selected.lemma)}><Icon name="sound" size="sm" />Ouvir</button
 							>{/if}
 					</div>
 				{/if}
@@ -941,6 +970,20 @@
 		margin: 6px 0 0;
 		color: var(--terra-ink);
 		font-size: 12.5px;
+	}
+	.media-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+		margin-top: 14px;
+	}
+	.dr-img {
+		display: block;
+		max-width: 100%;
+		max-height: 220px;
+		margin: 0 0 14px;
+		border-radius: 12px;
+		object-fit: contain;
 	}
 	.edit-acts {
 		display: flex;

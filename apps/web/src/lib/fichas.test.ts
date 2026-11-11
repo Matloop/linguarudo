@@ -5,7 +5,9 @@ import {
 	fichaPlainText,
 	fichaTextToHtml,
 	flashcardsFor,
+	NO_FICHA_MEDIA,
 	parseFichaInput,
+	parseFichaMedia,
 	renderCloze,
 	sanitizeFichaHtml
 } from './fichas.ts';
@@ -125,5 +127,29 @@ describe('parseFichaInput', () => {
 		const tags = Array.from({ length: 51 }, (_, i) => `t${i}`).join(',');
 		const r = parseFichaInput({ language: 'it', front: 'a', tags });
 		expect(r.ok ? null : r.errors.tags).toBe('Use no máximo 50 tags.');
+	});
+});
+
+describe('mídia da ficha', () => {
+	const U = '00000000-0000-0000-0000-0000000000aa';
+	const img = `${U}/${'a'.repeat(64)}.webp`;
+	const snd = `${U}/${'b'.repeat(64)}.mp3`;
+
+	test('campos vazios ficam sem mídia', () => {
+		expect(parseFichaMedia({}, U)).toEqual({ ok: true, value: NO_FICHA_MEDIA });
+	});
+
+	test('cada lado aceita imagem e áudio do próprio usuário', () => {
+		const r = parseFichaMedia({ front_image: img, back_audio: snd }, U);
+		expect(r).toEqual({
+			ok: true,
+			value: { ...NO_FICHA_MEDIA, front_image: img, back_audio: snd }
+		});
+	});
+
+	test('áudio no lugar da imagem é erro', () => {
+		const r = parseFichaMedia({ front_image: snd }, U);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(Object.keys(r.errors)).toEqual(['front_image']);
 	});
 });

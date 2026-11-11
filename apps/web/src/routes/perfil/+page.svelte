@@ -255,6 +255,24 @@
 
 	<div class="set-row">
 		<div>
+			<b id="autoplay-titulo">Tocar áudio sozinho</b>
+			<span>Na revisão, a gravação do flashcard toca ao aparecer</span>
+		</div>
+		<form
+			class="seg"
+			method="POST"
+			action="?/autoplay"
+			use:enhance={quiet()}
+			aria-labelledby="autoplay-titulo"
+		>
+			<input type="hidden" name="voltar" value="/perfil" />
+			<button name="autoplay" value="on" aria-pressed={data.autoplayAudio}>Ligado</button>
+			<button name="autoplay" value="off" aria-pressed={!data.autoplayAudio}>Desligado</button>
+		</form>
+	</div>
+
+	<div class="set-row">
+		<div>
 			<b id="tema-titulo">Tema</b>
 			<span>Claro em papel creme ou escuro em verde profundo</span>
 		</div>

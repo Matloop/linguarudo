@@ -15,6 +15,8 @@ export interface Settings {
 	nativeLanguage: Language | null;
 	/** Pode ser vazia: o início pede um idioma antes de tudo. */
 	studyLanguages: Language[];
+	/** Áudio da mídia toca sozinho na revisão (ADR 0003). */
+	autoplayAudio: boolean;
 }
 
 /**
@@ -29,7 +31,7 @@ export async function loadSettings(
 ): Promise<Settings> {
 	const { data } = await supabase
 		.from('user_settings')
-		.select('ui_language, native_language, study_languages')
+		.select('ui_language, native_language, study_languages, autoplay_audio')
 		.eq('user_id', userId)
 		.maybeSingle();
 	let uiLanguage = parseUiLanguage(data?.ui_language) ?? 'pt';
@@ -51,6 +53,7 @@ export async function loadSettings(
 	return {
 		uiLanguage,
 		nativeLanguage,
-		studyLanguages: studyLanguages.filter((l) => l !== nativeLanguage)
+		studyLanguages: studyLanguages.filter((l) => l !== nativeLanguage),
+		autoplayAudio: data?.autoplay_audio ?? false
 	};
 }

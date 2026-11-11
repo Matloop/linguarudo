@@ -1,6 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { buildQueue, isGrade, newRemaining } from '#lib/review.ts';
 import {
+	attachMediaUrls,
 	fetchReviewSummary,
 	loadLogs,
 	loadReviewFlashcard,
@@ -67,7 +68,11 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 		{ now, newLimit: summary.newLimit, newDoneToday: summary.newDoneToday }
 	);
 	return {
-		queue: await Promise.all(queue.map((r) => toReviewItem(r, now))),
+		queue: await attachMediaUrls(
+			locals.supabase,
+			await Promise.all(queue.map((r) => toReviewItem(r, now)))
+		),
+		autoplayAudio: shell.autoplayAudio,
 		language,
 		uiLanguage: shell.uiLanguage,
 		nativeLanguage: shell.nativeLanguage,
@@ -115,7 +120,10 @@ export const actions: Actions = {
 			return fail(status, { message: text, flashcardId, reason: dbError?.message ?? 'unknown' });
 		}
 
-		return { logId, rating, item: await toReviewItem({ ...row, ...next }, now) };
+		const [item] = await attachMediaUrls(locals.supabase, [
+			await toReviewItem({ ...row, ...next }, now)
+		]);
+		return { logId, rating, item };
 	},
 
 	undo: async ({ locals, request }) => {
@@ -150,6 +158,9 @@ export const actions: Actions = {
 				message: 'Não deu para desfazer agora.'
 			});
 		}
-		return { undone: await toReviewItem({ ...row, ...card }, new Date()) };
+		const [undone] = await attachMediaUrls(locals.supabase, [
+			await toReviewItem({ ...row, ...card }, new Date())
+		]);
+		return { undone };
 	}
 };

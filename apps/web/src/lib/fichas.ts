@@ -3,6 +3,7 @@
 
 import { charLength } from './items.ts';
 import { parseLanguage, type Language } from './languages.ts';
+import { parseMediaField, type MediaKind } from './media.ts';
 import { parseTags, tagsError } from './tags.ts';
 
 export const FICHA_LIMITS = {
@@ -200,3 +201,39 @@ export const FICHA_KIND_LABELS: Record<FichaFlashcardKind, string> = {
 	inverso: 'Verso → frente',
 	lacuna: 'Lacuna'
 };
+
+/** Mídia da ficha: imagem e áudio em cada lado (colunas do banco). */
+export const FICHA_MEDIA_FIELDS = [
+	'front_image',
+	'front_audio',
+	'back_image',
+	'back_audio'
+] as const;
+export type FichaMediaField = (typeof FICHA_MEDIA_FIELDS)[number];
+export type FichaMedia = Record<FichaMediaField, string | null>;
+
+export const NO_FICHA_MEDIA: FichaMedia = {
+	front_image: null,
+	front_audio: null,
+	back_image: null,
+	back_audio: null
+};
+
+export function fichaMediaKind(field: FichaMediaField): MediaKind {
+	return field.endsWith('image') ? 'image' : 'audio';
+}
+
+export type FichaMediaResult =
+	{ ok: true; value: FichaMedia } | { ok: false; errors: Partial<Record<FichaMediaField, string>> };
+
+/** Campos de mídia do formulário: vazio tira; caminho tem que ser do usuário. */
+export function parseFichaMedia(raw: Record<string, unknown>, userId: string): FichaMediaResult {
+	const value = { ...NO_FICHA_MEDIA };
+	const errors: Partial<Record<FichaMediaField, string>> = {};
+	for (const field of FICHA_MEDIA_FIELDS) {
+		const r = parseMediaField(raw[field], userId, fichaMediaKind(field));
+		if (r.ok) value[field] = r.value;
+		else errors[field] = r.error;
+	}
+	return Object.keys(errors).length > 0 ? { ok: false, errors } : { ok: true, value };
+}

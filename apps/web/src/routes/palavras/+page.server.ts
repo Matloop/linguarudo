@@ -14,6 +14,8 @@ import {
 } from '#lib/items.ts';
 import { lemmaKey } from '@linguetta/language';
 import { formatNextReview, isDueToday, itemStrength } from '#lib/review.ts';
+import { droppedMedia, parseMediaField, type MediaKind } from '#lib/media.ts';
+import { releaseMedia, signMedia } from '#lib/server/media.ts';
 import { loadSettings } from '#lib/server/settings.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -24,7 +26,7 @@ const ENCOUNTERS_SHOWN = 5;
 const HISTORY_SHOWN = 8;
 
 type AddErrors = Partial<Record<ItemField | 'form', string>>;
-type EditErrors = Partial<Record<ItemEditField | 'form', string>>;
+type EditErrors = Partial<Record<ItemEditField | MediaKind | 'form', string>>;
 
 async function requireUser(locals: App.Locals) {
 	const user = await locals.getUser();
@@ -48,7 +50,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 	const { data, error: dbError } = await locals.supabase
 		.from('items')
 		.select(
-			'id, language, lemma, reading, sense, ipa, note, tags, status, seen_count, created_at, flashcards(id, kind, state, stability, due_at), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
+			'id, language, lemma, reading, sense, ipa, note, tags, image, audio, status, seen_count, created_at, flashcards(id, kind, state, stability, due_at), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
 		)
 		.eq('user_id', user.id)
 		.eq('language', language)
@@ -89,19 +91,30 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 	const selectedId = url.searchParams.get('item');
 	const selected = items.find((i) => i.id === selectedId) ?? null;
 	let history: { rating: number; reviewedAt: string; kind: FlashcardKind }[] = [];
+	// URLs assinadas só da mídia do item aberto (a lista não mostra mídia).
+	let selectedMedia: { image: string | null; audio: string | null } = { image: null, audio: null };
 	if (selected) {
-		const { data: logs } = await locals.supabase
-			.from('review_logs')
-			.select('rating, reviewed_at, flashcards!inner(item_id, kind)')
-			.eq('user_id', user.id)
-			.eq('flashcards.item_id', selected.id)
-			.order('reviewed_at', { ascending: false })
-			.limit(HISTORY_SHOWN);
+		const [{ data: logs }, urls] = await Promise.all([
+			locals.supabase
+				.from('review_logs')
+				.select('rating, reviewed_at, flashcards!inner(item_id, kind)')
+				.eq('user_id', user.id)
+				.eq('flashcards.item_id', selected.id)
+				.order('reviewed_at', { ascending: false })
+				.limit(HISTORY_SHOWN),
+			signMedia(locals.supabase, [selected.image, selected.audio]).catch(
+				() => new Map<string, string>()
+			)
+		]);
 		history = (logs ?? []).map((l) => ({
 			rating: l.rating,
 			reviewedAt: l.reviewed_at,
 			kind: (l.flashcards as unknown as { kind: FlashcardKind }).kind
 		}));
+		selectedMedia = {
+			image: selected.image ? (urls.get(selected.image) ?? null) : null,
+			audio: selected.audio ? (urls.get(selected.audio) ?? null) : null
+		};
 	}
 
 	return {
@@ -109,6 +122,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 		language,
 		uiLanguage: shell.uiLanguage,
 		selectedId: selected?.id ?? null,
+		selectedMedia,
 		history,
 		now: now.toISOString()
 	};
@@ -180,15 +194,24 @@ export const actions: Actions = {
 				id,
 				errors: { form: 'Palavra não encontrada.' } as EditErrors
 			});
-		if (!parsed.ok) {
-			const errors: EditErrors = parsed.errors;
+		// Mídia só muda se o formulário trouxer os campos (como as tags).
+		const media: { image?: string | null; audio?: string | null } = {};
+		const mediaErrors: EditErrors = {};
+		for (const kind of ['image', 'audio'] as const) {
+			if (!form.has(kind)) continue;
+			const r = parseMediaField(form.get(kind), user.id, kind);
+			if (r.ok) media[kind] = r.value;
+			else mediaErrors[kind] = r.error;
+		}
+		if (!parsed.ok || Object.keys(mediaErrors).length > 0) {
+			const errors: EditErrors = { ...(parsed.ok ? {} : parsed.errors), ...mediaErrors };
 			return fail(400, { action: 'edit' as const, id, errors });
 		}
 
 		// A chave de identidade sai do lema e do idioma do item (ADR 0004).
 		const { data: current } = await locals.supabase
 			.from('items')
-			.select('language')
+			.select('language, image, audio')
 			.eq('id', id)
 			.eq('user_id', user.id)
 			.is('deleted_at', null)
@@ -200,7 +223,11 @@ export const actions: Actions = {
 
 		const { data, error: dbError } = await locals.supabase
 			.from('items')
-			.update({ ...parsed.value, lemma_key: lemmaKey(parsed.value.lemma, current.language) })
+			.update({
+				...parsed.value,
+				...media,
+				lemma_key: lemmaKey(parsed.value.lemma, current.language)
+			})
 			.eq('id', id)
 			.eq('user_id', user.id)
 			.is('deleted_at', null)
@@ -215,6 +242,11 @@ export const actions: Actions = {
 				errors
 			});
 		}
+		const kept = [
+			'image' in media ? (media.image ?? null) : current.image,
+			'audio' in media ? (media.audio ?? null) : current.audio
+		];
+		await releaseMedia(locals.supabase, droppedMedia([current.image, current.audio], kept));
 		return { action: 'edit' as const, id, edited: parsed.value.lemma };
 	},
 
@@ -247,15 +279,21 @@ export const actions: Actions = {
 		if (!id) return fail(400, { action: 'delete' as const, message: 'Palavra não encontrada.' });
 
 		// Apagar marca deleted_at: a exclusão precisa chegar aos outros aparelhos (sync).
-		const { error: dbError } = await locals.supabase
+		const { data: gone, error: dbError } = await locals.supabase
 			.from('items')
 			.update({ deleted_at: new Date().toISOString() })
 			.eq('id', id)
 			.eq('user_id', user.id)
-			.is('deleted_at', null);
+			.is('deleted_at', null)
+			.select('image, audio');
 		if (dbError) {
 			return fail(500, { action: 'delete' as const, message: 'Não deu para apagar agora.' });
 		}
+		// Arquivos que só esse item usava saem do Storage.
+		await releaseMedia(
+			locals.supabase,
+			(gone ?? []).flatMap((g) => [g.image, g.audio]).filter((p): p is string => !!p)
+		);
 		return { action: 'delete' as const, deleted: id };
 	}
 };

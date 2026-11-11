@@ -186,10 +186,14 @@ export type Database = {
         Row: {
           anki_guid: string | null
           back: string
+          back_audio: string | null
+          back_image: string | null
           cloze_count: number
           created_at: string
           deleted_at: string | null
           front: string
+          front_audio: string | null
+          front_image: string | null
           id: string
           language: string
           reverse: boolean
@@ -201,10 +205,14 @@ export type Database = {
         Insert: {
           anki_guid?: string | null
           back?: string
+          back_audio?: string | null
+          back_image?: string | null
           cloze_count?: number
           created_at?: string
           deleted_at?: string | null
           front: string
+          front_audio?: string | null
+          front_image?: string | null
           id?: string
           language: string
           reverse?: boolean
@@ -216,10 +224,14 @@ export type Database = {
         Update: {
           anki_guid?: string | null
           back?: string
+          back_audio?: string | null
+          back_image?: string | null
           cloze_count?: number
           created_at?: string
           deleted_at?: string | null
           front?: string
+          front_audio?: string | null
+          front_image?: string | null
           id?: string
           language?: string
           reverse?: boolean
@@ -310,9 +322,11 @@ export type Database = {
       }
       items: {
         Row: {
+          audio: string | null
           created_at: string
           deleted_at: string | null
           id: string
+          image: string | null
           ipa: string
           language: string
           last_seen_at: string | null
@@ -329,9 +343,11 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          audio?: string | null
           created_at?: string
           deleted_at?: string | null
           id?: string
+          image?: string | null
           ipa?: string
           language: string
           last_seen_at?: string | null
@@ -348,9 +364,11 @@ export type Database = {
           user_id: string
         }
         Update: {
+          audio?: string | null
           created_at?: string
           deleted_at?: string | null
           id?: string
+          image?: string | null
           ipa?: string
           language?: string
           last_seen_at?: string | null
@@ -435,6 +453,7 @@ export type Database = {
       }
       user_settings: {
         Row: {
+          autoplay_audio: boolean
           native_language: string | null
           new_flashcards_per_day: number
           study_languages: unknown[]
@@ -443,6 +462,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          autoplay_audio?: boolean
           native_language?: string | null
           new_flashcards_per_day?: number
           study_languages?: unknown[]
@@ -451,6 +471,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          autoplay_audio?: boolean
           native_language?: string | null
           new_flashcards_per_day?: number
           study_languages?: unknown[]
@@ -613,6 +634,10 @@ export type Database = {
       }
       api_sync_unpair: { Args: { p_token: string }; Returns: undefined }
       api_token_owner: { Args: { p_token: string }; Returns: string }
+      media_in_use: { Args: { p_paths: string[] }; Returns: string[] }
+      media_quota: { Args: never; Returns: Record<string, unknown> }
+      media_quota_bytes: { Args: never; Returns: number }
+      media_usage: { Args: never; Returns: number }
       open_work: { Args: { p_work: Json }; Returns: string }
       record_review: {
         Args: {
@@ -727,6 +752,10 @@ export type Database = {
           p_next: Json
         }
         Returns: string
+      }
+      valid_media_path: {
+        Args: { p_kind: string; p_path: string; p_user: string }
+        Returns: boolean
       }
       valid_tags: { Args: { p_tags: string[] }; Returns: boolean }
       work_for: { Args: { p_user: string; p_work: Json }; Returns: string }

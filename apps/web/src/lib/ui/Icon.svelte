@@ -31,7 +31,9 @@
 		| 'globe'
 		| 'archive'
 		| 'tag'
-		| 'cards';
+		| 'cards'
+		| 'image'
+		| 'upload';
 </script>
 
 <script lang="ts">

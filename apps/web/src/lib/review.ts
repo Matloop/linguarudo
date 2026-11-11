@@ -333,6 +333,11 @@ export interface FichaReview extends ReviewBase {
 	fichaId: string;
 	front: string;
 	back: string;
+	/** Mídia de cada lado: caminho no bucket no servidor, URL assinada na tela. */
+	frontImage: string | null;
+	frontAudio: string | null;
+	backImage: string | null;
+	backAudio: string | null;
 }
 
 /** O que a tela de revisão recebe por flashcard. */
@@ -356,6 +361,59 @@ export interface ItemReview extends ReviewBase {
 	origin: Origin | null;
 	/** "Kaguya · T1E2, 42:10"; vazio se o encontro não tem obra. */
 	sourceDetail: string;
+	/** Imagem e áudio de pronúncia: caminho no bucket no servidor, URL assinada na tela. */
+	image: string | null;
+	audio: string | null;
+}
+
+/** Mídia de um lado do flashcard. */
+export interface SideMedia {
+	image: string | null;
+	audio: string | null;
+}
+
+/**
+ * Onde a mídia aparece (ADR 0003). Reconhecer: áudio na frente, imagem no verso.
+ * Produzir: imagem na frente (dica), áudio ao revelar. Ficha: a mídia de cada lado vai
+ * com o texto dele (o inverso troca os lados; a lacuna pergunta pela frente).
+ */
+export function reviewMedia(item: ReviewItem): { ask: SideMedia; answer: SideMedia } {
+	if (item.source === 'item') {
+		return item.kind === 'reconhecer'
+			? {
+					ask: { image: null, audio: item.audio },
+					answer: { image: item.image, audio: item.audio }
+				}
+			: {
+					ask: { image: item.image, audio: null },
+					answer: { image: item.image, audio: item.audio }
+				};
+	}
+	const front = { image: item.frontImage, audio: item.frontAudio };
+	const back = { image: item.backImage, audio: item.backAudio };
+	return item.kind === 'inverso' ? { ask: back, answer: front } : { ask: front, answer: back };
+}
+
+/** Caminhos de mídia do flashcard (para assinar de uma vez). */
+export function reviewMediaPaths(item: ReviewItem): string[] {
+	const all =
+		item.source === 'item'
+			? [item.image, item.audio]
+			: [item.frontImage, item.frontAudio, item.backImage, item.backAudio];
+	return all.filter((p): p is string => !!p);
+}
+
+/** Troca os caminhos pelas URLs assinadas; sem URL, a mídia some da tela. */
+export function withMediaUrls<T extends ReviewItem>(item: T, urls: ReadonlyMap<string, string>): T {
+	const url = (p: string | null) => (p ? (urls.get(p) ?? null) : null);
+	if (item.source === 'item') return { ...item, image: url(item.image), audio: url(item.audio) };
+	return {
+		...item,
+		frontImage: url(item.frontImage),
+		frontAudio: url(item.frontAudio),
+		backImage: url(item.backImage),
+		backAudio: url(item.backAudio)
+	};
 }
 
 export interface Session {
