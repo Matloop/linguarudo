@@ -91,11 +91,12 @@
 
 .tema-escuro {
 	color-scheme: dark;
-	--page: #0d1f15;
-	--panel: #12281c;
-	--raise: #173022;
+	/* Carvão quente: par do creme do tema claro. O verde fica só na marca. */
+	--page: #1a1715;
+	--panel: #211d1a;
+	--raise: #28231f;
 	/* Superfícies que flutuam (diálogo, painel, cartão): um pouco mais claras. */
-	--raise-2: #183223;
+	--raise-2: #2d2723;
 	--tile: rgba(247, 241, 230, 0.035);
 	--sunk: rgba(0, 0, 0, 0.16);
 	--hover: rgba(247, 241, 230, 0.045);
@@ -108,7 +109,7 @@
 	--ink-3: #87938a;
 	--primary: #f3ede1;
 	--primary-hover: #ffffff;
-	--on-primary: #11261a;
+	--on-primary: #1f1a17;
 	--accent-ink: #f3ede1;
 	--nav-active: rgba(247, 241, 230, 0.07);
 	--prog: #e9e2d3;
@@ -118,20 +119,20 @@
 	--hl: rgba(138, 163, 146, 0.24);
 	--hl-ink: #f3ede1;
 	--ring: rgba(243, 237, 225, 0.35);
-	--scrim: rgba(0, 8, 4, 0.5);
+	--scrim: rgba(8, 6, 4, 0.55);
 	--mark-soft: rgba(247, 241, 230, 0.09);
 	--g4: #f3ede1;
 	--soft-bg: rgba(247, 241, 230, 0.05);
 	--soft-hover: rgba(247, 241, 230, 0.09);
-	--kbd-on-primary: rgba(17, 38, 26, 0.08);
-	--kbd-on-primary-ink: rgba(17, 38, 26, 0.6);
+	--kbd-on-primary: rgba(31, 26, 23, 0.08);
+	--kbd-on-primary-ink: rgba(31, 26, 23, 0.6);
 	--toast-bg: #f3ede1;
-	--toast-ink: #11261a;
+	--toast-ink: #1f1a17;
 	--sh-panel: 0 0 0 1px rgba(247, 241, 230, 0.05);
 	--sh-card: 0 0 0 1px rgba(247, 241, 230, 0.07);
 	--sh-lift: 0 0 0 1px rgba(247, 241, 230, 0.08), 0 8px 20px -12px rgba(0, 0, 0, 0.6);
 	--sh-pop: 0 0 0 1px rgba(247, 241, 230, 0.1), 0 16px 40px -16px rgba(0, 0, 0, 0.7);
-	--art-1: #1a3426;
+	--art-1: #2a2521;
 }
 
 *,

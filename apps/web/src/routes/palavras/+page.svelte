@@ -675,7 +675,7 @@
 		animation: drawerIn 0.4s var(--ease) both;
 	}
 	:global(.tema-escuro) .drawer {
-		background: #183223;
+		background: var(--raise-2);
 	}
 	.drawer:focus {
 		outline: none;

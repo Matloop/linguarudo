@@ -107,20 +107,31 @@
 {:else}
 	<div class="app" class:mini={collapsed}>
 		<aside class="side" aria-label="Navegação">
-			<form class="side-top" method="POST" action="/perfil?/barra" onsubmit={toggleCollapsed}>
-				<input type="hidden" name="voltar" value={back} />
-				<input type="hidden" name="barra" value={collapsed ? 'aberta' : 'recolhida'} />
-				<button
-					class="brand"
-					aria-label={collapsed ? 'Abrir barra lateral' : 'Recolher barra lateral'}
-					aria-expanded={!collapsed}
-					title="{collapsed ? 'Abrir' : 'Recolher'} barra lateral ( [ )"
-					data-testid="logo-barra"
-				>
-					<Mark />
-					<span class="wordmark">Linguetta</span>
-				</button>
-			</form>
+			<div class="side-top">
+				{#if !collapsed}
+					<a class="brand" href={resolve('/inicio')} aria-label="Linguetta, início">
+						<Mark />
+						<span class="wordmark">Linguetta</span>
+					</a>
+				{/if}
+				<!-- Aberta: botão ao lado do nome. Recolhida: o logo vira o botão e mostra o
+				     ícone no hover. -->
+				<form method="POST" action="/perfil?/barra" onsubmit={toggleCollapsed}>
+					<input type="hidden" name="voltar" value={back} />
+					<input type="hidden" name="barra" value={collapsed ? 'aberta' : 'recolhida'} />
+					<button
+						class="toggle"
+						class:over={collapsed}
+						aria-label={collapsed ? 'Abrir barra lateral' : 'Recolher barra lateral'}
+						aria-expanded={!collapsed}
+						title="{collapsed ? 'Abrir' : 'Recolher'} barra lateral ( [ )"
+						data-testid="logo-barra"
+					>
+						{#if collapsed}<span class="tg-mark"><Mark /></span>{/if}
+						<span class="tg-ic"><Icon name="sidebar" /></span>
+					</button>
+				</form>
+			</div>
 
 			<LangMenu
 				id="idiomas-menu"
@@ -294,10 +305,57 @@
 		background: none;
 		color: var(--ink);
 		cursor: pointer;
+		text-decoration: none;
 		transition: background-color 0.15s;
 	}
 	.side-top .brand:hover {
 		background: var(--hover);
+	}
+	.side-top form {
+		margin-left: auto;
+	}
+	.toggle {
+		display: grid;
+		place-items: center;
+		width: 32px;
+		height: 32px;
+		border: 0;
+		border-radius: var(--r-m);
+		background: none;
+		color: var(--ink-3);
+		cursor: pointer;
+		transition:
+			background-color 0.15s,
+			color 0.15s;
+	}
+	.toggle:hover,
+	.toggle:focus-visible {
+		background: var(--hover);
+		color: var(--ink);
+	}
+	.toggle > span {
+		grid-area: 1 / 1;
+		display: grid;
+		place-items: center;
+	}
+	/* Recolhida: o logo ocupa o lugar e o ícone aparece por cima no hover. */
+	.toggle.over {
+		width: 36px;
+		height: 36px;
+		color: var(--ink);
+	}
+	.toggle.over .tg-ic,
+	.toggle.over:hover .tg-mark,
+	.toggle.over:focus-visible .tg-mark {
+		opacity: 0;
+	}
+	/* Seta para fora: abre. */
+	.toggle.over .tg-ic {
+		scale: -1 1;
+	}
+	.toggle.over:hover .tg-ic,
+	.toggle.over:focus-visible .tg-ic {
+		opacity: 1;
 	}
 	.wordmark {
 		font: 600 17px/1 var(--f-head);
@@ -411,8 +469,8 @@
 	.mini .side-top {
 		justify-content: center;
 	}
-	.mini .brand {
-		padding: 0 10px;
+	.mini .side-top form {
+		margin-left: 0;
 	}
 	.mini .wordmark,
 	.mini .lb,

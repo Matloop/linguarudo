@@ -450,7 +450,7 @@
 		flex-direction: column;
 	}
 	:global(.tema-escuro) .face {
-		background: #1a3626;
+		background: var(--raise-2);
 	}
 	.face.back {
 		transform: rotateY(180deg);

@@ -23,7 +23,9 @@ test('N abre o diálogo Guardar e Esc fecha; N não dispara enquanto digita', as
 	await expect(dialog).toBeHidden();
 });
 
-test('o logo recolhe e abre a barra lateral, e a escolha persiste', async ({ page }) => {
+test('o botão ao lado do logo recolhe e o logo abre a barra lateral, e a escolha persiste', async ({
+	page
+}) => {
 	await login(page);
 	const logo = page.getByTestId('logo-barra');
 	const app = page.locator('.app');

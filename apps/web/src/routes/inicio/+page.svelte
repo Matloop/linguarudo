@@ -278,11 +278,11 @@
 		transition: transform 0.5s var(--ease);
 	}
 	:global(.tema-escuro) .fc {
-		background: #1a3626;
+		background: var(--raise-2);
 	}
 	@media (prefers-color-scheme: dark) {
 		:global(:root:not(.tema-claro)) .fc {
-			background: #1a3626;
+			background: var(--raise-2);
 		}
 	}
 	.fc b {

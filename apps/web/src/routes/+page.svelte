@@ -304,7 +304,7 @@
 		flex-direction: column;
 	}
 	:global(.tema-escuro) .card {
-		background: #1a3626;
+		background: var(--raise-2);
 	}
 	.card-h {
 		display: flex;
