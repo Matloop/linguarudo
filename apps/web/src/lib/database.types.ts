@@ -51,6 +51,62 @@ export type Database = {
         }
         Relationships: []
       }
+      decks: {
+        Row: {
+          created_at: string
+          id: string
+          import_hash: string | null
+          is_default: boolean
+          language: string
+          name: string
+          new_cap: number | null
+          new_order: string
+          on_reader: boolean
+          parent_id: string | null
+          paused: boolean
+          position: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          import_hash?: string | null
+          is_default?: boolean
+          language: string
+          name: string
+          new_cap?: number | null
+          new_order?: string
+          on_reader?: boolean
+          parent_id?: string | null
+          paused?: boolean
+          position?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          import_hash?: string | null
+          is_default?: boolean
+          language?: string
+          name?: string
+          new_cap?: number | null
+          new_order?: string
+          on_reader?: boolean
+          parent_id?: string | null
+          paused?: boolean
+          position?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decks_parent_id_user_id_fkey"
+            columns: ["parent_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "decks"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       device_pairings: {
         Row: {
           client_ip_hash: string | null
@@ -182,6 +238,27 @@ export type Database = {
           },
         ]
       }
+      extra_new: {
+        Row: {
+          day: string
+          language: string
+          n: number
+          user_id: string
+        }
+        Insert: {
+          day: string
+          language: string
+          n: number
+          user_id: string
+        }
+        Update: {
+          day?: string
+          language?: string
+          n?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       fichas: {
         Row: {
           anki_guid: string | null
@@ -190,12 +267,15 @@ export type Database = {
           back_image: string | null
           cloze_count: number
           created_at: string
+          deck_id: string
           deleted_at: string | null
           front: string
           front_audio: string | null
           front_image: string | null
           id: string
           language: string
+          leech_hold: string | null
+          leech_hold_at: string | null
           reverse: boolean
           status: string
           tags: string[]
@@ -209,12 +289,15 @@ export type Database = {
           back_image?: string | null
           cloze_count?: number
           created_at?: string
+          deck_id: string
           deleted_at?: string | null
           front: string
           front_audio?: string | null
           front_image?: string | null
           id?: string
           language: string
+          leech_hold?: string | null
+          leech_hold_at?: string | null
           reverse?: boolean
           status?: string
           tags?: string[]
@@ -228,19 +311,30 @@ export type Database = {
           back_image?: string | null
           cloze_count?: number
           created_at?: string
+          deck_id?: string
           deleted_at?: string | null
           front?: string
           front_audio?: string | null
           front_image?: string | null
           id?: string
           language?: string
+          leech_hold?: string | null
+          leech_hold_at?: string | null
           reverse?: boolean
           status?: string
           tags?: string[]
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fichas_deck_id_user_id_fkey"
+            columns: ["deck_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "decks"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
       }
       flashcards: {
         Row: {
@@ -324,12 +418,15 @@ export type Database = {
         Row: {
           audio: string | null
           created_at: string
+          deck_id: string
           deleted_at: string | null
           id: string
           image: string | null
           ipa: string
           language: string
           last_seen_at: string | null
+          leech_hold: string | null
+          leech_hold_at: string | null
           lemma: string
           lemma_key: string
           note: string
@@ -345,12 +442,15 @@ export type Database = {
         Insert: {
           audio?: string | null
           created_at?: string
+          deck_id: string
           deleted_at?: string | null
           id?: string
           image?: string | null
           ipa?: string
           language: string
           last_seen_at?: string | null
+          leech_hold?: string | null
+          leech_hold_at?: string | null
           lemma: string
           lemma_key: string
           note?: string
@@ -366,12 +466,15 @@ export type Database = {
         Update: {
           audio?: string | null
           created_at?: string
+          deck_id?: string
           deleted_at?: string | null
           id?: string
           image?: string | null
           ipa?: string
           language?: string
           last_seen_at?: string | null
+          leech_hold?: string | null
+          leech_hold_at?: string | null
           lemma?: string
           lemma_key?: string
           note?: string
@@ -384,7 +487,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "items_deck_id_user_id_fkey"
+            columns: ["deck_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "decks"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
       }
       review_logs: {
         Row: {
@@ -465,8 +576,11 @@ export type Database = {
           autoplay_audio: boolean
           day_start_hour: number
           desired_retention: number
+          leech_action: string
+          leech_lapses: number
           native_language: string | null
           new_flashcards_per_day: number
+          new_order: string
           study_languages: unknown[]
           time_zone: string | null
           ui_language: string
@@ -477,8 +591,11 @@ export type Database = {
           autoplay_audio?: boolean
           day_start_hour?: number
           desired_retention?: number
+          leech_action?: string
+          leech_lapses?: number
           native_language?: string | null
           new_flashcards_per_day?: number
+          new_order?: string
           study_languages?: unknown[]
           time_zone?: string | null
           ui_language?: string
@@ -489,8 +606,11 @@ export type Database = {
           autoplay_audio?: boolean
           day_start_hour?: number
           desired_retention?: number
+          leech_action?: string
+          leech_lapses?: number
           native_language?: string | null
           new_flashcards_per_day?: number
+          new_order?: string
           study_languages?: unknown[]
           time_zone?: string | null
           ui_language?: string
@@ -549,6 +669,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_extra_new: {
+        Args: { p_day_start: string; p_language: string; p_n: number }
+        Returns: number
+      }
+      add_extra_new_for: {
+        Args: {
+          p_day: string
+          p_language: unknown
+          p_n: number
+          p_user: string
+        }
+        Returns: number
+      }
       api_items: {
         Args: { p_language: string; p_token: string }
         Returns: {
@@ -588,6 +721,27 @@ export type Database = {
         }[]
       }
       api_sync_begin: { Args: { p_token: string }; Returns: number }
+      api_sync_deck_import: {
+        Args: {
+          p_client_id: string
+          p_hash: string
+          p_language: string
+          p_name: string
+          p_rows: Json
+          p_token: string
+        }
+        Returns: Json
+      }
+      api_sync_extra_new: {
+        Args: {
+          p_at: string
+          p_client_id: string
+          p_language: string
+          p_n: number
+          p_token: string
+        }
+        Returns: Json
+      }
       api_sync_reject: {
         Args: {
           p_client_id: string
@@ -644,6 +798,7 @@ export type Database = {
         Args: {
           p_after: string
           p_day_start?: string
+          p_kind: string
           p_language: string
           p_limit: number
           p_token: string
@@ -652,6 +807,41 @@ export type Database = {
       }
       api_sync_unpair: { Args: { p_token: string }; Returns: undefined }
       api_token_owner: { Args: { p_token: string }; Returns: string }
+      apply_leech: {
+        Args: {
+          p_card: Database["public"]["Tables"]["flashcards"]["Row"]
+          p_lapses: number
+          p_user: string
+        }
+        Returns: undefined
+      }
+      deck_for_path: {
+        Args: { p_language: unknown; p_path: string; p_user: string }
+        Returns: string
+      }
+      deck_summaries: {
+        Args: {
+          p_day_start: string
+          p_language: string
+          p_next_day_start: string
+        }
+        Returns: {
+          deck_id: string
+          fichas: number
+          items: number
+          learning_due: number
+          leeches: number
+          new_available: number
+          new_done_today: number
+          review_due: number
+        }[]
+      }
+      default_deck: { Args: { p_language: string }; Returns: string }
+      delete_deck: { Args: { p_deck: string; p_mode: string }; Returns: number }
+      ensure_default_deck: {
+        Args: { p_language: unknown; p_user: string }
+        Returns: string
+      }
       import_anki_notes: {
         Args: { p_language: string; p_notes: Json }
         Returns: {
@@ -669,7 +859,23 @@ export type Database = {
       media_quota_bytes: { Args: never; Returns: number }
       media_usage: { Args: never; Returns: number }
       merge_tags: { Args: { p_a: string[]; p_b: string[] }; Returns: string[] }
+      new_done_by_deck: {
+        Args: { p_day_start: string; p_user: string }
+        Returns: {
+          deck_id: string
+          language: unknown
+          n: number
+        }[]
+      }
       open_work: { Args: { p_work: Json }; Returns: string }
+      queue_state: {
+        Args: { p_day_start: string; p_language: string }
+        Returns: Json
+      }
+      queue_state_for: {
+        Args: { p_day_start: string; p_language: unknown; p_user: string }
+        Returns: Json
+      }
       record_review: {
         Args: {
           p_client_id?: string
@@ -683,15 +889,24 @@ export type Database = {
         }
         Returns: string
       }
+      release_leeches: {
+        Args: { p_ficha_ids: string[]; p_item_ids: string[] }
+        Returns: number
+      }
       review_counts: {
         Args: { p_day_start: string; p_language?: string }
         Returns: {
           due_now: number
+          extra_new: number
           new_available: number
           new_done_today: number
           new_limit: number
           next_due_at: string
         }[]
+      }
+      review_day_key: {
+        Args: { p_day_start: string; p_user: string }
+        Returns: string
       }
       review_day_start: {
         Args: { p_hour: number; p_now?: string; p_time_zone: string }
@@ -721,6 +936,7 @@ export type Database = {
           lemma: string
         }[]
       }
+      set_default_deck: { Args: { p_deck: string }; Returns: undefined }
       set_lyrics_sync: {
         Args: { p_hint_dismissed?: boolean; p_offset?: number; p_work: string }
         Returns: undefined
