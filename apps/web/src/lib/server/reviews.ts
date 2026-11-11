@@ -1,7 +1,10 @@
-// Acesso ao banco da revisão (cards, review_logs e as RPCs da migration de revisão).
+// Acesso ao banco da revisão: cartões com o item e o encontro mais recente,
+// review_logs e as funções record_review / undo_review / review_counts.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '#lib/database.types.ts';
+import { formatWorkSource, type CardKind, type Origin } from '#lib/items.ts';
+import type { Language } from '#lib/languages.ts';
 import {
 	dayStart,
 	formatWhen,
@@ -10,15 +13,82 @@ import {
 	type ReviewCounts,
 	type ReviewItem
 } from '#lib/review.ts';
-import { formatSource } from '#lib/stremio.ts';
-import { previewIntervals, type CardRow } from './scheduler.ts';
+import { previewIntervals, type CardRow, type CardSeed, type LogEntry } from './scheduler.ts';
 
 type Client = SupabaseClient<Database>;
 
-export const CARD_COLUMNS =
-	'id, due_at, stability, stability_fast, difficulty, state, schedule_status, last_review_at, reps, lapses, scheduled_days, learning_step, paused, created_at';
+const CARD_COLUMNS =
+	'id, kind, due_at, stability, stability_fast, difficulty, state, schedule_status, last_review_at, reps, lapses, scheduled_days, learning_step, created_at';
 
-export const CARD_WITH_WORD = `${CARD_COLUMNS}, words!inner(term, translation, lang, context, context_highlight, source, source_title, source_time_s)`;
+const CARD_WITH_ITEM = `${CARD_COLUMNS}, items!inner(lemma, sense, language, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
+
+/**
+ * Cartões revisáveis do usuário: o item está ativo e não foi apagado. Cada um vem
+ * com o encontro mais recente (a frase que aparece no verso).
+ */
+export function reviewableCards(supabase: Client, userId: string) {
+	return supabase
+		.from('cards')
+		.select(CARD_WITH_ITEM)
+		.eq('user_id', userId)
+		.eq('items.status', 'ativo')
+		.is('items.deleted_at', null)
+		.is('items.encounters.deleted_at', null)
+		.order('seen_at', { referencedTable: 'items.encounters', ascending: false })
+		.limit(1, { referencedTable: 'items.encounters' });
+}
+
+export type ReviewCardRow = CardRow &
+	CardSeed & {
+		kind: CardKind;
+		items: {
+			lemma: string;
+			sense: string;
+			language: string;
+			encounters: {
+				sentence: string;
+				highlight: string;
+				origin: string;
+				position: unknown;
+				works: { title: string; subtitle: string } | null;
+			}[];
+		};
+	};
+
+export async function loadReviewCard(supabase: Client, userId: string, cardId: string) {
+	const { data } = await reviewableCards(supabase, userId).eq('id', cardId).maybeSingle();
+	return data as ReviewCardRow | null;
+}
+
+/** Log do cartão, na ordem em que as revisões aconteceram. */
+export async function loadLogs(supabase: Client, cardId: string) {
+	const { data, error } = await supabase
+		.from('review_logs')
+		.select('id, rating, reviewed_at')
+		.eq('card_id', cardId)
+		.order('reviewed_at');
+	if (error) throw new Error(`review_logs: ${error.message}`);
+	return data as (LogEntry & { id: string })[];
+}
+
+export async function toReviewItem(row: ReviewCardRow, now: Date): Promise<ReviewItem> {
+	const encounter = row.items.encounters[0] ?? null;
+	return {
+		cardId: row.id,
+		kind: row.kind,
+		reps: row.reps,
+		state: row.state,
+		dueAt: row.due_at,
+		lemma: row.items.lemma,
+		sense: row.items.sense,
+		language: row.items.language as Language,
+		sentence: encounter?.sentence ?? '',
+		highlight: encounter?.highlight ?? '',
+		origin: (encounter?.origin as Origin | undefined) ?? null,
+		sourceDetail: encounter ? formatWorkSource(encounter.works, encounter.position) : '',
+		intervals: await previewIntervals(row, now)
+	};
+}
 
 export interface ReviewSummary extends ReviewCounts {
 	count: number;
@@ -42,42 +112,11 @@ export async function fetchReviewSummary(supabase: Client, now: Date): Promise<R
 	return { ...counts, count: reviewCount(counts), next: nextAt ? formatWhen(nextAt, now) : null };
 }
 
-type CardWithWord = CardRow & {
-	words: Pick<ReviewItem, 'term' | 'translation' | 'lang' | 'context' | 'source'> & {
-		context_highlight: string;
-		source_title: string;
-		source_time_s: number | null;
-	};
-};
-
-export async function toReviewItem(row: CardWithWord, now: Date): Promise<ReviewItem> {
-	return {
-		cardId: row.id,
-		reps: row.reps,
-		state: row.state,
-		dueAt: row.due_at,
-		term: row.words.term,
-		translation: row.words.translation,
-		lang: row.words.lang,
-		context: row.words.context,
-		contextHighlight: row.words.context_highlight,
-		source: row.words.source,
-		sourceDetail: formatSource(row.words.source_title, row.words.source_time_s),
-		intervals: await previewIntervals(row, now)
-	};
-}
-
-/** Erros das RPCs review_card/undo_review, em PT. */
+/** Erros de record_review/undo_review, em PT. */
 export function reviewErrorMessage(message: string | undefined): { status: number; text: string } {
 	switch (message) {
-		case 'new_limit':
-			return { status: 409, text: 'Você já viu todos os cartões novos de hoje. Volte amanhã!' };
 		case 'card_stale':
 			return { status: 409, text: 'Esse cartão já foi avaliado em outra aba.' };
-		case 'card_paused':
-			return { status: 409, text: 'Essa palavra está pausada.' };
-		case 'log_not_latest':
-			return { status: 409, text: 'Só dá para desfazer a última nota deste cartão.' };
 		case 'card_not_found':
 		case 'log_not_found':
 			return { status: 404, text: 'Cartão não encontrado.' };

@@ -1,7 +1,7 @@
 // Escolha das lacunas: quantas dependem da dificuldade, no máximo uma por linha,
 // palavras que o usuário já tem no banco vêm primeiro e o resto se espalha pela música.
 
-import type { Lang } from '../words.ts';
+import type { MusicLanguage } from './wordlists.ts';
 import type { Rng } from './rng.ts';
 import { STOPWORDS } from './wordlists.ts';
 import type { Token } from './tokenize.ts';
@@ -38,7 +38,7 @@ export interface GapPlan {
 
 export interface ChooseOptions {
 	difficulty: Difficulty;
-	lang: Lang;
+	lang: MusicLanguage;
 	/** Palavras (normalizadas) que o usuário já tem no banco. */
 	bank: ReadonlySet<string>;
 	rng: Rng;
@@ -46,7 +46,7 @@ export interface ChooseOptions {
 
 const MIN_LETTERS = 4;
 
-export function isGapCandidate(key: string, lang: Lang): boolean {
+export function isGapCandidate(key: string, lang: MusicLanguage): boolean {
 	return (
 		[...key].length >= MIN_LETTERS && /^[\p{L}\p{M}'-]+$/u.test(key) && !STOPWORDS[lang].has(key)
 	);

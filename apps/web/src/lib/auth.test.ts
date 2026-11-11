@@ -37,7 +37,7 @@ describe('isProtectedPath', () => {
 
 	test('/integracoes exige login; /api usa token, não sessão', () => {
 		expect(isProtectedPath('/integracoes')).toBe(true);
-		expect(isProtectedPath('/api/words')).toBe(false);
+		expect(isProtectedPath('/api/v1/items')).toBe(false);
 	});
 
 	test('rotas públicas não exigem', () => {

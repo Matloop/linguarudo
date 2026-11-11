@@ -8,8 +8,6 @@
 		GRADE_LABELS,
 		GRADES,
 		REVIEW_DEPENDENCY,
-		SOURCE_LABELS,
-		STATE_NEW,
 		answerItem,
 		highlightParts,
 		sessionProgress,
@@ -17,7 +15,8 @@
 		undoLast,
 		type Grade
 	} from '#lib/review.ts';
-	import { LANG_LABELS } from '#lib/words.ts';
+	import { ORIGIN_LABELS, type Origin } from '#lib/items.ts';
+	import { LANGUAGE_LABELS } from '#lib/languages.ts';
 	import type { PageProps, SubmitFunction } from './$types';
 
 	let { data }: PageProps = $props();
@@ -39,7 +38,6 @@
 	const total = $derived(session.answered + session.queue.length);
 
 	const WAVE = 'M6 18 Q 43 6 80 16 T 155 16 T 230 14 T 294 12';
-	const SPEECH_LANG = { en: 'en-US', it: 'it-IT' } as const;
 
 	onMount(() => {
 		canSpeak = 'speechSynthesis' in window;
@@ -60,11 +58,11 @@
 
 	function speak() {
 		if (!current || !canSpeak) return;
-		const utterance = new SpeechSynthesisUtterance(current.term);
-		utterance.lang = SPEECH_LANG[current.lang];
+		const utterance = new SpeechSynthesisUtterance(current.lemma);
+		utterance.lang = current.language;
 		const voice = speechSynthesis
 			.getVoices()
-			.find((v) => v.lang.toLowerCase().replace('_', '-').startsWith(current.lang));
+			.find((v) => v.lang.toLowerCase().replace('_', '-').startsWith(current.language));
 		if (voice) utterance.voice = voice;
 		speechSynthesis.cancel();
 		speechSynthesis.speak(utterance);
@@ -108,12 +106,9 @@
 				message = result.data?.message ?? 'Não deu para salvar agora.';
 				const data = result.data;
 				const cardId = data && 'cardId' in data ? data.cardId : null;
-				// Cartão avaliado em outra aba ou limite de novos batido: sai da fila.
+				// Cartão avaliado em outra aba, item apagado ou marcado como conhecido: sai da fila.
 				if (result.status === 409 || result.status === 404) {
-					const dropNew = data && 'reason' in data && data.reason === 'new_limit';
-					session.queue = session.queue.filter(
-						(i) => i.cardId !== cardId && !(dropNew && i.state === STATE_NEW)
-					);
+					session.queue = session.queue.filter((i) => i.cardId !== cardId);
 					await showFront();
 					invalidate(REVIEW_DEPENDENCY);
 				}
@@ -161,8 +156,8 @@
 	<title>Revisar · Linguarudo</title>
 </svelte:head>
 
-{#snippet sourceIcon(source: keyof typeof SOURCE_LABELS)}
-	<span class="origem" title={`Origem: ${SOURCE_LABELS[source]}`}>
+{#snippet sourceIcon(source: Origin)}
+	<span class="origem" title={`Origem: ${ORIGIN_LABELS[source]}`}>
 		<svg
 			viewBox="0 0 24 24"
 			width="18"
@@ -176,15 +171,15 @@
 		>
 			{#if source === 'stremio'}
 				<rect x="3" y="5" width="18" height="12" rx="2" /><path d="M10 9l4 2-4 2z M8 21h8" />
-			{:else if source === 'lesson'}
+			{:else if source === 'ereader'}
 				<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" /><path d="M5 17a3 3 0 0 1 3-3h11" />
-			{:else if source === 'music'}
+			{:else if source === 'musica'}
 				<path d="M9 18V5l11-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="17" cy="16" r="3" />
 			{:else}
 				<path d="M4 20l4-1 11-11-3-3L5 16z" /><path d="M14 6l3 3" />
 			{/if}
 		</svg>
-		<span class="visually-hidden">Origem: {SOURCE_LABELS[source]}</span>
+		<span class="visually-hidden">Origem: {ORIGIN_LABELS[source]}</span>
 	</span>
 {/snippet}
 
@@ -236,23 +231,23 @@
 
 	{#if flipped}
 		<section class="cartao virado" aria-label="Cartão" tabindex="-1" bind:this={back}>
-			<p class="selo {current.lang}" title={LANG_LABELS[current.lang]}>
-				{current.lang.toUpperCase()}
+			<p class="selo {current.language}" title={LANGUAGE_LABELS[current.language]}>
+				{current.language.toUpperCase()}
 			</p>
-			<p class="termo" lang={current.lang}>{current.term}</p>
+			<p class="termo" lang={current.language}>{current.lemma}</p>
 			<hr />
-			<p class="traducao" class:sem={!current.translation}>
-				{current.translation || 'Sem tradução'}
+			<p class="traducao" class:sem={!current.sense}>
+				{current.sense || 'Sem sentido guardado'}
 			</p>
-			{#if current.context}
-				<p class="contexto" lang={current.lang}>
-					{#each highlightParts(current.context, current.contextHighlight || current.term) as part, i (i)}
+			{#if current.sentence}
+				<p class="contexto" lang={current.language}>
+					{#each highlightParts(current.sentence, current.highlight || current.lemma) as part, i (i)}
 						{#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}
 					{/each}
 				</p>
 			{/if}
 			<div class="rodape">
-				{@render sourceIcon(current.source)}
+				{#if current.origin}{@render sourceIcon(current.origin)}{/if}
 				{#if current.sourceDetail}<span class="origem-detalhe">{current.sourceDetail}</span>{/if}
 				{#if canSpeak}
 					<button class="ouvir" type="button" onclick={speak}>
@@ -292,10 +287,17 @@
 		</form>
 	{:else}
 		<button class="cartao frente" type="button" onclick={flip} bind:this={frontButton}>
-			<span class="selo {current.lang}" title={LANG_LABELS[current.lang]}>
-				{current.lang.toUpperCase()}
+			<span class="selo {current.language}" title={LANGUAGE_LABELS[current.language]}>
+				{current.language.toUpperCase()}
 			</span>
-			<span class="termo" lang={current.lang}>{current.term}</span>
+			{#if current.kind === 'produzir'}
+				<span class="pergunta"
+					>Como se diz em {LANGUAGE_LABELS[current.language].toLowerCase()}?</span
+				>
+				<span class="termo">{current.sense}</span>
+			{:else}
+				<span class="termo" lang={current.language}>{current.lemma}</span>
+			{/if}
 			<span class="dica">Toque para virar <kbd aria-hidden="true">Espaço</kbd></span>
 		</button>
 
@@ -326,7 +328,7 @@
 		{#if data.review?.next}
 			<p class="proximo">O próximo cartão vence {data.review.next}.</p>
 		{:else}
-			<p class="proximo">Guarde palavras novas (ou retome as pausadas) e elas viram cartões.</p>
+			<p class="proximo">Guarde palavras novas e elas viram cartões.</p>
 		{/if}
 		<a class="primario" href={resolve('/palavras')}>Ir para Minhas palavras</a>
 	</section>
@@ -490,6 +492,13 @@
 
 	.virado .termo {
 		font-size: clamp(26px, 7vw, 36px);
+	}
+
+	.pergunta {
+		margin-bottom: 10px;
+		color: var(--cinza);
+		font-size: 15px;
+		font-weight: 700;
 	}
 
 	.dica {

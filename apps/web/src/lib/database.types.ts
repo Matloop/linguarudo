@@ -45,10 +45,11 @@ export type Database = {
           difficulty: number
           due_at: string
           id: string
+          item_id: string
+          kind: string
           lapses: number
           last_review_at: string | null
           learning_step: number
-          paused: boolean
           reps: number
           schedule_status: string
           scheduled_days: number
@@ -56,17 +57,17 @@ export type Database = {
           stability_fast: number
           state: number
           user_id: string
-          word_id: string
         }
         Insert: {
           created_at?: string
           difficulty?: number
           due_at?: string
           id?: string
+          item_id: string
+          kind: string
           lapses?: number
           last_review_at?: string | null
           learning_step?: number
-          paused?: boolean
           reps?: number
           schedule_status?: string
           scheduled_days?: number
@@ -74,17 +75,17 @@ export type Database = {
           stability_fast?: number
           state?: number
           user_id: string
-          word_id: string
         }
         Update: {
           created_at?: string
           difficulty?: number
           due_at?: string
           id?: string
+          item_id?: string
+          kind?: string
           lapses?: number
           last_review_at?: string | null
           learning_step?: number
-          paused?: boolean
           reps?: number
           schedule_status?: string
           scheduled_days?: number
@@ -92,166 +93,237 @@ export type Database = {
           stability_fast?: number
           state?: number
           user_id?: string
-          word_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "cards_word_id_fkey"
-            columns: ["word_id"]
-            isOneToOne: true
-            referencedRelation: "words"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      review_logs: {
-        Row: {
-          card_id: string
-          id: string
-          previous: Json
-          rating: number
-          reviewed_at: string
-          revlog: Json
-          user_id: string
-          was_new: boolean
-        }
-        Insert: {
-          card_id: string
-          id?: string
-          previous: Json
-          rating: number
-          reviewed_at?: string
-          revlog: Json
-          user_id: string
-          was_new: boolean
-        }
-        Update: {
-          card_id?: string
-          id?: string
-          previous?: Json
-          rating?: number
-          reviewed_at?: string
-          revlog?: Json
-          user_id?: string
-          was_new?: boolean
-        }
-        Relationships: [
-          {
-            foreignKeyName: "review_logs_card_id_fkey"
-            columns: ["card_id"]
+            foreignKeyName: "cards_item_id_user_id_fkey"
+            columns: ["item_id", "user_id"]
             isOneToOne: false
-            referencedRelation: "cards"
-            referencedColumns: ["id"]
+            referencedRelation: "items"
+            referencedColumns: ["id", "user_id"]
           },
         ]
       }
-      songs: {
+      encounters: {
         Row: {
-          artist: string
+          client_id: string | null
           created_at: string
+          deleted_at: string | null
+          form: string
+          highlight: string
           id: string
-          lang: Database["public"]["Enums"]["word_lang"]
-          played_at: string
-          title: string
+          item_id: string
+          origin: string
+          position: Json
+          seen_at: string
+          sense: string
+          sentence: string
           user_id: string
-          youtube_id: string
+          work_id: string | null
         }
         Insert: {
-          artist: string
+          client_id?: string | null
           created_at?: string
+          deleted_at?: string | null
+          form?: string
+          highlight?: string
           id?: string
-          lang: Database["public"]["Enums"]["word_lang"]
-          played_at?: string
-          title: string
-          user_id?: string
-          youtube_id: string
+          item_id: string
+          origin: string
+          position?: Json
+          seen_at?: string
+          sense?: string
+          sentence?: string
+          user_id: string
+          work_id?: string | null
         }
         Update: {
-          artist?: string
+          client_id?: string | null
           created_at?: string
+          deleted_at?: string | null
+          form?: string
+          highlight?: string
           id?: string
-          lang?: Database["public"]["Enums"]["word_lang"]
-          played_at?: string
-          title?: string
+          item_id?: string
+          origin?: string
+          position?: Json
+          seen_at?: string
+          sense?: string
+          sentence?: string
           user_id?: string
-          youtube_id?: string
+          work_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "encounters_item_id_user_id_fkey"
+            columns: ["item_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "encounters_work_id_user_id_fkey"
+            columns: ["work_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "works"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
       }
-      user_settings: {
+      items: {
         Row: {
-          new_cards_per_day: number
+          created_at: string
+          deleted_at: string | null
+          id: string
+          ipa: string
+          language: string
+          last_seen_at: string | null
+          lemma: string
+          note: string
+          part_of_speech: string
+          seen_count: number
+          sense: string
+          status: string
           updated_at: string
           user_id: string
         }
         Insert: {
-          new_cards_per_day?: number
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          ipa?: string
+          language: string
+          last_seen_at?: string | null
+          lemma: string
+          note?: string
+          part_of_speech?: string
+          seen_count?: number
+          sense?: string
+          status?: string
           updated_at?: string
-          user_id?: string
+          user_id: string
         }
         Update: {
-          new_cards_per_day?: number
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          ipa?: string
+          language?: string
+          last_seen_at?: string | null
+          lemma?: string
+          note?: string
+          part_of_speech?: string
+          seen_count?: number
+          sense?: string
+          status?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: []
       }
-      words: {
+      review_logs: {
         Row: {
-          context: string
-          context_highlight: string
-          created_at: string
-          example: string
+          card_id: string
+          client_id: string | null
           id: string
-          ipa: string
-          lang: Database["public"]["Enums"]["word_lang"]
-          last_seen_at: string | null
-          meaning: string
-          pos: string
-          seen_count: number
-          source: Database["public"]["Enums"]["word_source"]
-          source_time_s: number | null
-          source_title: string
-          term: string
-          translation: string
+          rating: number
+          received_at: string
+          reviewed_at: string
           user_id: string
         }
         Insert: {
-          context?: string
-          context_highlight?: string
-          created_at?: string
-          example?: string
+          card_id: string
+          client_id?: string | null
           id?: string
-          ipa?: string
-          lang: Database["public"]["Enums"]["word_lang"]
-          last_seen_at?: string | null
-          meaning?: string
-          pos?: string
-          seen_count?: number
-          source?: Database["public"]["Enums"]["word_source"]
-          source_time_s?: number | null
-          source_title?: string
-          term: string
-          translation?: string
-          user_id?: string
+          rating: number
+          received_at?: string
+          reviewed_at: string
+          user_id: string
         }
         Update: {
-          context?: string
-          context_highlight?: string
-          created_at?: string
-          example?: string
+          card_id?: string
+          client_id?: string | null
           id?: string
-          ipa?: string
-          lang?: Database["public"]["Enums"]["word_lang"]
-          last_seen_at?: string | null
-          meaning?: string
-          pos?: string
-          seen_count?: number
-          source?: Database["public"]["Enums"]["word_source"]
-          source_time_s?: number | null
-          source_title?: string
-          term?: string
-          translation?: string
+          rating?: number
+          received_at?: string
+          reviewed_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_logs_card_id_user_id_fkey"
+            columns: ["card_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      user_settings: {
+        Row: {
+          native_language: string
+          new_cards_per_day: number
+          study_languages: unknown[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          native_language?: string
+          new_cards_per_day?: number
+          study_languages?: unknown[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          native_language?: string
+          new_cards_per_day?: number
+          study_languages?: unknown[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      works: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          id: string
+          kind: string
+          language: string | null
+          played_at: string | null
+          ref_key: string | null
+          refs: Json
+          subtitle: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          kind: string
+          language?: string | null
+          played_at?: string | null
+          ref_key?: string | null
+          refs?: Json
+          subtitle?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          kind?: string
+          language?: string | null
+          played_at?: string | null
+          ref_key?: string | null
+          refs?: Json
+          subtitle?: string
+          title?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -261,53 +333,51 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      api_list_words: {
-        Args: {
-          p_lang: Database["public"]["Enums"]["word_lang"]
-          p_token: string
-        }
+      api_items: {
+        Args: { p_language: string; p_token: string }
         Returns: {
-          due_at: string
-          paused: boolean
-          state: number
-          term: string
-          translation: string
+          cards: Json
+          id: string
+          lemma: string
+          sense: string
+          status: string
         }[]
       }
       api_mark_seen: {
-        Args: {
-          p_lang: Database["public"]["Enums"]["word_lang"]
-          p_terms: string[]
-          p_token: string
-        }
+        Args: { p_language: string; p_lemmas: string[]; p_token: string }
         Returns: number
       }
       api_me: {
         Args: { p_token: string }
         Returns: {
           email: string
+          native_language: string
+          study_languages: string[]
         }[]
       }
-      api_save_words: {
-        Args: { p_token: string; p_words: Json }
+      api_save_items: {
+        Args: { p_items: Json; p_token: string }
         Returns: {
+          card_due_at: string
+          card_state: number
           created: boolean
-          due_at: string
-          lang: Database["public"]["Enums"]["word_lang"]
-          state: number
-          term: string
+          encounter_id: string
+          item_id: string
+          language: string
+          lemma: string
         }[]
       }
       api_token_owner: { Args: { p_token: string }; Returns: string }
-      new_cards_limit: { Args: never; Returns: number }
-      review_card: {
+      open_work: { Args: { p_work: Json }; Returns: string }
+      record_review: {
         Args: {
           p_card_id: string
-          p_day_start: string
+          p_client_id?: string
           p_expected_reps: number
           p_next: Json
           p_rating: number
-          p_revlog: Json
+          p_reviewed_at: string
+          p_unlock_produce: boolean
         }
         Returns: string
       }
@@ -321,11 +391,43 @@ export type Database = {
           next_due_at: string
         }[]
       }
-      undo_review: { Args: { p_log_id: string }; Returns: string }
+      save_items: {
+        Args: { p_items: Json }
+        Returns: {
+          card_due_at: string
+          card_state: number
+          created: boolean
+          encounter_id: string
+          item_id: string
+          language: string
+          lemma: string
+        }[]
+      }
+      save_items_for: {
+        Args: { p_items: Json; p_user: string }
+        Returns: {
+          card_due_at: string
+          card_state: number
+          created: boolean
+          encounter_id: string
+          item_id: string
+          language: string
+          lemma: string
+        }[]
+      }
+      undo_review: {
+        Args: {
+          p_drop_produce: boolean
+          p_expected_reps: number
+          p_log_id: string
+          p_next: Json
+        }
+        Returns: string
+      }
+      work_for: { Args: { p_user: string; p_work: Json }; Returns: string }
     }
     Enums: {
-      word_lang: "en" | "it"
-      word_source: "manual" | "stremio" | "lesson" | "music"
+      [_ in never]: never
     }
     CompositeTypes: {
       [_ in never]: never
@@ -452,10 +554,7 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {
-      word_lang: ["en", "it"],
-      word_source: ["manual", "stremio", "lesson", "music"],
-    },
+    Enums: {},
   },
 } as const
 

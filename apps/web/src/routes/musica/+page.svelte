@@ -2,9 +2,10 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
-	import { SONG_LIMIT } from '#lib/music/song.ts';
+	import { LIMITS } from '#lib/items.ts';
 	import { parseYoutubeId } from '#lib/music/youtube.ts';
-	import { LANG_LABELS, LANGS, type Lang } from '#lib/words.ts';
+	import { LANGUAGE_LABELS } from '#lib/languages.ts';
+	import { MUSIC_LANGUAGES, type MusicLanguage } from '#lib/music/wordlists.ts';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -17,7 +18,7 @@
 	let url = $state(initial?.url ?? '');
 	let title = $state(initial?.title ?? '');
 	let artist = $state(initial?.artist ?? '');
-	let lang = $state<Lang>((initial?.lang as Lang | undefined) ?? 'en');
+	let language = $state<MusicLanguage>((initial?.language as MusicLanguage | undefined) ?? 'en');
 	let lookup = $state<'idle' | 'loading' | 'failed'>('idle');
 	let submitting = $state(false);
 
@@ -112,7 +113,7 @@
 			<input
 				id="title"
 				name="title"
-				maxlength={SONG_LIMIT}
+				maxlength={LIMITS.title}
 				autocomplete="off"
 				bind:value={title}
 				aria-invalid={errors.title ? 'true' : undefined}
@@ -124,7 +125,7 @@
 			<input
 				id="artist"
 				name="artist"
-				maxlength={SONG_LIMIT}
+				maxlength={LIMITS.title}
 				autocomplete="off"
 				bind:value={artist}
 				aria-invalid={errors.artist ? 'true' : undefined}
@@ -136,14 +137,14 @@
 	<fieldset class="idioma">
 		<legend>Língua da música</legend>
 		<div class="segmentos">
-			{#each LANGS as l (l)}
+			{#each MUSIC_LANGUAGES as l (l)}
 				<label>
-					<input type="radio" name="lang" value={l} bind:group={lang} />
-					<span>{LANG_LABELS[l]}</span>
+					<input type="radio" name="language" value={l} bind:group={language} />
+					<span>{LANGUAGE_LABELS[l]}</span>
 				</label>
 			{/each}
 		</div>
-		{#if errors.lang}<p class="erro" role="alert">{errors.lang}</p>{/if}
+		{#if errors.language}<p class="erro" role="alert">{errors.language}</p>{/if}
 	</fieldset>
 
 	{#if formError}<p class="erro" role="alert">{formError}</p>{/if}
@@ -169,7 +170,7 @@
 					<a href={resolve('/musica/[id]', { id: song.id })}>
 						<span class="miniatura" aria-hidden="true">
 							<img
-								src={`https://i.ytimg.com/vi/${song.youtube_id}/mqdefault.jpg`}
+								src={`https://i.ytimg.com/vi/${song.youtubeId}/mqdefault.jpg`}
 								alt=""
 								loading="lazy"
 								width="120"
@@ -180,10 +181,10 @@
 							<strong>{song.title}</strong>
 							<span class="artista">{song.artist}</span>
 						</span>
-						<span class="selo {song.lang}" title={LANG_LABELS[song.lang]}
-							>{song.lang.toUpperCase()}</span
+						<span class="selo {song.language}" title={LANGUAGE_LABELS[song.language]}
+							>{song.language.toUpperCase()}</span
 						>
-						<span class="data">{playedAt(song.played_at)}</span>
+						<span class="data">{song.playedAt ? playedAt(song.playedAt) : ''}</span>
 					</a>
 				</li>
 			{/each}

@@ -22,14 +22,18 @@ declare global {
 const playing = (page: Page) => page.evaluate(() => window.__fakeYT.playing);
 const calls = (page: Page, name: string) => page.evaluate((n) => window.__fakeYT.count(n), name);
 
-async function addWord(page: Page, term: string, translation: string) {
+async function addWord(page: Page, lemma: string, sense: string) {
 	await page.goto('/palavras');
 	const form = page.getByRole('form', { name: 'Guardar palavra' });
-	await form.getByLabel('Palavra ou expressão').fill(term);
-	await form.getByLabel('Tradução').fill(translation);
+	await form.getByLabel('Palavra ou expressão').fill(lemma);
+	await form.getByLabel('Sentido').fill(sense);
+	await form.getByRole('radio', { name: 'EN' }).check();
 	await form.getByRole('button', { name: 'Guardar' }).click();
-	await expect(form.getByRole('status')).toHaveText(`“${term}” guardada.`);
+	await expect(form.getByRole('status')).toHaveText(`“${lemma}” guardada.`);
 }
+
+const bankItem = (page: Page, lemma: string) =>
+	page.getByRole('list', { name: 'Palavras' }).locator(':scope > li').filter({ hasText: lemma });
 
 async function pickSong(
 	page: Page,
@@ -232,11 +236,12 @@ test('jogo: responde com a música tocando, espera, pausa, fim de jogo e resumo 
 	await expect(summary.getByRole('button', { name: 'Erradas no banco' })).toBeVisible();
 	await expect(page.getByTestId('banco')).toHaveText('1');
 
-	// A palavra foi para "Minhas palavras", com a linha como contexto.
+	// A palavra foi para "Minhas palavras" com um encontro: o verso e a música.
 	await page.goto('/palavras');
-	const item = page.getByRole('listitem').filter({ hasText: word3.toLowerCase() });
+	const item = bankItem(page, word3.toLowerCase());
 	await expect(item).toBeVisible();
 	await expect(item).toContainText(VERSES[3]);
+	await expect(item).toContainText(`Música · ${VIDEOS.ok.title} · ${VIDEOS.ok.artist}`);
 });
 
 test('errar não salva no banco sozinho; tentar de novo zera o jogo; sair volta para /musica', async ({
@@ -268,7 +273,7 @@ test('errar não salva no banco sozinho; tentar de novo zera o jogo; sair volta 
 	await expect(page).toHaveURL(/\/musica$/);
 });
 
-test('palavras do banco viram lacuna primeiro; o cartão mostra a tradução, ouve e salva', async ({
+test('palavras do banco viram lacuna primeiro; o cartão mostra o sentido, ouve e salva', async ({
 	page
 }) => {
 	test.setTimeout(90_000);
@@ -286,7 +291,7 @@ test('palavras do banco viram lacuna primeiro; o cartão mostra a tradução, ou
 	// A lacuna da linha 1 é a palavra do banco.
 	expect(await missingWord(page, 1)).toBe('harbor');
 
-	// Tocar numa palavra pausa o jogo e abre o cartão; "No seu banco" mostra a tradução.
+	// Tocar numa palavra pausa o jogo e abre o cartão; "No seu banco" mostra o sentido.
 	await page.locator('.lin[data-line="0"] .w', { hasText: 'meadow' }).click();
 	const card = page.getByRole('dialog', { name: 'meadow' });
 	await expect(card).toBeVisible();
@@ -294,15 +299,15 @@ test('palavras do banco viram lacuna primeiro; o cartão mostra a tradução, ou
 	expect(await playing(page)).toBe(false);
 	await expect(card.getByRole('button', { name: 'Ouvir' })).toBeVisible();
 
-	// Salvar com tradução própria.
-	await card.getByLabel(/Tradução/).fill('prado');
+	// Salvar com sentido próprio.
+	await card.getByLabel(/Sentido/).fill('prado');
 	await card.getByRole('button', { name: 'Salvar' }).click();
 	await expect(card).toBeHidden();
 	await expect(page.getByTestId('banco')).toHaveText('2');
 	// Fechou o cartão: o jogo volta a tocar.
 	await expect.poll(() => playing(page)).toBe(true);
 
-	// Agora "meadow" está no banco: o cartão mostra a tradução e não oferece Salvar de novo.
+	// Agora "meadow" está no banco: o cartão mostra o sentido e não oferece Salvar de novo.
 	await page.locator('.lin[data-line="0"] .w', { hasText: 'meadow' }).click();
 	const again = page.getByRole('dialog', { name: 'meadow' });
 	await expect(again).toContainText('prado');
@@ -311,7 +316,8 @@ test('palavras do banco viram lacuna primeiro; o cartão mostra a tradução, ou
 	await expect(again).toBeHidden();
 
 	await page.goto('/palavras');
-	await expect(page.getByRole('listitem').filter({ hasText: 'meadow' })).toContainText('prado');
+	await expect(bankItem(page, 'meadow')).toContainText('prado');
+	await expect(bankItem(page, 'meadow')).toContainText(VERSES[0]);
 });
 
 test('R repete a linha: o vídeo volta ao início dela', async ({ page }) => {

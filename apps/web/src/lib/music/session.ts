@@ -1,7 +1,7 @@
 // Monta o que o jogo precisa a partir da letra: linhas tokenizadas, lacunas
 // escolhidas por dificuldade e as 4 opções de cada uma.
 
-import type { Lang } from '../words.ts';
+import type { MusicLanguage } from './wordlists.ts';
 import { makeOptions } from './distractors.ts';
 import { chooseGaps, type Difficulty } from './gaps.ts';
 import type { GameConfig } from './game.ts';
@@ -21,7 +21,7 @@ export interface SessionGap {
 	key: string;
 	inBank: boolean;
 	/** Tradução do banco do usuário, quando a palavra já está lá. */
-	translation: string;
+	sense: string;
 	options: string[];
 }
 
@@ -34,7 +34,7 @@ export interface Session {
 
 export interface SessionInput {
 	lyrics: readonly LyricLine[];
-	lang: Lang;
+	lang: MusicLanguage;
 	difficulty: Difficulty;
 	/** Palavra normalizada → tradução, do banco do usuário nesta língua. */
 	bank: ReadonlyMap<string, string>;
@@ -60,7 +60,7 @@ export function buildSession(input: SessionInput): Session {
 		);
 		return {
 			...p,
-			translation: bank.get(p.key) ?? '',
+			sense: bank.get(p.key) ?? '',
 			options: makeOptions(p.answer, { pool, common: COMMON_WORDS[lang], exclude: inLine, rng })
 		};
 	});

@@ -1,9 +1,9 @@
-import type { Lang } from '../words.ts';
+import type { MusicLanguage } from './wordlists.ts';
 
-const VOICE_LANG: Record<Lang, string> = { en: 'en-US', it: 'it-IT' };
+const VOICE_LANG: Record<MusicLanguage, string> = { en: 'en-US', it: 'it-IT' };
 
 /** Lê a palavra em voz alta com a voz do navegador. Sem suporte, não faz nada. */
-export function speak(text: string, lang: Lang, rate = 0.85) {
+export function speak(text: string, lang: MusicLanguage, rate = 0.85) {
 	if (typeof speechSynthesis === 'undefined' || !text) return;
 	speechSynthesis.cancel();
 	const utterance = new SpeechSynthesisUtterance(text);

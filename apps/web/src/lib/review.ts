@@ -1,7 +1,8 @@
 // Regras puras da revisão (fila, sessão, datas, formatação). Não importa o
 // ts-fsrs, para não pesar no navegador; o agendamento fica em server/scheduler.ts.
 
-import type { Lang } from './words.ts';
+import type { CardKind, Origin } from './items.ts';
+import type { Language } from './languages.ts';
 
 /** Fuso que define o "dia" dos limites de cartões novos. Único ponto do código. */
 export const REVIEW_TIME_ZONE = 'America/Sao_Paulo';
@@ -32,14 +33,25 @@ export function isGrade(v: unknown): v is Grade {
 /** state do FSRS: 0 novo, 1 aprendendo, 2 revisão, 3 reaprendendo. */
 export const STATE_NEW = 0;
 
-export type WordSource = 'manual' | 'stremio' | 'lesson' | 'music';
+/** state do FSRS em revisão (já saiu dos passos de aprendizado). */
+export const STATE_REVIEW = 2;
 
-export const SOURCE_LABELS: Record<WordSource, string> = {
-	manual: 'Adicionada à mão',
-	stremio: 'Stremio',
-	lesson: 'Aula',
-	music: 'Música'
-};
+// ---------- Dominado ----------
+
+/**
+ * Estabilidade (dias) a partir da qual um cartão conta como dominado. O Anki chama
+ * de "maduro" o intervalo de 21 dias; dominado pede bem mais: com retenção de 90%,
+ * 90 dias de estabilidade são uns três meses sem esquecer.
+ */
+export const MASTERED_STABILITY_DAYS = 90;
+
+/** Dominado é derivado, não guardado: todos os cartões do item em revisão e estáveis. */
+export function isMastered(cards: readonly { state: number; stability: number }[]): boolean {
+	return (
+		cards.length > 0 &&
+		cards.every((c) => c.state === STATE_REVIEW && c.stability >= MASTERED_STABILITY_DAYS)
+	);
+}
 
 // ---------- Fila ----------
 
@@ -48,7 +60,6 @@ export interface QueueCard {
 	state: number;
 	dueAt: string;
 	createdAt: string;
-	paused: boolean;
 }
 
 export interface QueueOptions {
@@ -61,14 +72,16 @@ export function newRemaining(newLimit: number, newDoneToday: number): number {
 	return Math.max(0, newLimit - newDoneToday);
 }
 
-/** Vencidos primeiro (mais atrasado antes), depois novos por ordem de criação, até o limite. */
+/**
+ * Vencidos primeiro (mais atrasado antes), depois novos por ordem de criação, até o limite.
+ * Quem chama já tirou os cartões de itens conhecidos ou apagados.
+ */
 export function buildQueue<T extends QueueCard>(cards: T[], opts: QueueOptions): T[] {
 	const now = opts.now.getTime();
-	const active = cards.filter((c) => !c.paused);
-	const due = active
+	const due = cards
 		.filter((c) => c.state !== STATE_NEW && Date.parse(c.dueAt) <= now)
 		.sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt));
-	const fresh = active
+	const fresh = cards
 		.filter((c) => c.state === STATE_NEW)
 		.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
 		.slice(0, newRemaining(opts.newLimit, opts.newDoneToday));
@@ -217,17 +230,20 @@ export function highlightParts(context: string, term: string): TextPart[] {
 /** O que a tela de revisão recebe por cartão. */
 export interface ReviewItem {
 	cardId: string;
+	/** Reconhecer: mostra o lema, pede o sentido. Produzir: mostra o sentido, pede o lema. */
+	kind: CardKind;
 	reps: number;
 	state: number;
 	dueAt: string;
-	term: string;
-	translation: string;
-	lang: Lang;
-	context: string;
-	/** Trecho do contexto a destacar (a forma vista na legenda); vazio = o termo. */
-	contextHighlight: string;
-	source: WordSource;
-	/** "Kaguya, 42:10" para palavras do Stremio; vazio se não há. */
+	lemma: string;
+	sense: string;
+	language: Language;
+	/** Frase do encontro mais recente; vazia se o item não tem encontro. */
+	sentence: string;
+	/** Trecho da frase a destacar (a forma vista); vazio = o lema. */
+	highlight: string;
+	origin: Origin | null;
+	/** "Kaguya · T1E2, 42:10"; vazio se o encontro não tem obra. */
 	sourceDetail: string;
 	intervals: Record<Grade, string>;
 }

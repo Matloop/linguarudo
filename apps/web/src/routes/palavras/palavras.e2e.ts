@@ -1,5 +1,10 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { login, SUPABASE_URL } from '../../e2e/auth.ts';
+
+/** Só os itens do banco (cada um tem a própria lista de encontros dentro). */
+function itemsOf(page: Page) {
+	return page.getByRole('list', { name: 'Palavras' }).locator(':scope > li');
+}
 
 test('sem login, /palavras manda para /entrar', async ({ page }) => {
 	await page.goto('/palavras?lang=it');
@@ -7,23 +12,27 @@ test('sem login, /palavras manda para /entrar', async ({ page }) => {
 	await expect(page.getByRole('button', { name: 'Entrar com Google' })).toBeVisible();
 });
 
-test('anon não lê a tabela words direto pela API', async () => {
+test('anon não lê items nem encounters direto pela API', async () => {
 	const key = process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 	test.skip(!key, 'PUBLIC_SUPABASE_PUBLISHABLE_KEY não definido');
-	const res = await fetch(`${SUPABASE_URL}/rest/v1/words?select=id`, {
-		headers: { apikey: key!, authorization: `Bearer ${key}` }
-	});
-	expect(res.ok).toBe(false);
+	for (const table of ['items', 'encounters', 'works', 'cards']) {
+		const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=id`, {
+			headers: { apikey: key!, authorization: `Bearer ${key}` }
+		});
+		expect(res.ok, table).toBe(false);
+	}
 });
 
-test('fluxo de palavras: entrar, adicionar, duplicata, filtrar, apagar, sair', async ({ page }) => {
+test('fluxo de palavras: guardar, encontro, duplicata, editar, conhecida, filtrar, apagar', async ({
+	page
+}) => {
 	await login(page);
 	await expect(page.getByText('Seu banco está vazio')).toBeVisible();
 
 	const form = page.getByRole('form', { name: 'Guardar palavra' });
 	await form.getByLabel('Palavra ou expressão').fill('  give   up ');
-	await form.getByLabel('Tradução').fill('desistir');
-	await form.getByLabel('Contexto').fill("Don't give up on me.");
+	await form.getByLabel('Sentido').fill('desistir');
+	await form.getByLabel('Frase').fill('Never give up on the small boat.');
 	await form.getByRole('button', { name: 'Guardar' }).click();
 	await expect(form.getByRole('status')).toHaveText('“give up” guardada.');
 	await expect(form.getByLabel('Palavra ou expressão')).toHaveValue('');
@@ -33,18 +42,46 @@ test('fluxo de palavras: entrar, adicionar, duplicata, filtrar, apagar, sair', a
 	await form.getByRole('button', { name: 'Guardar' }).click();
 	await expect(form.getByRole('status')).toHaveText('“allora” guardada.');
 
-	const items = page.getByRole('listitem');
+	const items = itemsOf(page);
 	await expect(items).toHaveCount(2);
 	await expect(items.first()).toContainText('allora'); // mais recente primeiro
-	await expect(items.nth(1)).toContainText('desistir');
+	const giveUp = items.filter({ hasText: 'give up' });
+	await expect(giveUp).toContainText('desistir');
+	await expect(giveUp.getByRole('list', { name: 'Encontros de “give up”' })).toContainText(
+		'Never give up on the small boat.'
+	);
 
-	// Duplicata (outra caixa) mostra mensagem amigável e mantém o que foi digitado.
+	// Mesmo lema (outra caixa) sem frase: nada a acrescentar, mensagem amigável.
 	await form.getByLabel('Palavra ou expressão').fill('Give Up');
 	await form.getByRole('radio', { name: 'EN' }).check();
 	await form.getByRole('button', { name: 'Guardar' }).click();
-	await expect(form.getByRole('alert')).toHaveText('“Give Up” já está no seu banco.');
+	await expect(form.getByRole('alert')).toHaveText('“give up” já está no seu banco.');
 	await expect(form.getByLabel('Palavra ou expressão')).toHaveValue('Give Up');
+
+	// Com frase, vira um novo encontro do mesmo item.
+	await form.getByLabel('Frase').fill('They never give up at night.');
+	await form.getByRole('button', { name: 'Guardar' }).click();
+	await expect(form.getByRole('status')).toHaveText(
+		'“give up” já estava no banco. A frase entrou como novo encontro.'
+	);
 	await expect(items).toHaveCount(2);
+	await expect(
+		giveUp.getByRole('list', { name: 'Encontros de “give up”' }).getByRole('listitem')
+	).toHaveCount(2);
+
+	// Editar o sentido e a nota.
+	await giveUp.getByText('Editar').click();
+	await giveUp.getByLabel('Sentido').fill('parar de tentar');
+	await giveUp.getByLabel('Nota').fill('phrasal verb');
+	await giveUp.getByRole('button', { name: 'Salvar' }).click();
+	await expect(giveUp).toContainText('parar de tentar');
+	await expect(giveUp).toContainText('phrasal verb');
+
+	// Marcar como conhecida e voltar.
+	await page.getByRole('button', { name: 'Marcar “allora” como conhecida' }).click();
+	await expect(items.filter({ hasText: 'allora' })).toContainText('Conhecida');
+	await page.getByRole('button', { name: 'Voltar “allora” para a revisão' }).click();
+	await expect(items.filter({ hasText: 'allora' })).not.toContainText('Conhecida');
 
 	const filtros = page.getByRole('navigation', { name: 'Filtrar por idioma' });
 	await filtros.getByRole('link', { name: 'Italiano' }).click();
@@ -68,16 +105,44 @@ test('fluxo de palavras: entrar, adicionar, duplicata, filtrar, apagar, sair', a
 	await expect(page).toHaveURL(/\/entrar/);
 });
 
+test('idiomas de estudo mudam o seletor e os filtros', async ({ page }) => {
+	await login(page);
+	const form = page.getByRole('form', { name: 'Guardar palavra' });
+	await expect(form.getByRole('radio')).toHaveCount(2);
+
+	await page.getByText('Idiomas de estudo').click();
+	await page.getByRole('checkbox', { name: 'Espanhol' }).check();
+	await page.getByRole('checkbox', { name: 'Inglês' }).uncheck();
+	await page.getByRole('button', { name: 'Salvar idiomas' }).click();
+
+	await expect(form.getByRole('radio', { name: 'ES' })).toBeVisible();
+	await expect(form.getByRole('radio', { name: 'EN' })).toHaveCount(0);
+	const filtros = page.getByRole('navigation', { name: 'Filtrar por idioma' });
+	await expect(filtros.getByRole('link', { name: 'Espanhol' })).toBeVisible();
+
+	await form.getByLabel('Palavra ou expressão').fill('ojalá');
+	await form.getByRole('radio', { name: 'ES' }).check();
+	await form.getByRole('button', { name: 'Guardar' }).click();
+	await expect(form.getByRole('status')).toHaveText('“ojalá” guardada.');
+
+	// Nenhum idioma marcado é recusado.
+	await page.getByText('Idiomas de estudo').click();
+	await page.getByRole('checkbox', { name: 'Espanhol' }).uncheck();
+	await page.getByRole('checkbox', { name: 'Italiano' }).uncheck();
+	await page.getByRole('button', { name: 'Salvar idiomas' }).click();
+	await expect(page.getByText('Escolha pelo menos um idioma.')).toBeVisible();
+});
+
 test.describe('sem JavaScript', () => {
 	test.use({ javaScriptEnabled: false });
 
-	test('adiciona, filtra e apaga com formulário comum', async ({ page }) => {
+	test('guarda, filtra e apaga com formulário comum', async ({ page }) => {
 		await login(page);
 		await page.getByRole('link', { name: 'Italiano' }).click();
 
 		const form = page.getByRole('form', { name: 'Guardar palavra' });
 		await form.getByLabel('Palavra ou expressão').fill('magari');
-		await form.getByLabel('Tradução').fill('quem dera');
+		await form.getByLabel('Sentido').fill('quem dera');
 		await expect(form.getByRole('radio', { name: 'IT' })).toBeChecked();
 		await form.getByRole('button', { name: 'Guardar' }).click();
 
@@ -86,7 +151,7 @@ test.describe('sem JavaScript', () => {
 			'aria-current',
 			'page'
 		);
-		await expect(page.getByRole('listitem')).toHaveCount(1);
+		await expect(itemsOf(page)).toHaveCount(1);
 
 		await page.getByRole('button', { name: 'Apagar “magari”' }).click();
 		await expect(page.getByText('Nenhuma palavra em italiano ainda.')).toBeVisible();

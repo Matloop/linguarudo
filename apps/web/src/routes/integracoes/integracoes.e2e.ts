@@ -64,19 +64,23 @@ test('gerar token, mostrar uma vez, listar e revogar', async ({ page }) => {
 	await expect(page.getByRole('textbox', { name: 'Token gerado' })).toHaveCount(0);
 	await expect(page.getByText(token)).toHaveCount(0);
 
-	const me = await api(page.request, token).get('/api/me');
+	const me = await api(page.request, token).get('/api/v1/me');
 	expect(me.status()).toBe(200);
-	expect((await me.json()).email).toMatch(/@linguarudo\.test$/);
+	expect(await me.json()).toEqual({
+		email: expect.stringMatching(/@linguarudo\.test$/),
+		nativeLanguage: 'pt',
+		studyLanguages: ['en', 'it']
+	});
 
 	await page.reload();
 	await expect(item).not.toContainText('Último uso: nunca');
 
 	await item.getByRole('button', { name: /Revogar/ }).click();
 	await expect(page.getByText('Nenhum token ainda.')).toBeVisible();
-	expect((await api(page.request, token).get('/api/me')).status()).toBe(401);
+	expect((await api(page.request, token).get('/api/v1/me')).status()).toBe(401);
 });
 
-test('API com token: salvar, pular duplicata, listar com prefer, visto e CORS', async ({
+test('API v1: salvar com encontro e obra, repetir, listar com prefer, visto e CORS', async ({
 	page
 }) => {
 	await login(page);
@@ -84,11 +88,11 @@ test('API com token: salvar, pular duplicata, listar com prefer, visto e CORS', 
 	const client = api(page.request, token);
 
 	// Sem token / token errado.
-	expect((await api(page.request, null).get('/api/me')).status()).toBe(401);
-	expect((await api(page.request, 'lr_' + 'x'.repeat(43)).get('/api/me')).status()).toBe(401);
+	expect((await api(page.request, null).get('/api/v1/me')).status()).toBe(401);
+	expect((await api(page.request, 'lr_' + 'x'.repeat(43)).get('/api/v1/me')).status()).toBe(401);
 
 	// CORS: preflight do fork passa; origem estranha não ganha cabeçalho.
-	const pre = await page.request.fetch('/api/words', {
+	const pre = await page.request.fetch('/api/v1/items', {
 		method: 'OPTIONS',
 		headers: {
 			origin: FORK_ORIGIN,
@@ -99,71 +103,104 @@ test('API com token: salvar, pular duplicata, listar com prefer, visto e CORS', 
 	expect(pre.status()).toBe(204);
 	expect(pre.headers()['access-control-allow-origin']).toBe(FORK_ORIGIN);
 	expect(pre.headers()['access-control-allow-headers']).toMatch(/Authorization/);
-	const evil = await api(page.request, token, 'https://evil.example').get('/api/me');
+	const evil = await api(page.request, token, 'https://evil.example').get('/api/v1/me');
 	expect(evil.headers()['access-control-allow-origin']).toBeUndefined();
-	const local = await api(page.request, token, 'http://localhost:8080').get('/api/me');
+	const local = await api(page.request, token, 'http://localhost:8080').get('/api/v1/me');
 	expect(local.headers()['access-control-allow-origin']).toBe('http://localhost:8080');
 
-	const save = await client.post('/api/words', {
-		words: [
-			{
-				term: 'festa',
-				lang: 'it',
-				translation: 'festas',
-				context: 'Eu não quero só ir às feste.',
-				contextHighlight: 'feste',
-				meaning: 'festas, celebrações',
-				ipa: '/ˈfɛs.ta/',
-				pos: 'subst. fem.',
-				example: 'Andiamo alla festa.',
-				sourceTitle: 'Kaguya',
-				sourceTimeS: 2530
-			},
-			{ term: 'Festa', lang: 'it' },
-			{ term: '', lang: 'it' }
-		]
+	const clientId = crypto.randomUUID();
+	const festa = {
+		language: 'it',
+		lemma: 'festa',
+		sense: 'festa, celebração',
+		ipa: '/ˈfɛs.ta/',
+		partOfSpeech: 'subst. fem.',
+		encounter: {
+			form: 'feste',
+			sentence: 'Stasera ci sono tante feste nel quartiere.',
+			highlight: 'feste',
+			sense: 'festas',
+			position: { seconds: 2530 },
+			clientId
+		},
+		work: {
+			kind: 'episodio',
+			title: 'Kaguya',
+			subtitle: 'T1E2',
+			refs: { imdbId: 'tt1234567', season: 1, episode: 2 },
+			language: 'ja'
+		}
+	};
+	const save = await client.post('/api/v1/items', {
+		items: [festa, { language: 'it', lemma: 'Festa' }, { language: 'it', lemma: '' }]
 	});
 	expect(save.status()).toBe(200);
 	const { results } = await save.json();
-	expect(results.map((r: { status: string }) => r.status)).toEqual([
-		'created',
-		'duplicate',
-		'invalid'
-	]);
-	expect(results[0]).toMatchObject({ term: 'festa', lang: 'it', state: 0 });
+	expect(results).toHaveLength(3);
+	expect(results[0]).toMatchObject({
+		ok: true,
+		item: { language: 'it', lemma: 'festa', created: true, card: { state: 0 } }
+	});
+	expect(results[0].item.encounterId).toEqual(expect.any(String));
+	// Mesmo lema em outra caixa: o mesmo item, sem encontro novo.
+	expect(results[1]).toMatchObject({
+		ok: true,
+		item: { id: results[0].item.id, created: false, encounterId: null }
+	});
+	expect(results[2]).toEqual({ ok: false, error: 'lemma vazio' });
+
+	// Reenviar o mesmo clientId (retry offline) não duplica o encontro.
+	const retry = await client.post('/api/v1/items', { items: [festa] });
+	expect((await retry.json()).results[0].item).toMatchObject({
+		created: false,
+		encounterId: results[0].item.encounterId
+	});
 
 	// Em outro lote (o Revisar mostra as novas por ordem de criação: festa primeiro).
-	await client.post('/api/words', { words: [{ term: 'giorno', lang: 'it' }] });
+	await client.post('/api/v1/items', { items: [{ language: 'it', lemma: 'giorno' }] });
 
-	// De novo: duplicada.
-	const again = await client.post('/api/words', { words: [{ term: 'FESTA', lang: 'it' }] });
-	expect((await again.json()).results[0].status).toBe('duplicate');
+	expect((await client.post('/api/v1/items', { items: [] })).status()).toBe(400);
+	expect((await client.post('/api/v1/items', 'não é json')).status()).toBe(400);
 
-	expect((await client.post('/api/words', { words: [] })).status()).toBe(400);
-	expect((await client.post('/api/words', 'não é json')).status()).toBe(400);
+	const list = await client.get('/api/v1/items?language=it');
+	const body = await list.json();
+	expect(body.language).toBe('it');
+	expect(body.items.map((i: { lemma: string }) => i.lemma).sort()).toEqual(['festa', 'giorno']);
+	expect(body.items.find((i: { lemma: string }) => i.lemma === 'festa')).toMatchObject({
+		sense: 'festa, celebração',
+		status: 'ativo',
+		mastered: false,
+		prefer: false,
+		cards: [{ kind: 'reconhecer', state: 0, stability: 0 }]
+	});
+	// Novos (state 0) não entram como preferidos.
+	expect(body.preferWords).toEqual([]);
+	expect((await client.get('/api/v1/items')).status()).toBe(400);
+	expect((await client.get('/api/v1/items?language=en')).ok()).toBe(true);
 
-	const list = await client.get('/api/words?lang=it');
-	const { words } = await list.json();
-	expect(words.map((w: { term: string }) => w.term).sort()).toEqual(['festa', 'giorno']);
-	// Novas (state 0) não entram como preferidas.
-	expect(words.every((w: { prefer: boolean }) => w.prefer === false)).toBe(true);
-	expect((await client.get('/api/words')).status()).toBe(400);
-	expect((await client.get('/api/words?lang=en')).ok()).toBe(true);
-
-	const seen = await client.post('/api/words/seen', { lang: 'it', terms: ['Festa', 'nada'] });
+	const seen = await client.post('/api/v1/items/seen', {
+		language: 'it',
+		lemmas: ['Festa', 'nada']
+	});
 	expect(await seen.json()).toEqual({ updated: 1 });
 	// Visto não mexe no FSRS.
-	const after = (await (await client.get('/api/words?lang=it')).json()).words;
-	expect(after.find((w: { term: string }) => w.term === 'festa')).toMatchObject({ state: 0 });
+	const after = (await (await client.get('/api/v1/items?language=it')).json()).items;
+	expect(after.find((i: { lemma: string }) => i.lemma === 'festa').cards[0]).toMatchObject({
+		state: 0
+	});
 
-	// A palavra aparece em /palavras e no Revisar com o destaque da forma vista e a origem.
+	// O item aparece em /palavras com o encontro e no Revisar com o destaque e a origem.
 	await page.goto('/palavras');
-	await expect(page.getByRole('listitem').filter({ hasText: 'festa' })).toContainText('festas');
+	const item = page.getByRole('list', { name: 'Palavras' }).locator(':scope > li').filter({
+		hasText: 'festa'
+	});
+	await expect(item).toContainText('festa, celebração');
+	await expect(item).toContainText('Stremio · Kaguya · T1E2, 42:10');
 	await page.goto('/revisar');
 	await expect(page.getByRole('button', { name: /festa/ })).toBeVisible();
 	await page.getByRole('button', { name: 'Mostrar resposta' }).click();
 	const cartao = page.getByRole('region', { name: 'Cartão' });
 	await expect(cartao.locator('mark')).toHaveText('feste');
-	await expect(cartao).toContainText('Kaguya, 42:10');
+	await expect(cartao).toContainText('Kaguya · T1E2, 42:10');
 	await expect(cartao.getByText('Origem: Stremio')).toBeAttached();
 });

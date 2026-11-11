@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { songFromWork } from '#lib/music/song.ts';
 import { wordKey } from '#lib/music/tokenize.ts';
 import type { PageServerLoad } from './$types';
 
@@ -10,40 +11,46 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 	if (!user) error(401, 'Entre para jogar.');
 	if (!UUID.test(params.id)) error(404, 'Música não encontrada.');
 
-	const { data: song, error: songError } = await locals.supabase
-		.from('songs')
-		.select('id, youtube_id, title, artist, lang')
+	const { data: work, error: workError } = await locals.supabase
+		.from('works')
+		.select('id, title, subtitle, refs, language, played_at')
 		.eq('id', params.id)
 		.eq('user_id', user.id)
+		.eq('kind', 'musica')
+		.is('deleted_at', null)
 		.maybeSingle();
-	if (songError) error(500, 'Não deu para abrir a música agora.');
+	if (workError) error(500, 'Não deu para abrir a música agora.');
+	const song = work ? songFromWork(work) : null;
 	if (!song) error(404, 'Música não encontrada.');
 
 	// Abrir a música a coloca no topo de "Tocadas recentemente".
 	await locals.supabase
-		.from('songs')
+		.from('works')
 		.update({ played_at: new Date().toISOString() })
 		.eq('id', song.id)
 		.eq('user_id', user.id);
 
-	const [bankWords, total] = await Promise.all([
+	const items = () =>
 		locals.supabase
-			.from('words')
-			.select('term, translation, ipa, pos')
-			.eq('user_id', user.id)
-			.eq('lang', song.lang)
-			.limit(BANK_LIMIT),
-		locals.supabase
-			.from('words')
+			.from('items')
 			.select('id', { count: 'exact', head: true })
+			.eq('user_id', user.id);
+	const [bankItems, total] = await Promise.all([
+		locals.supabase
+			.from('items')
+			.select('lemma, sense, ipa, part_of_speech')
 			.eq('user_id', user.id)
+			.eq('language', song.language)
+			.is('deleted_at', null)
+			.limit(BANK_LIMIT),
+		items().is('deleted_at', null)
 	]);
-	if (bankWords.error) error(500, 'Não deu para carregar seu banco agora.');
+	if (bankItems.error) error(500, 'Não deu para carregar seu banco agora.');
 
 	// Só palavras soltas entram na conta das lacunas; expressões ("give up") ficam de fora.
-	const bank = bankWords.data
-		.map((w) => ({ key: wordKey(w.term), translation: w.translation, ipa: w.ipa, pos: w.pos }))
+	const bank = bankItems.data
+		.map((i) => ({ key: wordKey(i.lemma), sense: i.sense, ipa: i.ipa, pos: i.part_of_speech }))
 		.filter((w) => w.key !== '' && !/\s/.test(w.key));
 
-	return { song, bank, bankTotal: total.count ?? bankWords.data.length };
+	return { song, bank, bankTotal: total.count ?? bankItems.data.length };
 };

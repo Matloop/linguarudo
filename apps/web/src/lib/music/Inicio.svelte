@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { DIFFICULTIES, DIFFICULTY_LABELS, type Difficulty } from './gaps.ts';
-	import type { Lang } from '#lib/words.ts';
+	import type { MusicLanguage } from './wordlists.ts';
 
 	interface Props {
 		title: string;
 		artist: string;
-		lang: Lang;
+		lang: MusicLanguage;
 		difficulty: Difficulty;
 		/** Quantas lacunas cada dificuldade tem nesta letra, e quantas são palavras do banco. */
 		counts: Record<Difficulty, { gaps: number; fromBank: number }>;

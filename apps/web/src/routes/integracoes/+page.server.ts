@@ -1,6 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import { generateToken } from '#lib/server/tokens.ts';
-import { normalizeTerm } from '#lib/words.ts';
+import { normalizeLemma } from '#lib/items.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const LABEL_MAX = 60;
@@ -27,7 +27,7 @@ export const actions: Actions = {
 		const user = await requireUser(locals);
 		const raw = (await request.formData()).get('label');
 		const label =
-			[...normalizeTerm(typeof raw === 'string' ? raw : '')].slice(0, LABEL_MAX).join('') ||
+			[...normalizeLemma(typeof raw === 'string' ? raw : '')].slice(0, LABEL_MAX).join('') ||
 			'Stremio';
 
 		const { token, hash, hint } = generateToken();

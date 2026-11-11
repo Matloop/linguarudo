@@ -77,7 +77,7 @@ describe('buildSession', () => {
 		});
 		const harbor = s.gaps.find((g) => g.key === 'harbor');
 		expect(harbor?.inBank).toBe(true);
-		expect(harbor?.translation).toBe('porto');
+		expect(harbor?.sense).toBe('porto');
 		expect(s.gaps.find((g) => g.key === 'valley')?.inBank).toBe(true);
 	});
 

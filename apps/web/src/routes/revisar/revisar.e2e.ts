@@ -3,16 +3,19 @@ import { login, SUPABASE_URL } from '../../e2e/auth.ts';
 
 async function addWord(
 	page: Page,
-	w: { term: string; translation: string; lang?: 'EN' | 'IT'; context?: string }
+	w: { lemma: string; sense: string; language?: 'EN' | 'IT'; sentence?: string }
 ) {
 	const form = page.getByRole('form', { name: 'Guardar palavra' });
-	await form.getByLabel('Palavra ou expressão').fill(w.term);
-	await form.getByLabel('Tradução').fill(w.translation);
-	await form.getByRole('radio', { name: w.lang ?? 'EN' }).check();
-	if (w.context) await form.getByLabel('Contexto').fill(w.context);
+	await form.getByLabel('Palavra ou expressão').fill(w.lemma);
+	await form.getByLabel('Sentido').fill(w.sense);
+	await form.getByRole('radio', { name: w.language ?? 'EN' }).check();
+	if (w.sentence) await form.getByLabel('Frase').fill(w.sentence);
 	await form.getByRole('button', { name: 'Guardar' }).click();
-	await expect(form.getByRole('status')).toHaveText(`“${w.term}” guardada.`);
+	await expect(form.getByRole('status')).toHaveText(`“${w.lemma}” guardada.`);
 }
+
+const bankItem = (page: Page, lemma: string) =>
+	page.getByRole('list', { name: 'Palavras' }).locator(':scope > li').filter({ hasText: lemma });
 
 const header = (page: Page) => page.getByRole('navigation', { name: 'Principal' });
 
@@ -32,7 +35,7 @@ test('anon não lê cartões nem logs pela API', async () => {
 	}
 });
 
-test('revisão: pausar, virar, avaliar, desfazer, teclado, resumo e estado vazio', async ({
+test('revisão: conhecida, virar, avaliar, desfazer, teclado, resumo e estado vazio', async ({
 	page
 }) => {
 	await login(page);
@@ -41,19 +44,19 @@ test('revisão: pausar, virar, avaliar, desfazer, teclado, resumo e estado vazio
 	);
 
 	await addWord(page, {
-		term: 'give up',
-		translation: 'desistir',
-		context: "Don't give up on me."
+		lemma: 'give up',
+		sense: 'desistir',
+		sentence: 'Never give up on the small boat.'
 	});
-	await addWord(page, { term: 'allora', translation: 'então', lang: 'IT' });
-	await addWord(page, { term: 'magari', translation: 'quem dera', lang: 'IT' });
+	await addWord(page, { lemma: 'allora', sense: 'então', language: 'IT' });
+	await addWord(page, { lemma: 'magari', sense: 'quem dera', language: 'IT' });
 
-	// Toda palavra vira cartão.
+	// Todo item nasce com um cartão Reconhecer.
 	await expect(header(page).getByRole('link', { name: 'Revisar 3 para revisar' })).toBeVisible();
 
-	// Pausada não entra na revisão.
-	await page.getByRole('button', { name: 'Pausar “magari” na revisão' }).click();
-	await expect(page.getByRole('listitem').filter({ hasText: 'magari' })).toContainText('Pausada');
+	// Conhecida não entra na revisão.
+	await page.getByRole('button', { name: 'Marcar “magari” como conhecida' }).click();
+	await expect(bankItem(page, 'magari')).toContainText('Conhecida');
 	await expect(header(page).getByRole('link', { name: 'Revisar 2 para revisar' })).toBeVisible();
 
 	await page.getByRole('link', { name: /2 para revisar.*Leva poucos minutos/ }).click();
@@ -69,7 +72,7 @@ test('revisão: pausar, virar, avaliar, desfazer, teclado, resumo e estado vazio
 	const cartao = page.getByRole('region', { name: 'Cartão' });
 	await expect(cartao).toContainText('desistir');
 	await expect(cartao.locator('mark')).toHaveText('give up');
-	await expect(cartao.getByText('Origem: Adicionada à mão')).toBeAttached();
+	await expect(cartao.getByText('Origem: Adicionado à mão')).toBeAttached();
 	await expect(cartao.getByRole('button', { name: 'Ouvir' })).toBeVisible();
 
 	const notas = page.getByRole('form', { name: 'Como foi?' });
@@ -91,7 +94,7 @@ test('revisão: pausar, virar, avaliar, desfazer, teclado, resumo e estado vazio
 	await expect(page.getByText('0/2')).toBeVisible();
 	await expect(progresso).toHaveAttribute('aria-valuenow', '0');
 
-	// Teclado: Espaço vira, 3 = Bom, 4 = Fácil.
+	// Teclado: Espaço vira, 3 = Bom. (Fácil libera o Produzir; tem teste próprio.)
 	await page.keyboard.press('Space');
 	await expect(cartao).toContainText('desistir');
 	await page.keyboard.press('3');
@@ -100,7 +103,8 @@ test('revisão: pausar, virar, avaliar, desfazer, teclado, resumo e estado vazio
 
 	await page.keyboard.press('Space');
 	await expect(cartao).toContainText('então');
-	await page.keyboard.press('4');
+	await expect(cartao.locator('mark')).toHaveCount(0); // sem frase, sem destaque
+	await page.keyboard.press('3');
 
 	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
 	await expect(page.getByText('2 de 2')).toBeVisible();
@@ -119,16 +123,74 @@ test('revisão: pausar, virar, avaliar, desfazer, teclado, resumo e estado vazio
 	await expect(page.getByRole('heading', { name: 'Nada para revisar agora' })).toBeVisible();
 	await expect(page.getByText(/O próximo cartão vence (hoje|amanhã|\d\d\/\d\d) às/)).toBeVisible();
 
-	// Retomar a pausada traz o cartão de volta.
+	// Voltar a conhecida para a revisão traz o cartão de volta.
 	await page.getByRole('link', { name: 'Ir para Minhas palavras' }).click();
-	await page.getByRole('button', { name: 'Retomar “magari” na revisão' }).click();
-	await expect(page.getByRole('listitem').filter({ hasText: 'magari' })).not.toContainText(
-		'Pausada'
-	);
+	await page.getByRole('button', { name: 'Voltar “magari” para a revisão' }).click();
+	await expect(bankItem(page, 'magari')).not.toContainText('Conhecida');
 	await expect(header(page).getByRole('link', { name: 'Revisar 1 para revisar' })).toBeVisible();
 	await header(page)
 		.getByRole('link', { name: /Revisar/ })
 		.click();
 	await expect(page).toHaveURL(/\/revisar$/);
 	await expect(page.getByRole('button', { name: /magari.*Toque para virar/ })).toBeVisible();
+});
+
+test('Produzir nasce quando o Reconhecer passa de 7 dias e pede o lema', async ({ page }) => {
+	await login(page);
+	await addWord(page, { lemma: 'aspettare', sense: 'esperar', language: 'IT' });
+	await addWord(page, { lemma: 'ecco', sense: '', language: 'IT' });
+	// Navegação no cliente: a página já está hidratada quando as teclas chegam.
+	await header(page)
+		.getByRole('link', { name: /Revisar/ })
+		.click();
+
+	// Fácil num cartão novo dá semanas de intervalo.
+	for (const lemma of ['aspettare', 'ecco']) {
+		await expect(
+			page.getByRole('button', { name: new RegExp(`${lemma}\\s*Toque para virar`) })
+		).toBeVisible();
+		await page.keyboard.press('Space');
+		await page.keyboard.press('4');
+	}
+	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
+
+	// Só o item com sentido ganha o Produzir.
+	await expect(page.getByText('Ainda tem 1 para revisar.')).toBeVisible();
+	await page.getByRole('button', { name: 'Continuar revisando' }).click();
+	const frente = page.getByRole('button', { name: /Como se diz em italiano\?\s*esperar/ });
+	await expect(frente).toBeVisible();
+	await expect(frente).not.toContainText('aspettare');
+	await page.keyboard.press('Space');
+	const cartao = page.getByRole('region', { name: 'Cartão' });
+	await expect(cartao).toContainText('aspettare');
+	await expect(cartao).toContainText('esperar');
+
+	await page.keyboard.press('3');
+	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
+});
+
+test('desfazer o Fácil do Reconhecer apaga o Produzir que ele liberou', async ({ page }) => {
+	await login(page);
+	await addWord(page, { lemma: 'aspettare', sense: 'esperar', language: 'IT' });
+	await header(page)
+		.getByRole('link', { name: /Revisar/ })
+		.click();
+
+	await expect(page.getByRole('button', { name: /aspettare\s*Toque para virar/ })).toBeVisible();
+	await page.keyboard.press('Space');
+	await page.keyboard.press('4');
+	// O cabeçalho já dizia "1 para revisar" antes da nota: espere o fim da sessão.
+	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
+	await expect(page.getByText('Ainda tem 1 para revisar.')).toBeVisible();
+
+	await page.keyboard.press('z');
+	await expect(page.getByRole('button', { name: /aspettare\s*Toque para virar/ })).toBeVisible();
+	await page.keyboard.press('Space');
+	await page.keyboard.press('3');
+	await expect(page.getByRole('heading', { name: 'Sessão concluída!' })).toBeVisible();
+
+	// "Bom" deixa o cartão em minutos: o Produzir não volta.
+	await page.goto('/palavras');
+	await page.goto('/revisar');
+	await expect(page.getByRole('button', { name: /Como se diz/ })).toHaveCount(0);
 });

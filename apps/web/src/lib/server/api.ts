@@ -2,11 +2,12 @@ import { createClient } from '@supabase/supabase-js';
 import { error, json, type RequestEvent } from '@sveltejs/kit';
 import { PUBLIC_SUPABASE_PUBLISHABLE_KEY, PUBLIC_SUPABASE_URL } from '$app/env/public';
 import type { Database } from '#lib/database.types.ts';
-import { isAllowedOrigin, parseBearer } from '#lib/stremio.ts';
+import { isAllowedOrigin, parseBearer } from '#lib/integrations.ts';
 
-// Rotas /api: o fork do Stremio fala com o app usando um token (Authorization: Bearer).
-// Sem cookie e sem service key: o cliente é anônimo e as funções do banco
-// (security definer) validam o token e só tocam nas palavras do dono.
+// Rotas /api/v1: as integrações (o fork do Stremio, depois o e-reader) falam com o app
+// usando um token (Authorization: Bearer). Sem cookie e sem service key: o cliente é
+// anônimo e as funções api_* do banco (security definer) validam o token e só tocam
+// no banco do dono.
 
 let client: ReturnType<typeof createClient<Database>> | undefined;
 
@@ -41,10 +42,15 @@ export async function readJson(request: Request): Promise<unknown> {
 	}
 }
 
+// check_violation, invalid_text_representation, foreign_key_violation: dado que o banco recusou.
+const BAD_INPUT_CODES = new Set(['23514', '22P02', '23503']);
+
 /** Traduz os erros das funções api_* em status HTTP. */
-export function rpcFailure(err: { message?: string } | null): never {
+export function rpcFailure(err: { message?: string; code?: string } | null): never {
 	if (err?.message === 'invalid_token') error(401, 'Token inválido ou revogado.');
-	if (err?.message === 'bad_request') error(400, 'Requisição inválida.');
+	if (err?.message === 'bad_request' || BAD_INPUT_CODES.has(err?.code ?? '')) {
+		error(400, 'Requisição inválida.');
+	}
 	error(500, 'Não deu para falar com o banco agora.');
 }
 

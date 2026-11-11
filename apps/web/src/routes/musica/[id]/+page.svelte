@@ -20,11 +20,11 @@
 	let { data }: PageProps = $props();
 
 	const song = $derived(data.song);
-	const lang = $derived(song.lang);
+	const lang = $derived(song.language);
 
 	// ---------- banco do usuário (cresce quando ele salva palavras) ----------
 	interface BankEntry {
-		translation: string;
+		sense: string;
 		ipa: string;
 		pos: string;
 	}
@@ -39,7 +39,7 @@
 		loadedBank = data.bank;
 		bank.clear();
 		for (const w of data.bank) {
-			bank.set(w.key, { translation: w.translation, ipa: w.ipa, pos: w.pos });
+			bank.set(w.key, { sense: w.sense, ipa: w.ipa, pos: w.pos });
 		}
 		bankTotal = data.bankTotal;
 	});
@@ -92,7 +92,7 @@
 		let playerFailed = false;
 		try {
 			player?.destroy();
-			player = await createYoutubePlayer(host, song.youtube_id, {
+			player = await createYoutubePlayer(host, song.youtubeId, {
 				onEnded: () => {
 					if (game) apply(game.finishNow());
 					sync();
@@ -120,7 +120,7 @@
 	let game = $state.raw<Game | null>(null);
 	let started = $state(false);
 
-	const bankKeys = $derived(new Map([...bank].map(([k, v]) => [k, v.translation])));
+	const bankKeys = $derived(new Map([...bank].map(([k, v]) => [k, v.sense])));
 
 	// Só para mostrar na tela de início quantas lacunas cada dificuldade tem.
 	const counts = $derived.by(() => {
@@ -354,21 +354,20 @@
 		key: string;
 		text: string;
 		line: number;
-		translation: string;
+		sense: string;
 	}
 
 	async function saveWords(items: SaveItem[]): Promise<boolean> {
 		if (!session || items.length === 0) return true;
 		const lines = session.lines;
 		const body = {
+			workId: song.id,
 			words: items.map((i) => ({
-				term: i.key,
-				translation: i.translation,
-				lang,
-				context: lines[i.line].text,
+				lemma: i.key,
+				sense: i.sense,
+				sentence: lines[i.line].text,
 				highlight: i.text,
-				sourceTitle: `${song.title} · ${song.artist}`,
-				sourceTime: lines[i.line].start + offset
+				seconds: lines[i.line].start + offset
 			}))
 		};
 		try {
@@ -378,28 +377,35 @@
 				body: JSON.stringify(body)
 			});
 			if (!res.ok) return false;
-			const out = (await res.json()) as { saved: string[]; existing: string[]; failed: string[] };
-			const done = new Set([...out.saved, ...out.existing]);
+			const out = (await res.json()) as { saved: string[]; existing: string[] };
+			// O banco devolve o lema como está guardado; a chave do jogo é minúscula.
+			const created = new Set(out.saved.map((l) => l.toLowerCase()));
+			const done = new Set([...created, ...out.existing.map((l) => l.toLowerCase())]);
+			let ok = true;
 			for (const item of items) {
-				if (!done.has(item.key)) continue;
-				bank.set(item.key, { translation: item.translation, ipa: '', pos: '' });
-				if (out.saved.includes(item.key)) {
-					savedNow.set(item.key, item.translation);
+				const key = item.key.toLowerCase();
+				if (!done.has(key)) {
+					ok = false;
+					continue;
+				}
+				bank.set(item.key, { sense: item.sense, ipa: '', pos: '' });
+				if (created.has(key)) {
+					savedNow.set(item.key, item.sense);
 					bankTotal++;
 				}
 			}
 			if (out.saved.length > 0) await invalidate(REVIEW_DEPENDENCY);
-			return out.failed.length === 0;
+			return ok;
 		} catch {
 			return false;
 		}
 	}
 
-	async function saveFromCard(translation: string) {
+	async function saveFromCard(sense: string) {
 		if (!card || !cardToken || !cardToken.key || cardSaving) return;
 		cardSaving = true;
 		const ok = await saveWords([
-			{ key: cardToken.key, text: cardToken.text, line: card.line, translation: translation.trim() }
+			{ key: cardToken.key, text: cardToken.text, line: card.line, sense: sense.trim() }
 		]);
 		cardSaving = false;
 		if (ok) closeCard();
@@ -415,7 +421,7 @@
 		if (missing.length === 0 || saving) return;
 		saving = true;
 		const ok = await saveWords(
-			missing.map((g) => ({ key: g.key, text: g.answer, line: g.line, translation: '' }))
+			missing.map((g) => ({ key: g.key, text: g.answer, line: g.line, sense: '' }))
 		);
 		saving = false;
 		summaryMessage = ok ? '' : 'Algumas palavras não foram salvas. Tente de novo.';
@@ -537,7 +543,7 @@
 		<div class="faixa">
 			<img
 				class="capa-mini"
-				src={`https://i.ytimg.com/vi/${song.youtube_id}/default.jpg`}
+				src={`https://i.ytimg.com/vi/${song.youtubeId}/default.jpg`}
 				alt=""
 				width="44"
 				height="44"
@@ -649,12 +655,12 @@
 									</p>
 									{#if showPt && i === activeLine}
 										{@const known = line.tokens.filter(
-											(tk) => tk.key !== null && bank.get(tk.key)?.translation
+											(tk) => tk.key !== null && bank.get(tk.key)?.sense
 										)}
 										{#if known.length > 0}
 											<p class="tr">
 												{#each known as tk, n (n)}{n > 0 ? ' · ' : ''}{tk.text} = {bank.get(tk.key!)
-														?.translation}{/each}
+														?.sense}{/each}
 											</p>
 										{/if}
 									{/if}
@@ -765,7 +771,7 @@
 					{#each [...wrongGaps].reverse() as gap (gap.line)}
 						<li>
 							<b>{gap.key}</b>
-							<em>{bank.get(gap.key)?.translation ?? ''}</em>
+							<em>{bank.get(gap.key)?.sense ?? ''}</em>
 							<span class="tag">errou</span>
 						</li>
 					{/each}
@@ -830,8 +836,8 @@
 		{maxCombo}
 		wrong={wrongGaps}
 		isInBank={(key) => bank.has(key)}
-		saved={[...savedNow].map(([key, translation]) => ({ key, translation }))}
-		translationOf={(key) => bank.get(key)?.translation ?? ''}
+		saved={[...savedNow].map(([key, sense]) => ({ key, sense }))}
+		senseOf={(key) => bank.get(key)?.sense ?? ''}
 		{bankTotal}
 		{saving}
 		message={summaryMessage}

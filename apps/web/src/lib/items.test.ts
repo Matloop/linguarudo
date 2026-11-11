@@ -1,0 +1,276 @@
+import { describe, expect, test } from 'bun:test';
+import {
+	LIMITS,
+	formatWorkSource,
+	isDuplicateError,
+	normalizeLemma,
+	normalizeText,
+	parseItemEdit,
+	parseItemInput,
+	parseSaveEntry,
+	parseWorkRefs
+} from './items';
+
+describe('normalizeLemma', () => {
+	test('tira espaços das pontas e junta espaços repetidos', () => {
+		expect(normalizeLemma('  give   up \n')).toBe('give up');
+	});
+
+	test('mantém maiúsculas (a unicidade ignora caixa no banco)', () => {
+		expect(normalizeLemma('London')).toBe('London');
+	});
+
+	test('normaliza acentos para NFC', () => {
+		const decomposto = 'perché';
+		expect(normalizeLemma(decomposto)).toBe('perché');
+		expect(normalizeLemma(decomposto).length).toBe(6);
+	});
+});
+
+describe('normalizeText', () => {
+	test('tira espaços das pontas mas preserva quebras internas', () => {
+		expect(normalizeText('  primeira linha\nsegunda  ')).toBe('primeira linha\nsegunda');
+	});
+});
+
+describe('parseItemInput', () => {
+	const study = ['en', 'it'] as const;
+
+	test('entrada válida volta normalizada', () => {
+		const r = parseItemInput(
+			{ lemma: '  give up ', sense: ' desistir ', language: 'EN', sentence: '' },
+			study
+		);
+		expect(r).toEqual({
+			ok: true,
+			value: { lemma: 'give up', sense: 'desistir', language: 'en', sentence: '' }
+		});
+	});
+
+	test('sentido e frase são opcionais', () => {
+		const r = parseItemInput({ lemma: 'allora', language: 'it' }, study);
+		expect(r.ok).toBe(true);
+	});
+
+	test('lema vazio é erro', () => {
+		const r = parseItemInput({ lemma: '   ', language: 'en' }, study);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.errors.lemma).toBeString();
+	});
+
+	test('só aceita os idiomas de estudo', () => {
+		const r = parseItemInput({ lemma: 'hola', language: 'es' }, study);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.errors.language).toBeString();
+		expect(parseItemInput({ lemma: 'hola', language: 'es' }, ['es']).ok).toBe(true);
+	});
+
+	test('limites batem com os checks do SQL, contando caracteres e não unidades UTF-16', () => {
+		expect(parseItemInput({ lemma: 'é'.repeat(LIMITS.lemma), language: 'it' }, study).ok).toBe(
+			true
+		);
+		const emoji = '🐸'.repeat(LIMITS.lemma);
+		expect(emoji.length).toBe(LIMITS.lemma * 2);
+		expect(parseItemInput({ lemma: emoji, language: 'en' }, study).ok).toBe(true);
+
+		const r = parseItemInput(
+			{
+				lemma: 'a'.repeat(LIMITS.lemma + 1),
+				sense: 'b'.repeat(LIMITS.sense + 1),
+				sentence: 'c'.repeat(LIMITS.sentence + 1),
+				language: 'en'
+			},
+			study
+		);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(['lemma', 'sense', 'sentence']);
+	});
+
+	test('erro devolve os valores digitados para o formulário', () => {
+		const r = parseItemInput({ lemma: '', sense: 'oi', language: 'en', sentence: 'x' }, study);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.values).toEqual({ lemma: '', sense: 'oi', language: 'en', sentence: 'x' });
+	});
+
+	test('valores que não são texto (ex.: File) contam como vazios', () => {
+		expect(parseItemInput({ lemma: new Blob(['x']), language: 'en' }, study).ok).toBe(false);
+	});
+});
+
+describe('parseItemEdit', () => {
+	test('normaliza lema, sentido e nota', () => {
+		expect(parseItemEdit({ lemma: ' festa ', sense: ' festa ', note: ' f. ' })).toEqual({
+			ok: true,
+			value: { lemma: 'festa', sense: 'festa', note: 'f.' }
+		});
+	});
+
+	test('lema vazio e nota longa são erro', () => {
+		const r = parseItemEdit({ lemma: '', note: 'n'.repeat(LIMITS.note + 1) });
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(['lemma', 'note']);
+	});
+});
+
+describe('isDuplicateError', () => {
+	test('reconhece unique_violation do Postgres', () => {
+		expect(isDuplicateError({ code: '23505', message: 'duplicate key' })).toBe(true);
+	});
+
+	test('outros erros não são duplicata', () => {
+		expect(isDuplicateError({ code: '23514' })).toBe(false);
+		expect(isDuplicateError(null)).toBe(false);
+	});
+});
+
+describe('parseSaveEntry', () => {
+	const full = {
+		language: 'IT',
+		lemma: '  festa ',
+		sense: 'festa',
+		ipa: 'ˈfɛsta',
+		partOfSpeech: 'substantivo',
+		encounter: {
+			form: 'feste',
+			sentence: '  Una frase inventata con feste dentro. ',
+			highlight: 'feste',
+			sense: 'festas',
+			position: { seconds: 2530.7, junk: 'x' },
+			seenAt: '2026-11-11T10:00:00Z',
+			clientId: 'A1B2C3D4-0000-4000-8000-000000000001'
+		},
+		work: {
+			kind: 'episodio',
+			title: 'Série de teste',
+			subtitle: 'T1E2',
+			refs: { imdbId: 'tt0000001', season: 1, episode: 2, other: 1 }
+		}
+	};
+
+	test('mapeia para o formato de save_items', () => {
+		expect(parseSaveEntry(full, 'stremio')).toEqual({
+			ok: true,
+			entry: {
+				language: 'it',
+				lemma: 'festa',
+				sense: 'festa',
+				note: '',
+				ipa: 'ˈfɛsta',
+				part_of_speech: 'substantivo',
+				encounter: {
+					form: 'feste',
+					sentence: 'Una frase inventata con feste dentro.',
+					highlight: 'feste',
+					sense: 'festas',
+					position: { seconds: 2530 },
+					origin: 'stremio',
+					seen_at: '2026-11-11T10:00:00.000Z',
+					client_id: 'a1b2c3d4-0000-4000-8000-000000000001'
+				},
+				work: {
+					kind: 'episodio',
+					title: 'Série de teste',
+					subtitle: 'T1E2',
+					refs: { imdb_id: 'tt0000001', season: 1, episode: 2 },
+					language: null
+				}
+			}
+		});
+	});
+
+	test('só language e lemma são obrigatórios; item sem encontro vale', () => {
+		expect(parseSaveEntry({ language: 'ja', lemma: '猫' }, 'stremio')).toEqual({
+			ok: true,
+			entry: { language: 'ja', lemma: '猫', sense: '', note: '', ipa: '', part_of_speech: '' }
+		});
+	});
+
+	test('textos longos são cortados; destaque longo demais some', () => {
+		const r = parseSaveEntry(
+			{
+				language: 'en',
+				lemma: 'run',
+				sense: 's'.repeat(LIMITS.sense + 10),
+				encounter: { sentence: 'f'.repeat(LIMITS.sentence + 1), highlight: 'h'.repeat(81) }
+			},
+			'stremio'
+		);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect([...r.entry.sense]).toHaveLength(LIMITS.sense);
+		expect(r.entry.encounter?.sentence).toHaveLength(LIMITS.sentence);
+		expect(r.entry.encounter?.highlight).toBe('');
+	});
+
+	test('recusa o item com o motivo, sem derrubar nada', () => {
+		const err = (raw: unknown) => {
+			const r = parseSaveEntry(raw, 'stremio');
+			return r.ok ? null : r.error;
+		};
+		expect(err(null)).toBe('item inválido');
+		expect(err({ language: 'xx', lemma: 'a' })).toBe('language inválido');
+		expect(err({ language: 'en', lemma: ' ' })).toBe('lemma vazio');
+		expect(err({ language: 'en', lemma: 'a'.repeat(81) })).toBe('lemma longo demais');
+		expect(err({ language: 'en', lemma: 'a', encounter: { origin: 'tv' } })).toStartWith(
+			'encounter.origin'
+		);
+		expect(err({ language: 'en', lemma: 'a', encounter: { clientId: 'x' } })).toStartWith(
+			'encounter.clientId'
+		);
+		expect(err({ language: 'en', lemma: 'a', work: { kind: 'filme', title: 'X' } })).toBe(
+			'work só vale junto de um encounter'
+		);
+		expect(err({ language: 'en', lemma: 'a', encounter: {}, work: { kind: 'tv' } })).toStartWith(
+			'work.kind'
+		);
+		expect(err({ language: 'en', lemma: 'a', encounter: {}, work: { kind: 'filme' } })).toBe(
+			'work.title vazio'
+		);
+		expect(
+			err({ language: 'en', lemma: 'a', encounter: {}, work: { kind: 'musica', title: 'X' } })
+		).toStartWith('música precisa');
+	});
+
+	test('obra existente pelo id', () => {
+		const id = '7d1f0e2a-0000-4000-8000-000000000009';
+		const r = parseSaveEntry({ language: 'en', lemma: 'a', encounter: {}, work: { id } }, 'musica');
+		expect(r.ok && r.entry.work).toEqual({ id });
+		expect(r.ok && r.entry.encounter?.origin).toBe('musica');
+	});
+});
+
+describe('parseWorkRefs', () => {
+	test('aceita só referências no formato dos checks', () => {
+		expect(
+			parseWorkRefs({ youtubeId: 'dQw4w9WgXcQ', imdbId: 'nm123', path: ' /livros/a.epub ' })
+		).toEqual({
+			youtube_id: 'dQw4w9WgXcQ',
+			path: '/livros/a.epub'
+		});
+	});
+
+	test('temporada e episódio só junto do imdb, e os dois juntos', () => {
+		expect(parseWorkRefs({ imdbId: 'tt1', season: 2 })).toEqual({ imdb_id: 'tt1' });
+		expect(parseWorkRefs({ season: 2, episode: 3 })).toEqual({});
+	});
+});
+
+describe('formatWorkSource', () => {
+	test('obra, subtítulo e minuto da cena', () => {
+		expect(formatWorkSource({ title: 'Kaguya', subtitle: 'T1E2' }, { seconds: 2530 })).toBe(
+			'Kaguya · T1E2, 42:10'
+		);
+	});
+
+	test('passa de uma hora com h:mm:ss', () => {
+		expect(formatWorkSource({ title: 'Filme', subtitle: '' }, { seconds: 3725 })).toBe(
+			'Filme, 1:02:05'
+		);
+	});
+
+	test('sem obra ou sem tempo', () => {
+		expect(formatWorkSource(null, { seconds: 61 })).toBe('1:01');
+		expect(formatWorkSource({ title: 'Volare', subtitle: 'Artista' }, {})).toBe('Volare · Artista');
+		expect(formatWorkSource(null, null)).toBe('');
+	});
+});

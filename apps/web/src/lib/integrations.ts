@@ -1,0 +1,201 @@
+// Regras puras da API v1 das integrações (/api/v1, token Bearer): CORS, corpo dos
+// pedidos e o que entra primeiro na legenda. O contrato está em
+// packages/stremio-server/docs/CONTRACT.md.
+
+import {
+	LIMITS,
+	charLength,
+	normalizeLemma,
+	parseSaveEntry,
+	type CardKind,
+	type ItemStatus,
+	type ParsedEntry
+} from './items.ts';
+import { parseLanguage, type Language } from './languages.ts';
+import { isMastered } from './review.ts';
+
+export const API_LIMITS = { saveBatch: LIMITS.saveBatch, seenBatch: 500 } as const;
+
+// ---------- CORS e token ----------
+
+/**
+ * O fork roda local: `localhost`, `127.0.0.1` ou um `*.localhost` (o build web
+ * serve em http://lingoblend.peario.xyz.localhost:8080). `extra` são origens exatas.
+ */
+export function isAllowedOrigin(origin: string | null, extra: readonly string[] = []): boolean {
+	if (!origin) return false;
+	if (extra.includes(origin)) return true;
+	let url: URL;
+	try {
+		url = new URL(origin);
+	} catch {
+		return false;
+	}
+	if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+	if (url.origin !== origin) return false;
+	const host = url.hostname;
+	return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost');
+}
+
+export function parseBearer(header: string | null): string | null {
+	const m = header?.trim().match(/^Bearer\s+(\S+)$/i);
+	return m ? m[1] : null;
+}
+
+// ---------- Preferência na legenda ----------
+
+export interface CardBrief {
+	state: number;
+	due_at: string;
+}
+
+/**
+ * Entra na legenda primeiro: item ativo com algum cartão aprendendo/reaprendendo
+ * ou em revisão já vencida. Conhecido nunca entra.
+ */
+export function isPreferred(item: { status: ItemStatus; cards: readonly CardBrief[] }, now: Date) {
+	if (item.status !== 'ativo') return false;
+	return item.cards.some(
+		(c) =>
+			c.state === 1 || c.state === 3 || (c.state === 2 && Date.parse(c.due_at) <= now.getTime())
+	);
+}
+
+// ---------- Corpo de POST /api/v1/items ----------
+
+export function parseSaveBody(
+	body: unknown
+): { ok: true; items: ParsedEntry[] } | { ok: false; error: string } {
+	const items = (body as { items?: unknown } | null)?.items;
+	if (!Array.isArray(items) || items.length === 0) {
+		return { ok: false, error: 'mande { items: [...] } com pelo menos um item' };
+	}
+	if (items.length > API_LIMITS.saveBatch) {
+		return { ok: false, error: `no máximo ${API_LIMITS.saveBatch} itens por vez` };
+	}
+	return { ok: true, items: items.map((raw) => parseSaveEntry(raw, 'stremio')) };
+}
+
+// ---------- Corpo de POST /api/v1/items/seen ----------
+
+export function parseSeenBody(body: unknown): { language: Language; lemmas: string[] } | null {
+	const b = body as { language?: unknown; lemmas?: unknown } | null;
+	const language = typeof b?.language === 'string' ? parseLanguage(b.language) : null;
+	if (!language || !Array.isArray(b?.lemmas) || b.lemmas.length > API_LIMITS.seenBatch) return null;
+	const lemmas = new Set<string>();
+	for (const t of b.lemmas) {
+		if (typeof t !== 'string') continue;
+		const lemma = normalizeLemma(t).toLowerCase();
+		if (lemma && charLength(lemma) <= LIMITS.lemma) lemmas.add(lemma);
+	}
+	return { language, lemmas: [...lemmas] };
+}
+
+// ---------- Respostas ----------
+
+export interface ApiCard {
+	kind: CardKind;
+	state: number;
+	dueAt: string;
+	stability: number;
+}
+
+export interface ApiItem {
+	id: string;
+	lemma: string;
+	sense: string;
+	status: ItemStatus;
+	/** Dominado (derivado da estabilidade); a legenda pode trocar sem destaque. */
+	mastered: boolean;
+	/** Entra primeiro na legenda (ver isPreferred). */
+	prefer: boolean;
+	cards: ApiCard[];
+}
+
+function cardBriefs(raw: unknown): (CardBrief & { kind: CardKind; stability: number })[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.filter(
+		(c): c is CardBrief & { kind: CardKind; stability: number } =>
+			typeof c === 'object' &&
+			c !== null &&
+			(c.kind === 'reconhecer' || c.kind === 'produzir') &&
+			typeof c.state === 'number' &&
+			typeof c.due_at === 'string' &&
+			typeof c.stability === 'number'
+	);
+}
+
+/** Uma linha de api_items como sai em GET /api/v1/items. */
+export function apiItem(
+	row: { id: string; lemma: string; sense: string; status: string; cards: unknown },
+	now: Date
+): ApiItem {
+	const cards = cardBriefs(row.cards);
+	const status: ItemStatus = row.status === 'conhecido' ? 'conhecido' : 'ativo';
+	return {
+		id: row.id,
+		lemma: row.lemma,
+		sense: row.sense,
+		status,
+		mastered: isMastered(cards),
+		prefer: isPreferred({ status, cards }, now),
+		cards: cards.map((c) => ({
+			kind: c.kind,
+			state: c.state,
+			dueAt: c.due_at,
+			stability: c.stability
+		}))
+	};
+}
+
+export type ApiSaveResult =
+	| {
+			ok: true;
+			item: {
+				id: string;
+				language: string;
+				lemma: string;
+				/** false: o item já existia (o encontro entrou nele). */
+				created: boolean;
+				encounterId: string | null;
+				card: { state: number; dueAt: string };
+			};
+	  }
+	| { ok: false; error: string };
+
+export interface SavedRow {
+	item_id: string;
+	language: string;
+	lemma: string;
+	created: boolean;
+	encounter_id: string | null;
+	card_state: number;
+	card_due_at: string;
+}
+
+/**
+ * Junta o que foi validado com o que save_items devolveu (uma linha por entrada
+ * válida, na mesma ordem). A resposta tem uma posição por entrada do pedido.
+ */
+export function apiSaveResults(
+	entries: readonly ParsedEntry[],
+	rows: readonly SavedRow[]
+): ApiSaveResult[] {
+	let next = 0;
+	return entries.map((entry) => {
+		if (!entry.ok) return { ok: false, error: entry.error };
+		const r = rows[next++];
+		if (!r) return { ok: false, error: 'não deu para salvar' };
+		return {
+			ok: true,
+			item: {
+				id: r.item_id,
+				language: r.language,
+				lemma: r.lemma,
+				created: r.created,
+				encounterId: r.encounter_id,
+				card: { state: r.card_state, dueAt: r.card_due_at }
+			}
+		};
+	});
+}

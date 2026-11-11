@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { LRCLIB_URL } from '$app/env/private';
-import { SONG_LIMIT } from '#lib/music/song.ts';
+import { LIMITS } from '#lib/items.ts';
 import { findSyncedLyrics } from '#lib/music/lrclib.ts';
 import { parseSyncedLyrics } from '#lib/music/lrc.ts';
 import type { RequestHandler } from './$types';
@@ -9,7 +9,7 @@ const NO_STORE = { 'Cache-Control': 'no-store' };
 const MAX_DURATION_S = 4 * 3600;
 
 function readText(value: string | null): string {
-	return [...(value ?? '').normalize('NFC').trim()].slice(0, SONG_LIMIT).join('');
+	return [...(value ?? '').normalize('NFC').trim()].slice(0, LIMITS.title).join('');
 }
 
 /**

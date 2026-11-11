@@ -1,5 +1,5 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { parseSongInput, type SongField } from '#lib/music/song.ts';
+import { parseSongInput, songFromWork, songWork, type SongField } from '#lib/music/song.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const RECENT_LIMIT = 12;
@@ -15,18 +15,21 @@ async function requireUser(locals: App.Locals) {
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = await requireUser(locals);
 	const { data, error: dbError } = await locals.supabase
-		.from('songs')
-		.select('id, youtube_id, title, artist, lang, played_at')
+		.from('works')
+		.select('id, title, subtitle, refs, language, played_at')
 		.eq('user_id', user.id)
+		.eq('kind', 'musica')
+		.is('deleted_at', null)
+		.not('played_at', 'is', null)
 		.order('played_at', { ascending: false })
 		.limit(RECENT_LIMIT);
 	if (dbError) error(500, 'Não deu para carregar suas músicas agora.');
-	return { songs: data };
+	return { songs: data.map(songFromWork).filter((s) => s !== null) };
 };
 
 export const actions: Actions = {
 	play: async ({ locals, request }) => {
-		const user = await requireUser(locals);
+		await requireUser(locals);
 		const raw = Object.fromEntries(await request.formData());
 		const parsed = parseSongInput(raw);
 		if (!parsed.ok) {
@@ -34,26 +37,15 @@ export const actions: Actions = {
 			return fail(400, { errors, values: parsed.values });
 		}
 
-		const { youtubeId, title, artist, lang } = parsed.value;
-		const { data, error: dbError } = await locals.supabase
-			.from('songs')
-			.upsert(
-				{
-					user_id: user.id,
-					youtube_id: youtubeId,
-					title,
-					artist,
-					lang,
-					played_at: new Date().toISOString()
-				},
-				{ onConflict: 'user_id,youtube_id' }
-			)
-			.select('id')
-			.single();
-		if (dbError) {
+		// A obra é achada pelo vídeo (ou criada); open_work também marca played_at.
+		const { data: workId, error: dbError } = await locals.supabase.rpc('open_work', {
+			p_work: songWork(parsed.value)
+		});
+		if (dbError || !workId) {
+			const { title, artist, language } = parsed.value;
 			const errors: PlayErrors = { form: 'Não deu para abrir a música agora. Tente de novo.' };
-			return fail(500, { errors, values: { url: String(raw.url ?? ''), title, artist, lang } });
+			return fail(500, { errors, values: { url: String(raw.url ?? ''), title, artist, language } });
 		}
-		redirect(303, `/musica/${data.id}`);
+		redirect(303, `/musica/${workId}`);
 	}
 };

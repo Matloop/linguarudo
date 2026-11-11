@@ -1,11 +1,17 @@
 // Listas pequenas, escritas à mão: palavras comuns (matéria-prima para opções
 // erradas) e palavras funcionais (que não viram lacuna). Não são letras de música.
 
-import type { Lang } from '../words.ts';
+/** Idiomas que o jogo de música aceita: os que têm listas aqui. */
+export const MUSIC_LANGUAGES = ['en', 'it'] as const;
+export type MusicLanguage = (typeof MUSIC_LANGUAGES)[number];
+
+export function isMusicLanguage(v: unknown): v is MusicLanguage {
+	return typeof v === 'string' && (MUSIC_LANGUAGES as readonly string[]).includes(v);
+}
 
 const words = (s: string) => [...new Set(s.trim().split(/\s+/))];
 
-export const COMMON_WORDS: Record<Lang, readonly string[]> = {
+export const COMMON_WORDS: Record<MusicLanguage, readonly string[]> = {
 	en: words(`
 		time year people way day man thing woman life child world school state family student group
 		country problem hand part place case week company system program question work government number
@@ -55,7 +61,7 @@ export const COMMON_WORDS: Record<Lang, readonly string[]> = {
 };
 
 /** Palavras funcionais: ficam de fora das lacunas (artigos, preposições, pronomes, auxiliares). */
-export const STOPWORDS: Record<Lang, ReadonlySet<string>> = {
+export const STOPWORDS: Record<MusicLanguage, ReadonlySet<string>> = {
 	en: new Set(
 		words(`
 		the and but for with that this these those from into onto upon over under about after before

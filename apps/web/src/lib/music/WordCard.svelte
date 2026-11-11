@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { LIMITS, type Lang } from '#lib/words.ts';
+	import { LIMITS } from '#lib/items.ts';
+	import type { MusicLanguage } from './wordlists.ts';
 	import type { Token } from './tokenize.ts';
 	import { speak } from './speech.ts';
 
 	interface Props {
-		lang: Lang;
+		lang: MusicLanguage;
 		/** Palavra tocada, como aparece na letra. */
 		text: string;
 		/** A linha inteira, com a palavra destacada. */
@@ -14,16 +15,16 @@
 		/** Posição da palavra na tela, para o cartão abrir perto dela. */
 		anchor: { left: number; top: number; bottom: number; width: number };
 		/** Dados do banco do usuário; null se a palavra ainda não está lá. */
-		inBank: { translation: string; ipa: string; pos: string } | null;
+		inBank: { sense: string; ipa: string; pos: string } | null;
 		saving: boolean;
-		onsave: (translation: string) => void;
+		onsave: (sense: string) => void;
 		onclose: () => void;
 	}
 
 	let { lang, text, tokens, highlightIndex, anchor, inBank, saving, onsave, onclose }: Props =
 		$props();
 
-	let translation = $state('');
+	let sense = $state('');
 	let card: HTMLDivElement | undefined = $state();
 	let pos = $state({ left: 12, top: 12 });
 
@@ -47,7 +48,7 @@
 
 	function submit(e: SubmitEvent) {
 		e.preventDefault();
-		if (!inBank && !saving) onsave(translation);
+		if (!inBank && !saving) onsave(sense);
 	}
 </script>
 
@@ -76,7 +77,7 @@
 	</p>
 
 	{#if inBank}
-		<p class="traducao">{inBank.translation || 'Sem tradução guardada ainda.'}</p>
+		<p class="traducao">{inBank.sense || 'Sem sentido guardado ainda.'}</p>
 	{/if}
 
 	<p class="exemplo" {lang}>
@@ -87,10 +88,10 @@
 	<form onsubmit={submit}>
 		{#if !inBank}
 			<label class="campo">
-				<span>Tradução <small>(opcional)</small></span>
+				<span>Sentido <small>(opcional)</small></span>
 				<input
-					bind:value={translation}
-					maxlength={LIMITS.translation}
+					bind:value={sense}
+					maxlength={LIMITS.sense}
 					autocomplete="off"
 					placeholder="Em português"
 				/>

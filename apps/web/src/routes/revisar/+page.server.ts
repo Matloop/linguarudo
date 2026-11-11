@@ -1,13 +1,15 @@
 import { error, fail } from '@sveltejs/kit';
-import { buildQueue, dayStart, isGrade, newRemaining } from '#lib/review.ts';
+import { buildQueue, isGrade, newRemaining } from '#lib/review.ts';
 import {
-	CARD_WITH_WORD,
 	fetchReviewSummary,
+	loadLogs,
+	loadReviewCard,
 	reviewErrorMessage,
-	toReviewItem
+	reviewableCards,
+	toReviewItem,
+	type ReviewCardRow
 } from '#lib/server/reviews.ts';
-import { applyRating } from '#lib/server/scheduler.ts';
-import type { Json } from '#lib/database.types.ts';
+import { replay, scheduleReview, unlocksProduce } from '#lib/server/scheduler.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /** Teto de segurança por carga; revisões vencidas não têm limite (a próxima carga traz o resto). */
@@ -25,9 +27,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const summary = await fetchReviewSummary(locals.supabase, now).catch(() => null);
 	if (!summary) error(500, 'Não deu para carregar a revisão agora.');
 
-	const base = () =>
-		locals.supabase.from('cards').select(CARD_WITH_WORD).eq('user_id', user.id).eq('paused', false);
-
+	const base = () => reviewableCards(locals.supabase, user.id);
 	const remaining = newRemaining(summary.newLimit, summary.newDoneToday);
 	const [due, fresh] = await Promise.all([
 		base().gt('state', 0).lte('due_at', now.toISOString()).order('due_at').limit(MAX_DUE_PER_LOAD),
@@ -37,23 +37,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 	]);
 	if (due.error || fresh.error) error(500, 'Não deu para carregar a revisão agora.');
 
-	const rows = [...due.data, ...fresh.data];
+	const rows = [...due.data, ...fresh.data] as ReviewCardRow[];
 	const queue = buildQueue(
 		rows.map((r) => ({ ...r, dueAt: r.due_at, createdAt: r.created_at })),
 		{ now, newLimit: summary.newLimit, newDoneToday: summary.newDoneToday }
 	);
 	return { queue: await Promise.all(queue.map((r) => toReviewItem(r, now))) };
 };
-
-async function loadCard(locals: App.Locals, userId: string, cardId: string) {
-	const { data } = await locals.supabase
-		.from('cards')
-		.select(CARD_WITH_WORD)
-		.eq('id', cardId)
-		.eq('user_id', userId)
-		.maybeSingle();
-	return data;
-}
 
 export const actions: Actions = {
 	rate: async ({ locals, request }) => {
@@ -66,7 +56,7 @@ export const actions: Actions = {
 			return fail(400, { message: 'Nota inválida.' });
 		}
 
-		const row = await loadCard(locals, user.id, cardId);
+		const row = await loadReviewCard(locals.supabase, user.id, cardId);
 		if (!row) {
 			const reason = 'card_not_found';
 			return fail(404, { message: reviewErrorMessage(reason).text, cardId, reason });
@@ -77,14 +67,16 @@ export const actions: Actions = {
 		}
 
 		const now = new Date();
-		const { next, revlog } = await applyRating(row, rating, now);
-		const { data: logId, error: dbError } = await locals.supabase.rpc('review_card', {
+		const review = { rating, reviewed_at: now.toISOString() };
+		const logs = await loadLogs(locals.supabase, row.id);
+		const { next, intervalDays } = await scheduleReview(row, logs, review);
+		const { data: logId, error: dbError } = await locals.supabase.rpc('record_review', {
 			p_card_id: row.id,
 			p_expected_reps: row.reps,
 			p_rating: rating,
-			p_day_start: dayStart(now).toISOString(),
+			p_reviewed_at: review.reviewed_at,
 			p_next: { ...next },
-			p_revlog: revlog as Json
+			p_unlock_produce: unlocksProduce({ kind: row.kind, sense: row.items.sense, intervalDays })
 		});
 		if (dbError || !logId) {
 			const { status, text } = reviewErrorMessage(dbError?.message);
@@ -99,17 +91,33 @@ export const actions: Actions = {
 		const logId = (await request.formData()).get('logId')?.toString() ?? '';
 		if (!logId) return fail(400, { message: 'Nada para desfazer.' });
 
-		const { data: cardId, error: dbError } = await locals.supabase.rpc('undo_review', {
-			p_log_id: logId
+		const { data: log } = await locals.supabase
+			.from('review_logs')
+			.select('card_id')
+			.eq('id', logId)
+			.eq('user_id', user.id)
+			.maybeSingle();
+		const row = log ? await loadReviewCard(locals.supabase, user.id, log.card_id) : null;
+		if (!row) return fail(404, { message: 'Cartão não encontrado.' });
+
+		// O cronograma sem a revisão desfeita sai do log, como em qualquer outra mudança.
+		const rest = (await loadLogs(locals.supabase, row.id)).filter((l) => l.id !== logId);
+		const { card, maxIntervalDays } = await replay(row, rest);
+		const { error: dbError } = await locals.supabase.rpc('undo_review', {
+			p_log_id: logId,
+			p_expected_reps: row.reps,
+			p_next: { ...card },
+			p_drop_produce: !unlocksProduce({
+				kind: row.kind,
+				sense: row.items.sense,
+				intervalDays: maxIntervalDays
+			})
 		});
-		if (dbError || !cardId) {
-			return fail(reviewErrorMessage(dbError?.message).status, {
+		if (dbError) {
+			return fail(reviewErrorMessage(dbError.message).status, {
 				message: 'Não deu para desfazer agora.'
 			});
 		}
-
-		const row = await loadCard(locals, user.id, cardId);
-		if (!row) return fail(404, { message: 'Cartão não encontrado.' });
-		return { undone: await toReviewItem(row, new Date()) };
+		return { undone: await toReviewItem({ ...row, ...card }, new Date()) };
 	}
 };

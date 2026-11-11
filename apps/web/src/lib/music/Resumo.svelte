@@ -13,8 +13,8 @@
 		/** Palavras que já estão no banco (inclusive as salvas agora). */
 		isInBank: (key: string) => boolean;
 		/** Palavras salvas nesta partida. */
-		saved: { key: string; translation: string }[];
-		translationOf: (key: string) => string;
+		saved: { key: string; sense: string }[];
+		senseOf: (key: string) => string;
 		bankTotal: number;
 		saving: boolean;
 		message: string;
@@ -30,7 +30,7 @@
 		wrong,
 		isInBank,
 		saved,
-		translationOf,
+		senseOf,
 		bankTotal,
 		saving,
 		message,
@@ -92,7 +92,7 @@
 					{@const inBank = isInBank(gap.key)}
 					<span class="chip" class:nobk={inBank} class:err={!inBank}>
 						{gap.key}
-						{#if translationOf(gap.key)}<em>{translationOf(gap.key)}</em>{/if}
+						{#if senseOf(gap.key)}<em>{senseOf(gap.key)}</em>{/if}
 						{#if inBank}<span class="mini"
 								>{saved.some((s) => s.key === gap.key) ? 'salva' : 'no banco'}</span
 							>{/if}
@@ -108,7 +108,7 @@
 			<div class="chips">
 				{#each saved as s (s.key)}
 					<span class="chip sal"
-						>{s.key}{#if s.translation}<em>{s.translation}</em>{/if}</span
+						>{s.key}{#if s.sense}<em>{s.sense}</em>{/if}</span
 					>
 				{:else}
 					<span class="chip vazio">Toque numa palavra da letra para salvar.</span>

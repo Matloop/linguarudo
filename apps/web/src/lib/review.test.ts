@@ -7,6 +7,8 @@ import {
 	formatInterval,
 	formatWhen,
 	highlightParts,
+	isMastered,
+	MASTERED_STABILITY_DAYS,
 	nextAvailableAt,
 	nextDayStart,
 	reviewCount,
@@ -27,7 +29,6 @@ function card(id: string, over: Partial<QueueCard> = {}): QueueCard {
 		state: 2,
 		dueAt: '2026-11-10T12:00:00.000Z',
 		createdAt: '2026-11-01T12:00:00.000Z',
-		paused: false,
 		...over
 	};
 }
@@ -35,15 +36,16 @@ function card(id: string, over: Partial<QueueCard> = {}): QueueCard {
 function item(id: string, over: Partial<ReviewItem> = {}): ReviewItem {
 	return {
 		cardId: id,
+		kind: 'reconhecer',
 		reps: 0,
 		state: 0,
 		dueAt: '2026-11-10T12:00:00.000Z',
-		term: id,
-		translation: '',
-		lang: 'en',
-		context: '',
-		contextHighlight: '',
-		source: 'manual',
+		lemma: id,
+		sense: '',
+		language: 'en',
+		sentence: '',
+		highlight: '',
+		origin: null,
 		sourceDetail: '',
 		intervals: { 1: '1 min', 2: '14 h', 3: '5 d', 4: '54 d' },
 		...over
@@ -66,16 +68,12 @@ describe('buildQueue', () => {
 		expect(q.map((c) => c.id)).toEqual(['venc-1', 'venc-2', 'novo-a', 'novo-b']);
 	});
 
-	test('ignora cartões que ainda não venceram e os pausados', () => {
-		const q = buildQueue(
-			[
-				card('futuro', { dueAt: '2026-11-11T00:00:00.000Z' }),
-				card('pausado', { paused: true }),
-				card('pausado-novo', { state: 0, paused: true }),
-				card('ok')
-			],
-			{ now, newLimit: 10, newDoneToday: 0 }
-		);
+	test('ignora cartões que ainda não venceram', () => {
+		const q = buildQueue([card('futuro', { dueAt: '2026-11-11T00:00:00.000Z' }), card('ok')], {
+			now,
+			newLimit: 10,
+			newDoneToday: 0
+		});
 		expect(q.map((c) => c.id)).toEqual(['ok']);
 	});
 
@@ -301,5 +299,30 @@ describe('sessão', () => {
 	test('sem nota anterior, desfazer não muda nada', () => {
 		const s = startSession([item('a')]);
 		expect(undoLast(s, item('a'))).toBe(s);
+	});
+});
+
+describe('isMastered', () => {
+	const review = (stability: number) => ({ state: 2, stability });
+
+	test('todos os cartões em revisão com estabilidade alta', () => {
+		expect(isMastered([review(MASTERED_STABILITY_DAYS)])).toBe(true);
+		expect(isMastered([review(120), review(95)])).toBe(true);
+	});
+
+	test('basta um cartão abaixo do limite para não ser dominado', () => {
+		expect(isMastered([review(120), review(MASTERED_STABILITY_DAYS - 1)])).toBe(false);
+	});
+
+	test('reaprendendo não é dominado, mesmo com estabilidade alta', () => {
+		expect(isMastered([{ state: 3, stability: 200 }])).toBe(false);
+	});
+
+	test('sem cartões não é dominado', () => {
+		expect(isMastered([])).toBe(false);
+	});
+
+	test('o limite fica bem acima do "maduro" do Anki (21 dias)', () => {
+		expect(MASTERED_STABILITY_DAYS).toBeGreaterThanOrEqual(60);
 	});
 });

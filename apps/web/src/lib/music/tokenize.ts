@@ -1,7 +1,7 @@
 // Divide uma linha em palavras e separadores sem perder nenhum caractere:
 // juntar o texto de todos os tokens devolve a linha original.
 
-import type { Lang } from '../words.ts';
+import type { MusicLanguage } from './wordlists.ts';
 
 export interface Token {
 	text: string;
@@ -28,7 +28,7 @@ export function wordKey(raw: string): string {
 		.replace(/^['-]+|['-]+$/g, '');
 }
 
-export function tokenize(text: string, lang: Lang): Token[] {
+export function tokenize(text: string, lang: MusicLanguage): Token[] {
 	return [...text.matchAll(PATTERNS[lang])].map((m) => ({
 		text: m[0],
 		key: m[1] !== undefined ? wordKey(m[1]) : null
