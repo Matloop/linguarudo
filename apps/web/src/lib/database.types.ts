@@ -690,6 +690,7 @@ export type Database = {
           id: string
           lemma: string
           lemma_key: string
+          leech_hold: string
           reading: string
           sense: string
           status: string
@@ -718,6 +719,7 @@ export type Database = {
           item_id: string
           language: string
           lemma: string
+          released: boolean
         }[]
       }
       api_sync_begin: { Args: { p_token: string }; Returns: number }
@@ -922,6 +924,7 @@ export type Database = {
           item_id: string
           language: string
           lemma: string
+          released: boolean
         }[]
       }
       save_items_for: {
@@ -934,6 +937,7 @@ export type Database = {
           item_id: string
           language: string
           lemma: string
+          released: boolean
         }[]
       }
       set_default_deck: { Args: { p_deck: string }; Returns: undefined }

@@ -122,6 +122,8 @@ export interface ApiItem {
 	flashcards: ApiFlashcard[];
 	/** Grafias já vistas nos encontros, como escritas, além do lema (destaque na legenda do modo só-alvo). */
 	forms: string[];
+	/** Teimosa em espera (fora da fila); um encontro com frase a devolve. */
+	leechWaiting: boolean;
 }
 
 function flashcardBriefs(
@@ -168,6 +170,7 @@ export function apiItem(
 		status: string;
 		flashcards: unknown;
 		forms?: unknown;
+		leech_hold: string | null;
 	},
 	language: Language,
 	now: Date
@@ -189,7 +192,8 @@ export function apiItem(
 			dueAt: c.due_at,
 			stability: c.stability
 		})),
-		forms: distinctForms(row.forms, row.lemma_key, language)
+		forms: distinctForms(row.forms, row.lemma_key, language),
+		leechWaiting: row.leech_hold === 'wait'
 	};
 }
 
@@ -205,6 +209,8 @@ export type ApiSaveResult =
 				created: boolean;
 				encounterId: string | null;
 				flashcard: { state: number; dueAt: string };
+				/** true: era teimosa em espera e este encontro a devolveu à fila. */
+				released: boolean;
 			};
 	  }
 	| { ok: false; error: string };
@@ -217,6 +223,7 @@ export interface SavedRow {
 	encounter_id: string | null;
 	flashcard_state: number;
 	flashcard_due_at: string;
+	released: boolean;
 }
 
 /**
@@ -241,7 +248,8 @@ export function apiSaveResults(
 				lemmaKey: entry.entry.lemma_key,
 				created: r.created,
 				encounterId: r.encounter_id,
-				flashcard: { state: r.flashcard_state, dueAt: r.flashcard_due_at }
+				flashcard: { state: r.flashcard_state, dueAt: r.flashcard_due_at },
+				released: r.released
 			}
 		};
 	});

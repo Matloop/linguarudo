@@ -140,6 +140,7 @@ describe('apiItem', () => {
 		reading: '',
 		sense: 'esperar',
 		status: 'ativo',
+		leech_hold: null,
 		flashcards: [
 			{ kind: 'reconhecer', state: 2, due_at: '2026-11-10T00:00:00Z', stability: 12.5 },
 			{ kind: 'produzir', state: 0, due_at: '2026-11-11T00:00:00Z', stability: 0 }
@@ -160,8 +161,14 @@ describe('apiItem', () => {
 				{ kind: 'reconhecer', state: 2, dueAt: '2026-11-10T00:00:00Z', stability: 12.5 },
 				{ kind: 'produzir', state: 0, dueAt: '2026-11-11T00:00:00Z', stability: 0 }
 			],
-			forms: []
+			forms: [],
+			leechWaiting: false
 		});
+	});
+
+	test('leechWaiting: só a teimosa em espera (suspensa não volta com encontro)', () => {
+		expect(apiItem({ ...row, leech_hold: 'wait' }, 'it', now).leechWaiting).toBe(true);
+		expect(apiItem({ ...row, leech_hold: 'suspend' }, 'it', now).leechWaiting).toBe(false);
 	});
 
 	test('forms: grafias vistas, só strings', () => {
@@ -213,7 +220,8 @@ describe('apiSaveResults', () => {
 		created: true,
 		encounter_id: 'e1',
 		flashcard_state: 0,
-		flashcard_due_at: '2026-11-11T12:00:00Z'
+		flashcard_due_at: '2026-11-11T12:00:00Z',
+		released: false
 	};
 
 	test('uma resposta por entrada, na ordem; inválidas ficam no lugar', () => {
@@ -231,11 +239,19 @@ describe('apiSaveResults', () => {
 					lemmaKey: 'aspettare',
 					created: true,
 					encounterId: 'e1',
-					flashcard: { state: 0, dueAt: '2026-11-11T12:00:00Z' }
+					flashcard: { state: 0, dueAt: '2026-11-11T12:00:00Z' },
+					released: false
 				}
 			},
 			{ ok: false, error: 'language inválido' }
 		]);
+	});
+
+	test('released: a teimosa em espera voltou para a fila com este encontro', () => {
+		const parsed = parseSaveBody({ items: [{ language: 'it', lemma: 'aspettare' }] });
+		if (!parsed.ok) throw new Error('entrada de teste inválida');
+		const [result] = apiSaveResults(parsed.items, [{ ...saved, created: false, released: true }]);
+		expect(result).toMatchObject({ ok: true, item: { created: false, released: true } });
 	});
 
 	test('sem linha do banco para uma entrada válida, a resposta é erro', () => {
