@@ -20,16 +20,18 @@ export interface LanguageSummary {
 	language: Language;
 	/** Itens no banco (ativos e conhecidos), sem os apagados. */
 	items: number;
-	/** Flashcards que entram na revisão agora: vencidos + novos até o limite do dia. */
+	/** Flashcards que entram na revisão agora: vencidos + novos até o orçamento do idioma. */
 	toReview: number;
 	dueNow: number;
 	newAvailable: number;
+	/** Orçamento do dia no idioma: novas por dia + extras de hoje. */
+	newLimit: number;
+	/** Novas começadas hoje no idioma (qualquer aparelho). */
+	newDoneToday: number;
 }
 
 export interface ShellSummary {
 	languages: LanguageSummary[];
-	newLimit: number;
-	newDoneToday: number;
 }
 
 async function count(query: PromiseLike<{ count: number | null; error: unknown }>) {
@@ -38,6 +40,7 @@ async function count(query: PromiseLike<{ count: number | null; error: unknown }
 	return count ?? 0;
 }
 
+/** Contagens por idioma de estudo; o orçamento de novas é de cada idioma (ADR 0005). */
 export async function loadShellSummary(
 	supabase: Client,
 	userId: string,
@@ -61,32 +64,23 @@ export async function loadShellSummary(
 			])
 		)
 	);
-	let newLimit = DEFAULT_NEW_PER_DAY;
-	let newDoneToday: number;
-	if (perLanguage.length === 0) {
-		const { data } = await supabase.rpc('review_counts', { p_day_start }).single();
-		newLimit = data?.new_limit ?? newLimit;
-		newDoneToday = data?.new_done_today ?? 0;
-	} else {
-		const first = perLanguage[0][1].data;
-		newLimit = first?.new_limit ?? newLimit;
-		newDoneToday = first?.new_done_today ?? 0;
-	}
-	const remaining = newRemaining(newLimit, newDoneToday);
 	return {
-		newLimit,
-		newDoneToday,
 		languages: study.map((language, i) => {
 			const [items, counts] = perLanguage[i];
 			if (counts.error) throw new Error('contagem por idioma');
 			const dueNow = counts.data?.due_now ?? 0;
 			const newAvailable = counts.data?.new_available ?? 0;
+			const newLimit =
+				(counts.data?.new_limit ?? DEFAULT_NEW_PER_DAY) + (counts.data?.extra_new ?? 0);
+			const newDoneToday = counts.data?.new_done_today ?? 0;
 			return {
 				language,
 				items,
 				dueNow,
 				newAvailable,
-				toReview: dueNow + Math.min(newAvailable, remaining)
+				newLimit,
+				newDoneToday,
+				toReview: dueNow + Math.min(newAvailable, newRemaining(newLimit, newDoneToday))
 			};
 		})
 	};

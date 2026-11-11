@@ -1,8 +1,9 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { buildQueue, dayStart, isGrade, leechAlert, newRemaining } from '#lib/review.ts';
+import { buildQueue, dayStart, isGrade, leechAlert } from '#lib/review.ts';
+import { addExtraNew, itemsOfWork, loadQueueState } from '#lib/server/decks.ts';
+import { planNew, type QueueScope } from '#lib/server/queue.ts';
 import {
 	attachMediaUrls,
-	fetchReviewSummary,
 	loadLogs,
 	loadReviewFlashcard,
 	reviewErrorMessage,
@@ -20,12 +21,19 @@ import type { Actions, PageServerLoad } from './$types';
 /** Teto de segurança por carga; revisões vencidas não têm limite (a próxima carga traz o resto). */
 const MAX_DUE_PER_LOAD = 500;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function requireUser(locals: App.Locals) {
 	const user = await locals.getUser();
 	if (!user) error(401, 'Entre para revisar.');
 	return user;
 }
 
+/**
+ * A fila do dia é do servidor (ADR 0005): vencidas dos decks do escopo, mais as novas que
+ * planNew escolhe (orçamento do idioma, ordem, teto de cada deck). Escopo: tudo (decks não
+ * pausados), ?deck= (o deck e os subdecks) ou ?obra= (novas daquela obra, como extra).
+ */
 export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	const user = await requireUser(locals);
 	const { shell } = await parent();
@@ -34,16 +42,27 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	const language = shell.active;
 	const { clock, retention } = shell;
 	const now = new Date();
-	// O shell já contou o limite de novas do dia; só busca de novo se ele falhou.
-	const summary =
-		shell.summary ?? (await fetchReviewSummary(locals.supabase, now, clock).catch(() => null));
-	if (!summary) error(500, 'Não deu para carregar a revisão agora.');
 
-	// A revisão é do idioma ativo; o limite de novas do dia é um só para todos.
+	const state = await loadQueueState(locals.supabase, language, now, clock).catch(() => null);
+	if (!state) error(500, 'Não deu para carregar a revisão agora.');
+
+	const deckParam = url.searchParams.get('deck');
+	const obraParam = url.searchParams.get('obra');
+	let scope: QueueScope = { kind: 'all' };
+	if (deckParam) {
+		if (!state.decks.some((d) => d.id === deckParam)) error(404, 'Deck não encontrado.');
+		scope = { kind: 'deck', deckId: deckParam };
+	} else if (obraParam) {
+		if (!UUID.test(obraParam)) error(404, 'Obra não encontrada.');
+		const itemIds = await itemsOfWork(locals.supabase, obraParam).catch(() => null);
+		if (!itemIds) error(500, 'Não deu para carregar a revisão agora.');
+		scope = { kind: 'obra', workId: obraParam, itemIds };
+	}
+	const plan = planNew(state, scope);
+
 	// Com ?tag=, só os flashcards (de item ou de ficha) que têm a tag.
 	const tag = url.searchParams.get('tag')?.trim() || null;
-	const filter = { language, tag };
-	const remaining = newRemaining(summary.newLimit, summary.newDoneToday);
+	const filter = { language, tag, deckIds: [...plan.deckIds], queued: true };
 	const nowIso = now.toISOString();
 	const sources = [
 		() => reviewableItemFlashcards(locals.supabase, user.id, filter),
@@ -53,15 +72,11 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	const [results, reviewedToday, tags, nextDue] = await Promise.all([
 		Promise.all(
 			sources.flatMap((base) => [
-				base().gt('state', 0).lte('due_at', nowIso).order('due_at').limit(MAX_DUE_PER_LOAD),
-				// Folga para os novos que os irmãos ocultos tiram da fila.
-				remaining > 0
-					? base()
-							.eq('state', 0)
-							.order('created_at')
-							.order('id')
-							.limit(remaining * 2 + 10)
-					: none
+				// "Desta obra" é só de novas.
+				scope.kind === 'obra'
+					? none
+					: base().gt('state', 0).lte('due_at', nowIso).order('due_at').limit(MAX_DUE_PER_LOAD),
+				plan.ids.length > 0 ? base().eq('state', 0).in('id', plan.ids) : none
 			])
 		),
 		locals.supabase
@@ -75,7 +90,10 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	if (results.some((r) => r.error) || reviewedToday.error)
 		error(500, 'Não deu para carregar a revisão agora.');
 
-	const rows = results.flatMap((r) => (r.data ?? []) as ReviewFlashcardRow[]);
+	const rank = new Map(plan.ids.map((id, i) => [id, i]));
+	const rows = results
+		.flatMap((r) => (r.data ?? []) as ReviewFlashcardRow[])
+		.sort((a, b) => (rank.get(a.id) ?? -1) - (rank.get(b.id) ?? -1));
 	const queue = buildQueue(
 		rows.map((r) => ({
 			...r,
@@ -85,8 +103,9 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 		})),
 		{
 			now,
-			newLimit: summary.newLimit,
-			newDoneToday: summary.newDoneToday,
+			newLimit: plan.ids.length,
+			newDoneToday: 0,
+			plannedNew: true,
 			reviewedToday: reviewedToday.data.map((c) => ({ id: c.id, itemId: c.item_id }))
 		}
 	);
@@ -101,7 +120,23 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 		nativeLanguage: shell.nativeLanguage,
 		nextDue,
 		tag,
-		tags
+		tags,
+		/** Escopo da sessão: o player manda `obra` de volta no rate para contar como extra. */
+		scope:
+			scope.kind === 'deck'
+				? { deck: scope.deckId, obra: null }
+				: scope.kind === 'obra'
+					? { deck: null, obra: scope.workId }
+					: { deck: null, obra: null },
+		/** Orçamento do idioma; `more` = novas que ficaram de fora (oferecer "+5 hoje"). */
+		budget: {
+			newAllowance: plan.newAllowance,
+			newDoneToday: plan.newDoneToday,
+			perDay: state.settings.perDay,
+			extraNew: state.extraNew,
+			more: plan.more
+		},
+		activeWorkId: state.activeWorkId
 	};
 };
 
@@ -129,7 +164,7 @@ export const actions: Actions = {
 
 		const now = new Date();
 		const review = { rating, reviewed_at: now.toISOString() };
-		const [logs, { retention }] = await Promise.all([
+		const [logs, { retention, clock, leech: leechRule }] = await Promise.all([
 			loadLogs(locals.supabase, row.id),
 			loadReviewSettings(locals.supabase, user.id)
 		]);
@@ -149,11 +184,23 @@ export const actions: Actions = {
 			return fail(status, { message: text, flashcardId, reason: dbError?.message ?? 'unknown' });
 		}
 
-		// Sanguessuga (só palavras): avisa no 8º lapso e a cada 4 depois, como o Anki.
+		// Teimosa: avisa no limite da conta e a cada metade dele depois, como o Anki. O banco
+		// já pôs o item/ficha em espera ou suspendeu, conforme a ação escolhida.
 		const leech =
-			'items' in row && next.lapses > row.lapses && leechAlert(next.lapses)
-				? { itemId: row.item_id, lemma: row.items.lemma, lapses: next.lapses }
+			next.lapses > row.lapses && leechAlert(next.lapses, leechRule.lapses)
+				? {
+						itemId: 'items' in row ? row.item_id : null,
+						fichaId: 'fichas' in row ? row.fichas.id : null,
+						lemma: 'items' in row ? row.items.lemma : null,
+						lapses: next.lapses,
+						action: leechRule.action
+					}
 				: null;
+		// "Desta obra": nova começada fora do orçamento conta como extra do dia.
+		if (row.state === 0 && form.get('obra')) {
+			const language = 'items' in row ? row.items.language : row.fichas.language;
+			await addExtraNew(locals.supabase, language, now, clock, 1);
+		}
 		const [item] = await attachMediaUrls(locals.supabase, [
 			await toReviewItem({ ...row, ...next }, now, retention)
 		]);

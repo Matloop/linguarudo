@@ -162,12 +162,14 @@
 		pending = true;
 		message = null;
 		if (shownAt) formData.set('durationMs', String(Date.now() - shownAt));
+		if (data.scope.obra) formData.set('obra', data.scope.obra);
 		hit = Number(submitter?.getAttribute('value')) as Grade;
 		return async ({ result }) => {
 			pending = false;
 			if (result.type === 'success' && result.data && 'item' in result.data) {
 				const { item, logId, rating } = result.data;
-				if (result.data.leech) leech = result.data.leech;
+				const l = result.data.leech;
+				if (l?.itemId && l.lemma) leech = { itemId: l.itemId, lemma: l.lemma, lapses: l.lapses };
 				session = answerItem(session, {
 					rating: rating as Grade,
 					logId,

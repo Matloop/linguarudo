@@ -128,14 +128,17 @@ export function itemStrength(cards: readonly { state: number; stability: number 
 /** Lapsos (errou um cartão já aprendido) a partir dos quais a palavra é teimosa. Igual ao Anki. */
 export const LEECH_LAPSES = 8;
 
-/** Item teimoso: algum cartão já passou dos lapsos da sanguessuga. */
-export function isLeech(cards: readonly { lapses: number }[]): boolean {
-	return cards.some((c) => c.lapses >= LEECH_LAPSES);
+/** Item teimoso: algum flashcard já chegou ao limite de lapsos (user_settings.leech_lapses). */
+export function isLeech(cards: readonly { lapses: number }[], limit = LEECH_LAPSES): boolean {
+	return cards.some((c) => c.lapses >= limit);
 }
 
-/** Avisa no 8º lapso e depois a cada 4, como o Anki (metade do limite). */
-export function leechAlert(lapses: number): boolean {
-	return lapses >= LEECH_LAPSES && (lapses - LEECH_LAPSES) % (LEECH_LAPSES / 2) === 0;
+/**
+ * Avisa no limite e depois a cada metade dele, como o Anki (8, 12, 16...). Mesma regra de
+ * apply_leech no banco, que põe a teimosa em espera ou suspende conforme leech_action.
+ */
+export function leechAlert(lapses: number, limit = LEECH_LAPSES): boolean {
+	return lapses >= limit && (lapses - limit) % Math.max(1, Math.floor(limit / 2)) === 0;
 }
 
 // ---------- Fila ----------
@@ -155,6 +158,8 @@ export interface QueueOptions {
 	newDoneToday: number;
 	/** Cartões revisados desde o início do dia (dayStart): ocultam os irmãos. */
 	reviewedToday?: readonly { id: string; itemId: string | null }[];
+	/** Novos já vêm na ordem da fila do dia (lib/server/queue.ts): não reordena por criação. */
+	plannedNew?: boolean;
 }
 
 export function newRemaining(newLimit: number, newDoneToday: number): number {
@@ -194,11 +199,9 @@ export function buildQueue<T extends QueueFlashcard>(cards: T[], opts: QueueOpti
 		.filter((c) => c.state !== STATE_NEW && Date.parse(c.dueAt) <= now)
 		.sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt))
 		.filter(take);
-	const fresh = cards
-		.filter((c) => c.state === STATE_NEW)
-		.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
-		.filter(take)
-		.slice(0, newRemaining(opts.newLimit, opts.newDoneToday));
+	const news = cards.filter((c) => c.state === STATE_NEW);
+	if (!opts.plannedNew) news.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+	const fresh = news.filter(take).slice(0, newRemaining(opts.newLimit, opts.newDoneToday));
 	return [...due, ...fresh];
 }
 

@@ -1,5 +1,5 @@
 // Acesso ao banco da revisão: flashcards com o item (e o encontro mais recente) ou
-// com a ficha, review_logs e as funções record_review / undo_review / review_counts.
+// com a ficha, review_logs e as funções record_review / undo_review.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '#lib/database.types.ts';
@@ -7,16 +7,9 @@ import { sanitizeFichaHtml, type FichaFlashcardKind, type FichaMediaField } from
 import { formatWorkSource, type FlashcardKind, type Origin } from '#lib/items.ts';
 import type { Language } from '#lib/languages.ts';
 import {
-	DEFAULT_CLOCK,
 	DEFAULT_RETENTION,
-	dayStart,
-	formatWhen,
-	nextAvailableAt,
-	reviewCount,
 	reviewMediaPaths,
 	withMediaUrls,
-	type DayClock,
-	type ReviewCounts,
 	type ReviewItem
 } from '#lib/review.ts';
 import { signMedia } from './media.ts';
@@ -40,6 +33,10 @@ export interface ReviewFilter {
 	language?: Language;
 	/** Só flashcards com esta tag (no item ou na ficha). */
 	tag?: string | null;
+	/** Só itens/fichas destes decks (escopo da fila do dia). */
+	deckIds?: readonly string[];
+	/** Sem as teimosas em espera ou suspensas. */
+	queued?: boolean;
 }
 
 /**
@@ -58,6 +55,8 @@ export function reviewableItemFlashcards(supabase: Client, userId: string, f: Re
 		.limit(1, { referencedTable: 'items.encounters' });
 	if (f.language) query = query.eq('items.language', f.language);
 	if (f.tag) query = query.contains('items.tags', [f.tag]);
+	if (f.deckIds) query = query.in('items.deck_id', [...f.deckIds]);
+	if (f.queued) query = query.is('items.leech_hold', null);
 	return query;
 }
 
@@ -71,6 +70,8 @@ export function reviewableFichaFlashcards(supabase: Client, userId: string, f: R
 		.is('fichas.deleted_at', null);
 	if (f.language) query = query.eq('fichas.language', f.language);
 	if (f.tag) query = query.contains('fichas.tags', [f.tag]);
+	if (f.deckIds) query = query.in('fichas.deck_id', [...f.deckIds]);
+	if (f.queued) query = query.is('fichas.leech_hold', null);
 	return query;
 }
 
@@ -192,36 +193,6 @@ export async function attachMediaUrls<T extends ReviewItem>(
 		() => new Map<string, string>()
 	);
 	return items.map((i) => withMediaUrls(i, urls));
-}
-
-export interface ReviewSummary extends ReviewCounts {
-	count: number;
-	/** Texto do estado vazio ("hoje às 18:00"); null se não há nada agendado. */
-	next: string | null;
-}
-
-export async function fetchReviewSummary(
-	supabase: Client,
-	now: Date,
-	clock: DayClock = DEFAULT_CLOCK
-): Promise<ReviewSummary> {
-	const { data, error } = await supabase
-		.rpc('review_counts', { p_day_start: dayStart(now, clock).toISOString() })
-		.single();
-	if (error || !data) throw new Error(`review_counts: ${error?.message}`);
-
-	const counts: ReviewCounts = {
-		dueNow: data.due_now,
-		newAvailable: data.new_available,
-		newDoneToday: data.new_done_today,
-		newLimit: data.new_limit
-	};
-	const nextAt = nextAvailableAt({ ...counts, now, nextDueAt: data.next_due_at }, clock);
-	return {
-		...counts,
-		count: reviewCount(counts),
-		next: nextAt ? formatWhen(nextAt, now, clock.timeZone) : null
-	};
 }
 
 /** Erros de record_review/undo_review, em PT. */

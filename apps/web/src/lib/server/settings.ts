@@ -8,6 +8,7 @@ import {
 	type Language,
 	type UiLanguage
 } from '#lib/languages.ts';
+import { DEFAULT_LEECH_LAPSES, parseLeechAction, type LeechAction } from '#lib/decks.ts';
 import { clockFrom, DEFAULT_RETENTION, type DayClock } from '#lib/review.ts';
 
 export interface Settings {
@@ -26,17 +27,27 @@ export interface Settings {
 	retention: number;
 }
 
-/** Só o relógio e a retenção, para quem não precisa dos idiomas. */
+/** Só o relógio, a retenção e a regra de teimosa, para quem não precisa dos idiomas. */
 export async function loadReviewSettings(
 	supabase: SupabaseClient<Database>,
 	userId: string
-): Promise<Pick<Settings, 'clock' | 'retention' | 'timeZoneSet'>> {
+): Promise<
+	Pick<Settings, 'clock' | 'retention' | 'timeZoneSet'> & {
+		leech: { lapses: number; action: LeechAction };
+	}
+> {
 	const { data } = await supabase
 		.from('user_settings')
-		.select('time_zone, day_start_hour, desired_retention')
+		.select('time_zone, day_start_hour, desired_retention, leech_lapses, leech_action')
 		.eq('user_id', userId)
 		.maybeSingle();
-	return reviewSettingsFrom(data);
+	return {
+		...reviewSettingsFrom(data),
+		leech: {
+			lapses: data?.leech_lapses ?? DEFAULT_LEECH_LAPSES,
+			action: parseLeechAction(data?.leech_action) ?? 'wait'
+		}
+	};
 }
 
 function reviewSettingsFrom(

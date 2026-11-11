@@ -207,7 +207,11 @@ describe('sanguessuga', () => {
 	});
 
 	test('avisa no 8º lapso e depois a cada 4', () => {
-		expect([7, 8, 9, 11, 12, 16].map(leechAlert)).toEqual([false, true, false, false, true, true]);
+		const alert = (limit?: number) => (n: number) => leechAlert(n, limit);
+		expect([7, 8, 9, 11, 12, 16].map(alert())).toEqual([false, true, false, false, true, true]);
+		// Limite da conta: 6 avisa no 6º e depois a cada 3.
+		expect([5, 6, 8, 9, 12].map(alert(6))).toEqual([false, true, false, true, true]);
+		expect(isLeech([{ lapses: 5 }], 5)).toBe(true);
 	});
 });
 
