@@ -7,6 +7,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { SIDEBAR_COOKIE, cookieString, nextTheme, type Theme } from '#lib/prefs.ts';
+	import { deckDisplayName } from '#lib/decks-ui.ts';
 	import { isTypingTarget, shortcutFor, type Screen } from '#lib/shortcuts.ts';
 	import Icon from '#lib/ui/Icon.svelte';
 	import LangMenu from '#lib/ui/LangMenu.svelte';
@@ -33,12 +34,14 @@
 		shell?.summary?.languages.find((l) => l.language === shell.active) ?? null
 	);
 	const toReview = $derived(activeSummary?.toReview ?? 0);
+	const shellDecks = $derived(shell?.summary?.decks ?? []);
 	const initial = $derived((data.user?.email ?? '?').charAt(0).toUpperCase());
 
 	const SCREENS: Record<string, Screen> = {
 		'/inicio': 'inicio',
+		'/flashcards': 'decks',
 		'/palavras': 'palavras',
-		'/flashcards': 'flashcards'
+		'/flashcards/estudar': 'flashcards'
 	};
 
 	function current(path: string) {
@@ -100,13 +103,13 @@
 			screen: SCREENS[page.route.id ?? ''] ?? 'outra',
 			typing: isTypingTarget(e.target),
 			dialogOpen: !!document.querySelector(
-				'dialog[open], details.lang-wrap[open], [data-drawer-open]'
+				'dialog[open], details.lang-wrap[open], [data-drawer-open], [data-popover-open]'
 			)
 		});
 		if (!action) return;
 		if (action.type === 'guardar') openSave();
 		else if (action.type === 'barra') toggleCollapsed();
-		else if (action.type === 'flashcards') goto(resolve('/flashcards'));
+		else if (action.type === 'flashcards') goto(resolve('/flashcards/estudar'));
 		else if (action.type === 'buscar') document.getElementById('busca')?.focus();
 		else return; // o resto é da tela de revisão
 		e.preventDefault();
@@ -191,9 +194,28 @@
 					title="Flashcards"
 					><Icon name="repeat" /><span class="lb">Flashcards</span>
 					{#if toReview > 0}<span class="count"
-							>{toReview}<span class="visually-hidden">&nbsp;para revisar</span></span
+							>{toReview}<span class="visually-hidden">&nbsp;para hoje</span></span
 						>{/if}</a
 				>
+				{#if !collapsed && shellDecks.length}
+					<ul class="sub" aria-label="Decks com algo para hoje">
+						{#each shellDecks as d (d.id)}
+							<li>
+								<a
+									class="sub-item"
+									href={resolve('/flashcards/deck/[id]', { id: d.id })}
+									aria-current={page.url.pathname.startsWith(`/flashcards/deck/${d.id}`)
+										? 'page'
+										: undefined}
+									title={deckDisplayName(d.name)}
+									><span class="sub-name">{deckDisplayName(d.name)}</span><span class="sub-n"
+										>{d.forToday}<span class="visually-hidden">&nbsp;para hoje</span></span
+									></a
+								>
+							</li>
+						{/each}
+					</ul>
+				{/if}
 				<a
 					class="nav-item"
 					href={resolve('/estatisticas')}
@@ -282,7 +304,7 @@
 			>
 			<a class="tab" href={resolve('/flashcards')} aria-current={current('/flashcards')}
 				><Icon name="repeat" />Flashcards{#if toReview > 0}<span class="count"
-						>{toReview}<span class="visually-hidden">&nbsp;para revisar</span></span
+						>{toReview}<span class="visually-hidden">&nbsp;para hoje</span></span
 					>{/if}</a
 			>
 			<a class="tab" href={resolve('/musica')} aria-current={current('/musica')}
@@ -450,6 +472,45 @@
 		font-variant-numeric: tabular-nums;
 		color: var(--terra-ink);
 		background: var(--terra-soft);
+	}
+	.sub {
+		list-style: none;
+		margin: 0 0 4px;
+		padding: 0;
+	}
+	.sub-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 32px;
+		padding: 0 10px 0 40px;
+		border-radius: var(--r-m);
+		color: var(--ink-2);
+		font-size: 14px;
+		text-decoration: none;
+		transition:
+			background-color 0.15s,
+			color 0.15s;
+	}
+	.sub-item:hover {
+		background: var(--hover);
+		color: var(--ink);
+	}
+	.sub-item[aria-current='page'] {
+		color: var(--ink);
+		background: var(--hover);
+	}
+	.sub-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.sub-n {
+		margin-left: auto;
+		color: var(--ink-3);
+		font-size: 13px;
+		font-variant-numeric: tabular-nums;
 	}
 	.nav-label {
 		font-size: 13px;

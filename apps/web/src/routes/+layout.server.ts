@@ -29,6 +29,7 @@ export const load: LayoutServerLoad = async ({ locals, depends, cookies, request
 		locals.supabase,
 		user.id,
 		settings.studyLanguages,
+		active,
 		new Date(),
 		settings.clock
 	).catch(() => null);

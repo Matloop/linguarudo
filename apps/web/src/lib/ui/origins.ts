@@ -1,6 +1,6 @@
 // Ícone de cada origem de encontro, igual em toda a interface.
 
-import type { Origin } from '#lib/items.ts';
+import type { Origin, WorkKind } from '#lib/items.ts';
 import type { IconName } from './Icon.svelte';
 
 export const ORIGIN_ICONS: Record<Origin, IconName> = {
@@ -11,3 +11,12 @@ export const ORIGIN_ICONS: Record<Origin, IconName> = {
 	anki: 'archive',
 	blend: 'tv'
 };
+
+/** Ícone de cada tipo de obra (livro, episódio...). */
+export const WORK_ICONS: Record<string, IconName> = {
+	livro: 'bookmark',
+	episodio: 'tv',
+	filme: 'tv',
+	video: 'tv',
+	musica: 'music'
+} satisfies Record<WorkKind, IconName>;

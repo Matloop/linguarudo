@@ -1,1073 +1,776 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { onMount, tick, untrack } from 'svelte';
-	import { applyAction, enhance, type SubmitFunction } from '$app/forms';
-	import { invalidate, invalidateAll } from '$app/navigation';
+	import { tick } from 'svelte';
+	import { isPausedIn, type DeckSummary } from '#lib/decks.ts';
 	import {
-		GRADE_LABELS,
-		GRADES,
-		REVIEW_DEPENDENCY,
-		answerItem,
-		highlightParts,
-		reviewMedia,
-		sessionProgress,
-		startSession,
-		undoLast,
-		type FichaReview,
-		type Grade,
-		type ItemReview
-	} from '#lib/review.ts';
-	import { FICHA_KIND_LABELS, renderCloze } from '#lib/fichas.ts';
-	import { langAttrs, languageInline, pickVoice } from '#lib/languages.ts';
-	import { isTypingTarget, shortcutFor } from '#lib/shortcuts.ts';
-	import { toast } from '#lib/ui/app-state.svelte.ts';
+		DECK_NAME_UI_MAX,
+		deckDisplayName,
+		forToday,
+		hubSubtitle,
+		plural,
+		rowCounts,
+		todayBreakdown,
+		todayTotals
+	} from '#lib/decks-ui.ts';
+	import BulkBar from '#lib/ui/BulkBar.svelte';
+	import DeckPicker from '#lib/ui/DeckPicker.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Mark from '#lib/ui/Mark.svelte';
-	import { ORIGIN_ICONS } from '#lib/ui/origins.ts';
+	import Popover from '#lib/ui/Popover.svelte';
+	import { toast } from '#lib/ui/app-state.svelte.ts';
+	import { postAction } from '#lib/ui/post-action.ts';
+	import { Selection } from '#lib/ui/selection.svelte.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
-	// A sessão vive no navegador; recarregar a página começa outra com o que vencer.
-	let session = $state(startSession(untrack(() => data.queue)));
-	let flipped = $state(false);
-	let pending = $state(false);
-	let hit = $state<Grade | null>(null);
-	let message = $state<string | null>(null);
-	/** Palavra que acabou de virar sanguessuga (8 lapsos, depois a cada 4). */
-	let leech = $state<{ itemId: string; lemma: string; lapses: number } | null>(null);
-	/** Quando o cartão atual apareceu, para a duração da revisão (estatísticas). */
-	let shownAt = 0;
-	let canSpeak = $state(false);
-
-	let rateForm: HTMLFormElement | undefined = $state();
-	let undoForm: HTMLFormElement | undefined = $state();
-	let showButton: HTMLButtonElement | undefined = $state();
-	let grades: HTMLElement | undefined = $state();
-
-	const current = $derived(session.queue[0]);
-	$effect(() => {
-		if (current?.flashcardId) shownAt = Date.now();
-	});
-	const progress = $derived(sessionProgress(session));
-	const total = $derived(session.answered + session.queue.length);
-	const languageName = $derived(languageInline(data.language, data.uiLanguage));
-	/** Texto no idioma estudado e na língua nativa (lang e dir para leitor de tela e RTL). */
-	const study = $derived(langAttrs(data.language));
-	const native = $derived(data.nativeLanguage ? langAttrs(data.nativeLanguage) : {});
-	const remaining = $derived(
-		data.shell?.summary?.languages.find((l) => l.language === data.language)?.toReview ?? 0
+	const decks = $derived(data.decks);
+	const totals = $derived(todayTotals(decks, data.budget));
+	const subtitle = $derived(hubSubtitle(decks, data.flashcards));
+	const onlyDefault = $derived(decks.length === 1);
+	const nothing = $derived(
+		data.flashcards === 0 && decks.every((d) => !d.total.items && !d.total.fichas)
+	);
+	const perDayTotal = $derived(data.budget.perDay + data.budget.extraNew);
+	/** Barra da faixa: novas começadas hoje sobre o orçamento do dia; cheia quando tudo em dia. */
+	const barPct = $derived(
+		totals.total === 0
+			? 100
+			: perDayTotal
+				? Math.min(100, Math.round((data.budget.newDoneToday / perDayTotal) * 100))
+				: 0
 	);
 
-	onMount(() => {
-		canSpeak = 'speechSynthesis' in window;
-	});
-
-	async function flip() {
-		if (!current || flipped) return;
-		flipped = true;
-		await tick();
-		grades?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
-	}
-
-	async function showFront() {
-		flipped = false;
-		hit = null;
-		await tick();
-		showButton?.focus({ preventScroll: true });
-	}
-
-	// Trocar a tag do filtro começa outra sessão com a fila nova.
-	let sessionTag = untrack(() => data.tag);
+	const sel = new Selection(() => decks.map((d) => d.id));
 	$effect(() => {
-		if (data.tag === sessionTag) return;
-		sessionTag = data.tag;
-		session = startSession(data.queue);
-		flipped = false;
-		hit = null;
+		void decks;
+		sel.prune();
 	});
+	const chosen = $derived(decks.filter((d) => sel.has(d.id)));
+	const allPaused = $derived(chosen.length > 0 && chosen.every((d) => d.paused));
+	const hasChildren = (d: DeckSummary) => decks.some((c) => c.parentId === d.id);
+	const canNest = $derived(chosen.length > 0 && !chosen.some(hasChildren));
+	/** Modo seleção no mobile (sem hover, o botão "Selecionar" mostra as caixas). */
+	let picking = $state(false);
 
-	const tagQuery = (tag: string | null): `?${string}` | '' =>
-		tag ? `?tag=${encodeURIComponent(tag)}` : '';
+	const studyHref = $derived(
+		resolve(`/flashcards/estudar?${chosen.map((d) => `deck=${d.id}`).join('&')}`)
+	);
 
-	/** Faces da ficha: o que pergunta e o que responde, já em HTML sanitizado. */
-	function fichaFaces(f: FichaReview): { ask: string; answer: string; extra: string } {
-		if (f.kind === 'lacuna') {
-			return {
-				ask: renderCloze(f.front, f.ord, false),
-				answer: renderCloze(f.front, f.ord, true),
-				extra: f.back
-			};
+	// ---------- Novo deck ----------
+	let createOpen = $state(false);
+	let createName = $state('');
+	let createError = $state('');
+	let creating = $state(false);
+	let flashId = $state<string | null>(null);
+
+	async function create(e: SubmitEvent) {
+		e.preventDefault();
+		if (creating || !createName.trim()) return;
+		creating = true;
+		const r = await postAction('create', { name: createName });
+		creating = false;
+		if (!r.ok) {
+			createError = r.message;
+			return;
 		}
-		if (f.kind === 'inverso') return { ask: f.back, answer: f.front, extra: '' };
-		return { ask: f.front, answer: f.back, extra: '' };
+		const deck = r.data.deck as { id: string; name: string };
+		toast(`Deck “${deckDisplayName(deck.name)}” criado`);
+		createOpen = false;
+		createName = '';
+		createError = '';
+		flashId = deck.id;
+		setTimeout(() => (flashId = null), 1600);
 	}
 
-	// Mídia do flashcard atual, por lado (reviewMedia segue o ADR 0003).
-	const media = $derived(current ? reviewMedia(current) : null);
-	let player: HTMLAudioElement | null = null;
+	// ---------- Barra de seleção ----------
+	let renameOpen = $state(false);
+	let renameName = $state('');
+	let renameError = $state('');
+	let moveOpen = $state(false);
+	let busy = $state(false);
 
-	function play(url: string | null) {
-		if (!url) return;
-		player?.pause();
-		player = new Audio(url);
-		// Autoplay bloqueado pelo navegador (sem interação ainda) não é erro.
-		player.play().catch(() => {});
-	}
-
-	// Com a opção do perfil ligada, o áudio toca sozinho quando o lado dele aparece.
-	// No verso, só se for outro áudio (o Reconhecer já tocou o mesmo na frente).
 	$effect(() => {
-		if (!data.autoplayAudio || !media) return;
-		const audio = flipped
-			? media.answer.audio !== media.ask.audio
-				? media.answer.audio
-				: null
-			: media.ask.audio;
-		untrack(() => play(audio));
+		if (renameOpen && chosen.length === 1) {
+			renameName = chosen[0].name;
+			renameError = '';
+		}
 	});
 
-	function speak(audio: string | null = null) {
-		if (audio) return play(audio);
-		if (!current || current.source !== 'item' || !canSpeak) return;
-		const utterance = new SpeechSynthesisUtterance(current.lemma);
-		utterance.lang = current.language;
-		const voice = pickVoice(speechSynthesis.getVoices(), current.language);
-		if (voice) utterance.voice = voice;
-		speechSynthesis.cancel();
-		speechSynthesis.speak(utterance);
+	async function togglePause() {
+		const paused = !allPaused;
+		busy = true;
+		const r = await postAction('pause', { id: chosen.map((d) => d.id), paused: String(paused) });
+		busy = false;
+		if (!r.ok) return toast(r.message);
+		toast(
+			paused
+				? `${plural(chosen.length, 'deck pausado', 'decks pausados')}: fora do Estudar tudo`
+				: `${plural(chosen.length, 'deck retomado', 'decks retomados')}`
+		);
 	}
 
-	function rate(grade: Grade) {
-		rateForm?.requestSubmit(rateForm.querySelector<HTMLButtonElement>(`[value="${grade}"]`));
+	async function rename(e: SubmitEvent) {
+		e.preventDefault();
+		if (busy || chosen.length !== 1) return;
+		busy = true;
+		const r = await postAction('rename', { id: chosen[0].id, name: renameName });
+		busy = false;
+		if (!r.ok) {
+			renameError = r.message;
+			return;
+		}
+		renameOpen = false;
+		toast('Deck renomeado');
+	}
+
+	const nestTargets = $derived([
+		{ id: '', name: 'Nenhum (deck de topo)', depth: 0 },
+		...decks
+			.filter((d) => d.depth === 0 && !sel.has(d.id))
+			.map((d) => ({ id: d.id, name: d.name, depth: 0 }))
+	]);
+
+	async function nest(choice: { deckId: string } | { newName: string }) {
+		if (!('deckId' in choice)) return;
+		busy = true;
+		const r = await postAction('nest', { id: chosen.map((d) => d.id), parent: choice.deckId });
+		busy = false;
+		moveOpen = false;
+		if (!r.ok) return toast(r.message);
+		const target = decks.find((d) => d.id === choice.deckId);
+		toast(target ? `Movido para ${deckDisplayName(target.name)}` : 'Agora é deck de topo');
+		sel.clear();
 	}
 
 	function onkeydown(e: KeyboardEvent) {
-		const action = shortcutFor(e, {
-			screen: 'flashcards',
-			typing: isTypingTarget(e.target),
-			dialogOpen: !!document.querySelector('dialog[open], details.lang-wrap[open]'),
-			flipped
+		sel.onkeydown(e);
+	}
+
+	function focusName(node: HTMLInputElement) {
+		void tick().then(() => {
+			node.focus();
+			node.select();
 		});
-		if (!action) return;
-		if (action.type === 'virar' && current) flip();
-		else if (action.type === 'nota' && current && !pending) rate(action.grade);
-		else if (action.type === 'desfazer' && session.last && !pending) undoForm?.requestSubmit();
-		else return;
-		e.preventDefault();
 	}
 
-	const submitRate: SubmitFunction = ({ cancel, submitter, formData }) => {
-		if (pending) return cancel();
-		pending = true;
-		message = null;
-		if (shownAt) formData.set('durationMs', String(Date.now() - shownAt));
-		if (data.scope.obra) formData.set('obra', data.scope.obra);
-		hit = Number(submitter?.getAttribute('value')) as Grade;
-		return async ({ result }) => {
-			pending = false;
-			if (result.type === 'success' && result.data && 'item' in result.data) {
-				const { item, logId, rating } = result.data;
-				const l = result.data.leech;
-				if (l?.itemId && l.lemma) leech = { itemId: l.itemId, lemma: l.lemma, lapses: l.lapses };
-				session = answerItem(session, {
-					rating: rating as Grade,
-					logId,
-					updated: item,
-					now: new Date()
-				});
-				await showFront();
-				invalidate(REVIEW_DEPENDENCY);
-			} else if (result.type === 'failure') {
-				hit = null;
-				message = (result.data as { message?: string } | undefined)?.message ?? null;
-				message ??= 'Não deu para salvar agora.';
-				const failed = result.data as { flashcardId?: string } | undefined;
-				// Flashcard avaliado em outra aba, item apagado ou marcado como conhecido: sai da fila.
-				if (result.status === 409 || result.status === 404) {
-					session.queue = session.queue.filter((i) => i.flashcardId !== failed?.flashcardId);
-					await showFront();
-					invalidate(REVIEW_DEPENDENCY);
-				}
-			} else if (result.type === 'redirect') {
-				await applyAction(result);
-			} else {
-				hit = null;
-				message = 'Não deu para salvar agora. Tente de novo.';
-			}
-		};
-	};
-
-	const submitUndo: SubmitFunction = ({ cancel }) => {
-		if (pending) return cancel();
-		pending = true;
-		message = null;
-		return async ({ result }) => {
-			pending = false;
-			if (result.type === 'success' && result.data && 'undone' in result.data) {
-				session = undoLast(session, result.data.undone);
-				flipped = true;
-				toast('Última avaliação desfeita');
-				invalidate(REVIEW_DEPENDENCY);
-			} else if (result.type === 'failure') {
-				message = (result.data as { message?: string } | undefined)?.message ?? null;
-				message ??= 'Não deu para desfazer agora.';
-				session.last = null;
-			} else if (result.type === 'redirect') {
-				await applyAction(result);
-			} else {
-				message = 'Não deu para desfazer agora.';
-			}
-		};
-	};
-
-	async function continueReviewing() {
-		await invalidateAll();
-		session = startSession(data.queue);
-		flipped = false;
-	}
+	const cell = (n: number) => (n === 0 ? 'zero' : '');
 </script>
-
-<svelte:window {onkeydown} />
 
 <svelte:head>
 	<title>Flashcards · Linguetta</title>
 </svelte:head>
 
-{#snippet source(item: ItemReview, audio: string | null)}
-	<div class="fh">
-		<span class="src">
-			<Icon name={ORIGIN_ICONS[item.origin ?? 'manual']} size="sm" />
-			{item.sourceDetail || 'Guardada à mão'}
-		</span>
-		{#if audio || canSpeak}
+<svelte:window {onkeydown} />
+
+{#snippet more()}
+	<Popover label="Mais opções" width={260}>
+		{#snippet trigger({ toggle, expanded, id })}
 			<button
-				class="icon-btn"
-				class:rec={!!audio}
+				class="icon-btn more-btn"
 				type="button"
-				onclick={() => speak(audio)}
-				aria-label="Ouvir"
-				title={audio ? 'Ouvir a pronúncia guardada' : 'Ouvir'}
+				aria-label="Mais opções"
+				title="Mais opções"
+				aria-haspopup="dialog"
+				aria-expanded={expanded}
+				aria-controls={id}
+				onclick={toggle}><Icon name="more" /></button
 			>
-				<Icon name="sound" size="sm" />
-			</button>
-		{/if}
-	</div>
-{/snippet}
-
-{#snippet picture(url: string | null)}
-	{#if url}<img class="rv-img" src={url} alt="" />{/if}
-{/snippet}
-
-{#snippet sentence(item: ItemReview, underline: boolean)}
-	{#if item.sentence}
-		<p class="ctx" {...study}>
-			{#each highlightParts(item.sentence, item.highlight || item.lemma, item.language) as part, i (i)}
-				{#if part.hit}<u class:plain={!underline}>{part.text}</u>{:else}{part.text}{/if}
-			{/each}
-		</p>
-	{/if}
-{/snippet}
-
-{#snippet fichaHead(f: FichaReview, audio: string | null)}
-	<div class="fh">
-		<span class="src">
-			<Icon name="cards" size="sm" />
-			Ficha{#if f.tags[0]}&nbsp;· {f.tags[0]}{/if}
-		</span>
-		<span class="src">
-			{f.kind === 'lacuna' ? `Lacuna ${f.ord}` : FICHA_KIND_LABELS[f.kind]}
-			{#if audio}
-				<button
-					class="icon-btn rec"
-					type="button"
-					onclick={() => play(audio)}
-					aria-label="Ouvir"
-					title="Ouvir"><Icon name="sound" size="sm" /></button
-				>
+		{/snippet}
+		<nav class="menu" aria-label="Mais">
+			<a href={resolve('/flashcards/fichas')}><Icon name="cards" size="sm" />Fichas</a>
+			<a href={resolve('/flashcards/importar')}><Icon name="upload" size="sm" />Importar do Anki</a>
+			{#if data.tags.length}
+				<div class="menu-label">Estudar por tag</div>
+				<div class="menu-tags">
+					{#each data.tags as tag (tag)}
+						<a class="chip" href={resolve(`/flashcards/estudar?tag=${encodeURIComponent(tag)}`)}
+							><Icon name="tag" size="sm" />{tag}</a
+						>
+					{/each}
+				</div>
 			{/if}
-		</span>
-	</div>
-{/snippet}
-
-{#snippet tagBar()}
-	{#if data.tags.length > 0 || data.tag}
-		<nav class="tags" aria-label="Filtrar por tag">
-			<a
-				class="chip"
-				class:on={!data.tag}
-				href={resolve(`/flashcards${tagQuery(null)}`)}
-				aria-current={!data.tag}>Tudo</a
-			>
-			{#each data.tags as tag (tag)}
-				<a
-					class="chip"
-					class:on={data.tag === tag}
-					href={resolve(`/flashcards${tagQuery(tag)}`)}
-					aria-current={data.tag === tag}><Icon name="tag" size="sm" />{tag}</a
-				>
-			{/each}
 		</nav>
-	{/if}
+	</Popover>
 {/snippet}
 
-<form method="POST" action="?/undo" use:enhance={submitUndo} bind:this={undoForm} hidden>
-	<input type="hidden" name="logId" value={session.last?.logId ?? ''} />
-</form>
-
-{#if session.answered === 0 && !current}
-	<div class="ph">
-		<div><h1>Flashcards</h1></div>
-		<a class="btn btn-soft" href={resolve('/flashcards/fichas')}><Icon name="cards" />Fichas</a>
+<div class="ph">
+	<div>
+		<h1>Flashcards</h1>
+		{#if !nothing}<p data-testid="hub-sub">{subtitle}</p>{/if}
 	</div>
-	{@render tagBar()}
+	<div class="ph-acts">
+		<a class="btn btn-ghost hide-s" href={resolve('/flashcards/importar')}
+			><Icon name="upload" size="sm" />Importar</a
+		>
+		{@render more()}
+		<Popover label="Novo deck" bind:open={createOpen}>
+			{#snippet trigger({ toggle, expanded, id })}
+				<button
+					class="btn btn-soft"
+					type="button"
+					aria-haspopup="dialog"
+					aria-expanded={expanded}
+					aria-controls={id}
+					onclick={toggle}><Icon name="plus" size="sm" />Novo deck</button
+				>
+			{/snippet}
+			{#snippet children({ close })}
+				<form class="pop-form" onsubmit={create}>
+					<label for="novo-deck">Nome do deck</label>
+					<!-- svelte-ignore a11y_autofocus -->
+					<input
+						id="novo-deck"
+						class="input"
+						autofocus
+						maxlength={DECK_NAME_UI_MAX}
+						autocomplete="off"
+						placeholder="Ex.: Viagem"
+						aria-invalid={createError ? 'true' : undefined}
+						aria-describedby={createError ? 'novo-deck-erro' : undefined}
+						bind:value={createName}
+						oninput={() => (createError = '')}
+					/>
+					{#if createError}<p class="err" id="novo-deck-erro" role="alert">{createError}</p>{/if}
+					<div class="pop-row">
+						<span class="code" title="Idioma do deck">{data.language.toUpperCase()}</span>
+						<span class="sp"></span>
+						<button class="btn btn-ghost" type="button" onclick={close}>Cancelar</button>
+						<button class="btn btn-primary" disabled={!createName.trim() || creating}>Criar</button>
+					</div>
+				</form>
+			{/snippet}
+		</Popover>
+	</div>
+</div>
+
+{#if nothing}
 	<div class="empty">
 		<div>
 			<Mark class="mark mark-hero" />
-			<h2>Nada para revisar</h2>
-			{#if data.tag}
-				<p>Nenhum flashcard com a tag “{data.tag}” para agora.</p>
-			{:else if data.nextDue}
-				<p>O próximo flashcard em {languageName} volta {data.nextDue}.</p>
-			{:else}
-				<p>
-					Quando você guardar palavras ou criar fichas em {languageName}, elas aparecem aqui no dia
-					certo.
-				</p>
-			{/if}
+			<h2>Nenhum flashcard ainda</h2>
+			<p>
+				Guarde palavras, crie fichas ou importe um baralho do Anki. Cada uma vira flashcard no deck
+				certo.
+			</p>
 			<div class="acts">
-				<a
-					class="btn btn-primary btn-lg"
-					href={resolve('/flashcards?guardar')}
-					data-sveltekit-noscroll><Icon name="plus" />Guardar palavra</a
+				<a class="btn btn-primary btn-lg" href={resolve('/flashcards?guardar')}
+					><Icon name="plus" />Guardar palavra</a
 				>
-				<a class="btn btn-soft btn-lg" href={resolve('/flashcards/fichas/nova')}
-					><Icon name="cards" />Nova ficha</a
+				<a class="btn btn-soft btn-lg" href={resolve('/flashcards/importar')}
+					><Icon name="upload" />Importar do Anki</a
 				>
 			</div>
 		</div>
 	</div>
 {:else}
-	<div class="rv">
-		<div class="rv-top">
-			<span class="l"><Icon name="repeat" size="sm" />Revisão de hoje</span>
+	<section class="tile lift study" aria-label="Para hoje">
+		<div class="txt">
+			{#if totals.total > 0}
+				<b data-testid="para-hoje">{plural(totals.total, 'para hoje', 'para hoje')}</b>
+				<span class="meta">
+					{#if totals.budgetSpent}
+						{totals.reviews ? `${plural(totals.reviews, 'revisão', 'revisões')} · ` : ''}as {perDayTotal}
+						novas de hoje já foram
+					{:else}
+						{todayBreakdown(totals.fresh, totals.reviews)}
+					{/if}
+				</span>
+			{:else}
+				<b data-testid="para-hoje">Tudo em dia</b>
+				<span class="meta"
+					>{#if data.tomorrow}Amanhã, cerca de {plural(
+							data.tomorrow,
+							'revisão',
+							'revisões'
+						)}{:else}Nada vence amanhã{/if}</span
+				>
+			{/if}
 			<span
 				class="bar"
 				role="progressbar"
-				aria-label="Progresso da revisão"
+				aria-label="Novas de hoje"
 				aria-valuemin={0}
 				aria-valuemax={100}
-				aria-valuenow={current ? progress : 100}
-				><i style:width="{current ? progress : 100}%"></i></span
+				aria-valuenow={barPct}><i style:width="{barPct}%"></i></span
 			>
-			<span class="r">
-				<span data-testid="contador">{current ? session.answered + 1 : total} de {total}</span>
-				<a class="icon-btn" href={resolve('/inicio')} aria-label="Sair da revisão" title="Sair"
-					><Icon name="x" /></a
-				>
-			</span>
 		</div>
-		{#if session.answered === 0}{@render tagBar()}{/if}
-
-		{#if leech}
-			<div class="leech" role="status">
-				<Icon name="leaf" size="sm" />
-				<p>
-					<b>“{leech.lemma}” está teimosa.</b> Você errou {leech.lapses} vezes depois de aprender. Uma
-					frase nova ou uma nota costuma resolver.
-				</p>
-				<a class="btn btn-soft" href={resolve(`/palavras?item=${leech.itemId}`)}>Abrir palavra</a>
-				<button
-					class="icon-btn"
-					type="button"
-					aria-label="Fechar aviso"
-					onclick={() => (leech = null)}><Icon name="x" size="sm" /></button
-				>
-			</div>
+		{#if totals.total > 0}
+			<a
+				class="btn btn-primary btn-lg"
+				href={resolve('/flashcards/estudar')}
+				data-testid="estudar-tudo"
+				><Icon name="play" size="sm" />Estudar tudo<kbd aria-hidden="true">R</kbd></a
+			>
 		{/if}
+	</section>
 
-		{#if current}
-			<div class="rv-stage">
-				{#key current.flashcardId}
-					<div class="card3d enter" class:flipped data-testid="flashcard">
-						<div class="card-in">
-							{#if current.source === 'ficha'}
-								{@const faces = fichaFaces(current)}
-								<section class="face front" inert={flipped} aria-label="Frente do flashcard">
-									{@render fichaHead(current, media?.ask.audio ?? null)}
-									<div class="mid">
-										{@render picture(media?.ask.image ?? null)}
-										<!-- HTML sanitizado no servidor (sanitizeFichaHtml): só b, i e br. -->
+	<div class="table-tools">
+		<button
+			class="btn btn-ghost pick-btn"
+			type="button"
+			aria-pressed={picking}
+			onclick={() => {
+				picking = !picking;
+				if (!picking) sel.clear();
+			}}>{picking ? 'Pronto' : 'Selecionar'}</button
+		>
+	</div>
 
-										<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-										<div class="ficha-face">{@html faces.ask}</div>
-									</div>
-								</section>
-								<section class="face back" inert={!flipped} aria-label="Verso do flashcard">
-									{@render fichaHead(current, media?.answer.audio ?? null)}
-									<div class="mid">
-										{@render picture(media?.answer.image ?? null)}
-										<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-										<div class="ficha-face">{@html faces.answer}</div>
-										{#if faces.extra}
-											<div class="divider"></div>
-											<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-											<div class="small-w ficha-extra">{@html faces.extra}</div>
-										{/if}
-									</div>
-								</section>
-							{:else}
-								<section class="face front" inert={flipped} aria-label="Frente do flashcard">
-									{@render source(current, media?.ask.audio ?? null)}
-									<div class="mid">
-										{#if current.kind === 'produzir'}
-											{@render picture(media?.ask.image ?? null)}
-											<div class="ask">Como se diz em {languageName}?</div>
-											<div class="word" {...native}>{current.sense}</div>
-										{:else}
-											{#if current.reading}<div class="reading" {...study}>
-													{current.reading}
-												</div>{/if}
-											<div class="word" {...study}>{current.lemma}</div>
-											{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
-										{/if}
-									</div>
-									{#if current.kind === 'reconhecer'}{@render sentence(current, true)}{/if}
-								</section>
-								<section class="face back" inert={!flipped} aria-label="Verso do flashcard">
-									{@render source(current, media?.answer.audio ?? null)}
-									<div class="mid">
-										{@render picture(media?.answer.image ?? null)}
-										{#if current.kind === 'produzir'}
-											<div class="small-w" {...native}>{current.sense}</div>
-											{#if current.reading}<div class="reading" {...study}>
-													{current.reading}
-												</div>{/if}
-											<div class="tr" {...study}>{current.lemma}</div>
-											{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
-										{:else}
-											<div class="small-w">
-												{#if current.reading}<span class="rd" {...study}>{current.reading}</span
-													>{/if}
-												<b {...study}>{current.lemma}</b>{#if current.ipa}&nbsp;· {current.ipa}{/if}
-											</div>
-											<div class="tr" class:none={!current.sense} {...current.sense ? native : {}}>
-												{current.sense || 'Sem tradução guardada'}
-											</div>
-										{/if}
-									</div>
-									{@render sentence(current, false)}
-								</section>
-							{/if}
-						</div>
-					</div>
-				{/key}
-
-				<div class="rv-acts">
-					<form
-						class="grades"
-						class:shown={flipped}
-						method="POST"
-						action="?/rate"
-						use:enhance={submitRate}
-						bind:this={rateForm}
-						aria-label="Como foi?"
-						hidden={!flipped}
+	<table class="decks" class:picking={picking || sel.size > 0} class:solo={onlyDefault}>
+		<caption class="visually-hidden">Decks em {data.language}</caption>
+		{#if !onlyDefault}
+			<thead>
+				<tr>
+					<th scope="col" class="c-ck"
+						><input
+							class="ck"
+							type="checkbox"
+							aria-label="Selecionar todos"
+							checked={sel.size === decks.length && decks.length > 0}
+							indeterminate={sel.size > 0 && sel.size < decks.length}
+							onclick={() => (sel.size === decks.length ? sel.clear() : sel.all())}
+						/></th
 					>
-						<input type="hidden" name="flashcardId" value={current.flashcardId} />
-						<input type="hidden" name="reps" value={current.reps} />
-						<div class="grade-row" bind:this={grades}>
-							{#each GRADES as grade (grade)}
-								<button
-									class="gbtn"
-									class:hit={hit === grade}
-									data-g={grade}
-									name="rating"
-									value={grade}
-									disabled={pending}
-								>
-									<b>{GRADE_LABELS[grade]}</b>
-									<span>{current.intervals[grade]}</span>
-									<kbd aria-hidden="true">{grade}</kbd>
-								</button>
-							{/each}
+					<th scope="col" class="c-name">Deck</th>
+					<th scope="col" class="c-n">Novas</th>
+					<th scope="col" class="c-n">Aprendendo</th>
+					<th scope="col" class="c-n">Revisar</th>
+					<th scope="col" class="c-today">Hoje</th>
+				</tr>
+			</thead>
+		{/if}
+		<tbody>
+			{#each decks as d (d.id)}
+				{@const c = rowCounts(d)}
+				{@const paused = isPausedIn(d, decks)}
+				{@const empty = !c.items && !c.fichas}
+				{@const waiting = c.newAvailable - c.newToday}
+				{@const name = deckDisplayName(d.name)}
+				<tr
+					data-sel-id={d.id}
+					class:sel={sel.has(d.id)}
+					class:child={d.depth === 1}
+					class:flash={flashId === d.id}
+				>
+					<td class="c-ck"
+						><input
+							class="ck"
+							type="checkbox"
+							aria-label="Selecionar {name}"
+							checked={sel.has(d.id)}
+							onclick={(e) => sel.toggle(d.id, e.shiftKey)}
+						/></td
+					>
+					<td class="c-name">
+						<div class="nm-wrap">
+							<a
+								class="nm"
+								class:paused
+								href={resolve('/flashcards/deck/[id]', { id: d.id })}
+								title={name}>{name}</a
+							>
+							{#if d.paused}<span class="pill">Pausado</span>{/if}
+							{#if d.isDefault && !onlyDefault}<span class="faint dflt">padrão</span>{/if}
+						</div>
+						<span class="m-meta"
+							>{#if empty}Vazio{:else}{todayBreakdown(c.newToday, c.learning + c.review) ||
+									'Nada para hoje'}{/if}</span
+						>
+					</td>
+					{#if empty}
+						<td class="c-n c-empty" colspan="3"><span class="faint">Vazio</span></td>
+					{:else}
+						<td
+							class="c-n {cell(c.newToday)}"
+							title={waiting > 0
+								? `${plural(waiting, 'nova espera', 'novas esperam')} além de hoje`
+								: undefined}>{c.newToday}</td
+						>
+						<td class="c-n {cell(c.learning)}">{c.learning}</td>
+						<td class="c-n {cell(c.review)}" class:rev={c.review > 0 && !paused}>{c.review}</td>
+					{/if}
+					<td class="c-today {cell(forToday(c))}" class:rev={forToday(c) > 0 && !paused}
+						>{forToday(c)}<span class="visually-hidden">&nbsp;para hoje</span></td
+					>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
+	{#if onlyDefault}
+		<p class="hint faint">
+			Separe por tema ou <a href={resolve('/flashcards/importar')}>importe do Anki</a>.
+		</p>
+	{/if}
+
+	<BulkBar count={sel.size} label="Ações dos decks" onclear={() => sel.clear()}>
+		<a class="btn btn-ghost" href={studyHref}><Icon name="play" size="sm" />Estudar</a>
+		<button class="btn btn-ghost" type="button" disabled={busy} onclick={togglePause}
+			><Icon name={allPaused ? 'play' : 'pause'} size="sm" />{allPaused
+				? 'Retomar'
+				: 'Pausar'}</button
+		>
+		{#if chosen.length === 1}
+			<Popover label="Renomear deck" bind:open={renameOpen} align="start" placement="above">
+				{#snippet trigger({ toggle, expanded, id })}
+					<button
+						class="btn btn-ghost"
+						type="button"
+						aria-haspopup="dialog"
+						aria-expanded={expanded}
+						aria-controls={id}
+						onclick={toggle}><Icon name="pencil" size="sm" />Renomear</button
+					>
+				{/snippet}
+				{#snippet children({ close })}
+					<form class="pop-form" onsubmit={rename}>
+						<label for="renomear-deck">Nome do deck</label>
+						<input
+							id="renomear-deck"
+							class="input"
+							maxlength={DECK_NAME_UI_MAX}
+							autocomplete="off"
+							aria-invalid={renameError ? 'true' : undefined}
+							bind:value={renameName}
+							use:focusName
+							oninput={() => (renameError = '')}
+						/>
+						{#if renameError}<p class="err" role="alert">{renameError}</p>{/if}
+						<div class="pop-row">
+							<span class="sp"></span>
+							<button class="btn btn-ghost" type="button" onclick={close}>Cancelar</button>
+							<button class="btn btn-primary" disabled={!renameName.trim() || busy}>Salvar</button>
 						</div>
 					</form>
-					{#if !flipped}
-						<button
-							class="btn btn-primary btn-lg show"
-							type="button"
-							onclick={flip}
-							bind:this={showButton}>Mostrar resposta<kbd aria-hidden="true">Espaço</kbd></button
-						>
-					{/if}
-				</div>
-			</div>
-			<div class="rv-hint" aria-hidden="true">
-				<span><kbd>Espaço</kbd> vira</span>
-				<span><kbd>1</kbd>–<kbd>4</kbd> avalia</span>
-				<span><kbd>Z</kbd> desfaz</span>
-			</div>
-		{:else}
-			<section class="done" aria-labelledby="fim-titulo">
-				<div>
-					<div class="eyebrow">Revisão concluída</div>
-					<h2 id="fim-titulo">{remaining > 0 ? 'Pronto por agora' : 'Pronto por hoje'}</h2>
-					<p>
-						Você revisou {session.answered}
-						{session.answered === 1 ? 'flashcard' : 'flashcards'}.
-						{#if remaining === 0}Até a próxima.{/if}
-					</p>
-					<div class="sum" data-testid="resumo">
-						{#each GRADES as grade (grade)}
-							<div data-g={grade}>
-								<b>{session.byGrade[grade]}</b><span>{GRADE_LABELS[grade]}</span>
-							</div>
-						{/each}
-					</div>
-					{#if remaining > 0}
-						<div class="tomorrow">
-							Ainda {remaining === 1 ? 'tem 1 flashcard' : `tem ${remaining} flashcards`} para revisar.
-						</div>
-					{:else if data.nextDue}
-						<div class="tomorrow">A próxima volta {data.nextDue}.</div>
-					{/if}
-					<div class="acts">
-						{#if remaining > 0}
-							<button class="btn btn-primary btn-lg" type="button" onclick={continueReviewing}
-								>Continuar revisando</button
-							>
-							<a class="btn btn-soft btn-lg" href={resolve('/inicio')}>Voltar ao início</a>
-						{:else}
-							<a class="btn btn-primary btn-lg" href={resolve('/inicio')}>Voltar ao início</a>
-							<a class="btn btn-soft btn-lg" href={resolve('/palavras')}>Ver minhas palavras</a>
-						{/if}
-					</div>
-				</div>
-			</section>
+				{/snippet}
+			</Popover>
 		{/if}
-	</div>
-{/if}
-
-{#if message}<p class="aviso" role="alert">{message}</p>{/if}
-
-{#if session.last && current}
-	<button
-		class="btn btn-soft undo"
-		type="button"
-		disabled={pending}
-		onclick={() => undoForm?.requestSubmit()}
-	>
-		<Icon name="undo" size="sm" />Desfazer<kbd aria-hidden="true">Z</kbd>
-	</button>
+		<Popover label="Mover deck" bind:open={moveOpen} align="start" placement="above">
+			{#snippet trigger({ toggle, expanded, id })}
+				<button
+					class="btn btn-ghost"
+					type="button"
+					disabled={!canNest}
+					title={canNest ? undefined : 'Deck com subdecks fica no topo'}
+					aria-haspopup="dialog"
+					aria-expanded={expanded}
+					aria-controls={id}
+					onclick={toggle}><Icon name="folder" size="sm" />Mover…</button
+				>
+			{/snippet}
+			<div>
+				<p class="pop-title">Dentro de qual deck?</p>
+				<DeckPicker decks={nestTargets} allowNew={false} pending={busy} onpick={nest} />
+			</div>
+		</Popover>
+	</BulkBar>
 {/if}
 
 <style>
-	.rv {
-		display: flex;
-		flex-direction: column;
-		min-height: calc(100vh - 20px - 100px);
-	}
-	.rv-top {
-		display: grid;
-		grid-template-columns: 1fr minmax(0, 520px) 1fr;
-		align-items: center;
-		gap: 24px;
-	}
-	.rv-top .l {
-		font: 500 15.5px var(--f-body);
-		color: var(--ink-2);
+	.ph-acts {
 		display: flex;
 		align-items: center;
 		gap: 8px;
 	}
-	.rv-top .r {
+	.more-btn {
+		width: 38px;
+		height: 38px;
+	}
+	.menu {
 		display: flex;
-		justify-content: flex-end;
+		flex-direction: column;
+		margin: -6px;
+	}
+	.menu > a {
+		display: flex;
 		align-items: center;
 		gap: 10px;
-		font: 500 14.5px var(--f-body);
-		font-variant-numeric: tabular-nums;
-		color: var(--ink-3);
-	}
-	.rv-stage {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 36px 0 12px;
-	}
-
-	.card3d {
-		width: min(580px, 100%);
-		height: 340px;
-		perspective: 1600px;
-	}
-	.card3d.enter {
-		animation: cardIn 0.4s var(--ease) both;
-	}
-	@keyframes cardIn {
-		from {
-			opacity: 0;
-			transform: translateY(10px);
-		}
-	}
-	.card-in {
-		position: relative;
-		width: 100%;
-		height: 100%;
-		transform-style: preserve-3d;
-		transition: transform 0.65s var(--ease);
-	}
-	.flipped .card-in {
-		transform: rotateY(180deg);
-	}
-	.face {
-		position: absolute;
-		inset: 0;
-		backface-visibility: hidden;
-		-webkit-backface-visibility: hidden;
-		background: var(--raise);
-		border-radius: var(--r-l);
-		box-shadow: var(--sh-lift);
-		padding: 20px 26px 26px;
-		display: flex;
-		flex-direction: column;
-	}
-	:global(.tema-escuro) .face {
-		background: var(--raise-2);
-	}
-	.face.back {
-		transform: rotateY(180deg);
-	}
-	.fh {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		min-height: 32px;
-	}
-	.src {
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		font-size: 14px;
-		color: var(--ink-3);
-		min-width: 0;
-	}
-	.mid {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		text-align: center;
-		min-height: 0;
-	}
-	.word {
-		font: 600 60.5px/1.05 var(--f-head);
-		letter-spacing: -0.035em;
-		overflow-wrap: anywhere;
-	}
-	.ask {
-		font-size: 15.5px;
-		color: var(--ink-3);
-		margin-bottom: 12px;
-	}
-	.front .ask + .word {
-		font-size: 43px;
-		line-height: 1.15;
-	}
-	/* Leitura (furigana, pinyin) logo acima do lema. */
-	.reading {
-		margin-bottom: 4px;
-		color: var(--ink-3);
-		font: 400 16.5px/1.3 var(--f-body);
-		letter-spacing: 0.02em;
-	}
-	.rd {
-		display: block;
-		font-size: 14px;
-		color: var(--ink-3);
-	}
-	.ipa {
-		margin-top: 10px;
-		color: var(--ink-3);
-		font: 400 16.5px var(--f-body);
-	}
-	.ctx {
-		text-align: center;
-		font-size: 17px;
-		line-height: 1.55;
-		color: var(--ink-2);
-		max-width: 460px;
-		margin: 0 auto;
-		text-wrap: balance;
-	}
-	.ctx u {
-		text-decoration: none;
+		height: 38px;
+		padding: 0 10px;
+		border-radius: var(--r-m);
 		color: var(--ink);
-		font-weight: 500;
-		box-shadow: inset 0 -1.5px 0 var(--line-2);
+		text-decoration: none;
 	}
-	.ctx u.plain {
-		box-shadow: none;
+	.menu > a:hover {
+		background: var(--hover);
 	}
-	.small-w {
-		font: 400 15.5px var(--f-body);
+	.menu-label {
+		margin: 8px 10px 6px;
+		padding-top: 8px;
+		border-top: 1px solid var(--line);
+		font-size: 13px;
 		color: var(--ink-3);
 	}
-	.small-w b {
-		font: 600 16.5px var(--f-head);
-		color: var(--ink-2);
-	}
-	.tr {
-		font: 600 41px/1.15 var(--f-head);
-		letter-spacing: -0.03em;
-		margin-top: 8px;
-		overflow-wrap: anywhere;
-	}
-	.tr.none {
-		font-size: 24px;
-		color: var(--ink-3);
-	}
-
-	.tags {
+	.menu-tags {
 		display: flex;
 		flex-wrap: wrap;
-		justify-content: center;
 		gap: 6px;
-		margin: 18px auto 0;
-		max-width: 580px;
+		padding: 0 10px 8px;
 	}
-	.ph + .tags {
-		margin: -12px 0 0;
-		justify-content: flex-start;
-	}
-	.rv-img {
-		display: block;
-		max-width: 100%;
-		max-height: 180px;
-		margin: 0 auto 14px;
-		border-radius: var(--r-m);
-		object-fit: contain;
-	}
-	.icon-btn.rec {
-		color: var(--accent, var(--ink));
-	}
-	.ficha-face {
-		font: 400 18px/1.45 var(--f-body);
-		max-width: 460px;
-		overflow-wrap: anywhere;
-		overflow-y: auto;
-	}
-	.ficha-face :global(b) {
-		font-weight: 650;
-	}
-	.ficha-face :global(.cloze) {
-		display: inline-block;
-		min-width: 64px;
-		border-bottom: 2px solid var(--ink-3);
-		color: var(--ink-3);
-	}
-	.ficha-face :global(.cloze.open) {
-		color: var(--ink);
-		border-color: var(--primary);
-		font-weight: 650;
-	}
-	.divider {
-		width: 40px;
-		height: 1px;
-		background: var(--line-2);
-		margin: 14px auto;
-	}
-	.ficha-extra {
-		max-width: 460px;
-		line-height: 1.5;
-	}
-
-	.rv-acts {
-		margin-top: 28px;
-		min-height: 80px;
-		display: grid;
-		place-items: start center;
-		width: min(580px, 100%);
-	}
-	.rv-acts .show {
-		width: 280px;
-	}
-	.grades {
-		width: 100%;
-	}
-	.grades[hidden] {
-		display: none;
-	}
-	.grade-row {
-		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 8px;
-		width: 100%;
-		animation: viewIn 0.3s var(--ease) both;
-	}
-	.gbtn {
-		position: relative;
-		height: 64px;
-		border: 0;
-		border-radius: var(--r-m);
-		background: var(--raise);
-		box-shadow: var(--sh-card);
+	.pop-form {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 1px;
-		transition:
-			box-shadow 0.18s,
-			background-color 0.18s;
-	}
-	:global(.tema-escuro) .gbtn {
-		background: rgba(247, 241, 230, 0.05);
-	}
-	.gbtn:hover:not(:disabled) {
-		background: var(--tile);
-	}
-	:global(.tema-escuro) .gbtn:hover:not(:disabled) {
-		background: rgba(247, 241, 230, 0.09);
-	}
-	.gbtn:active,
-	.gbtn.hit {
-		background: var(--sel);
-	}
-	.gbtn:disabled {
-		cursor: default;
-	}
-	.gbtn b {
-		font: 500 16.5px/1.2 var(--f-body);
-	}
-	.gbtn span {
-		font-size: 14px;
-		color: var(--ink-3);
-	}
-	.gbtn kbd {
-		position: absolute;
-		top: 7px;
-		right: 7px;
-		min-width: 18px;
-		height: 18px;
-		font-size: 12px;
-	}
-	.rv-hint {
-		text-align: center;
-		font-size: 14px;
-		color: var(--ink-3);
-		display: flex;
-		gap: 16px;
-		justify-content: center;
-		align-items: center;
-	}
-	.rv-hint span {
-		display: inline-flex;
-		gap: 6px;
-		align-items: center;
-	}
-
-	.done {
-		flex: 1;
-		display: grid;
-		place-items: center;
-		text-align: center;
-		padding: 30px 0;
-		animation: viewIn 0.5s var(--ease) both;
-	}
-	.done .eyebrow {
-		justify-content: center;
-		margin-bottom: 14px;
-	}
-	.done h2 {
-		margin: 0;
-		font: 600 47.5px/1.1 var(--f-head);
-		letter-spacing: -0.035em;
-	}
-	.done p {
-		color: var(--ink-2);
-		margin: 12px 0 36px;
-		font-size: 17.5px;
-		text-wrap: pretty;
-	}
-	.sum {
-		display: inline-grid;
-		grid-template-columns: repeat(4, 112px);
-		margin-bottom: 30px;
-		border-top: 1px solid var(--line);
-		border-bottom: 1px solid var(--line);
-	}
-	.sum div {
-		padding: 18px 10px 16px;
-	}
-	.sum div + div {
-		box-shadow: inset 1px 0 0 var(--line);
-	}
-	.sum b {
-		display: block;
-		font: 600 32.5px/1 var(--f-head);
-		font-variant-numeric: tabular-nums;
-		letter-spacing: -0.02em;
-	}
-	.sum span {
-		font-size: 14px;
-		color: var(--ink-3);
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		margin-top: 8px;
-	}
-	.sum span::before {
-		content: '';
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--g);
-	}
-	.tomorrow {
-		font-size: 14.5px;
-		color: var(--ink-3);
-		margin-bottom: 24px;
-	}
-	.done .acts {
-		display: flex;
 		gap: 8px;
-		justify-content: center;
 	}
-
-	.leech {
+	.pop-form label,
+	.pop-title {
+		font-size: 13.5px;
+		color: var(--ink-3);
+		margin: 0;
+	}
+	.pop-title {
+		margin-bottom: 8px;
+	}
+	.pop-row {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		margin: 0 auto 14px;
-		max-width: 640px;
-		padding: 10px 12px 10px 14px;
-		border-radius: var(--r-m);
-		background: var(--sunk);
-		box-shadow: inset 0 0 0 1px var(--line);
-		color: var(--ink-2);
-		font-size: 15px;
+		gap: 6px;
+		margin-top: 4px;
 	}
-	.leech p {
+	.sp {
+		flex: 1;
+	}
+	.err {
 		margin: 0;
+		color: var(--terra-ink);
+		font-size: 13.5px;
+	}
+
+	.study {
+		flex-direction: row;
+		align-items: center;
+		gap: 24px;
+		margin-bottom: 26px;
+		padding: 18px 20px;
+	}
+	.study .txt {
 		flex: 1;
 		min-width: 0;
+		display: grid;
+		gap: 4px;
 	}
-	.leech b {
+	.study b {
+		font: 600 21px/1.2 var(--f-head);
+		letter-spacing: -0.01em;
+	}
+	.study .meta {
+		color: var(--ink-3);
+		font-size: 14.5px;
+	}
+	.study .bar {
+		max-width: 240px;
+		margin-top: 8px;
+	}
+
+	.table-tools {
+		display: none;
+	}
+	.decks {
+		width: 100%;
+		border-collapse: collapse;
+		font-variant-numeric: tabular-nums;
+	}
+	th {
+		font-size: 13.5px;
+		font-weight: 500;
+		color: var(--ink-3);
+		text-align: right;
+		padding: 0 12px 10px;
+		border-bottom: 1px solid var(--line);
+		white-space: nowrap;
+	}
+	th.c-name {
+		text-align: left;
+	}
+	td {
+		padding: 0 12px;
+		height: 54px;
+		border-bottom: 1px solid var(--line);
+		text-align: right;
 		color: var(--ink);
-		font-weight: 600;
-	}
-	.aviso {
-		position: fixed;
-		left: 50%;
-		bottom: 24px;
-		transform: translateX(-50%);
-		margin: 0;
-		padding: 10px 16px;
-		border-radius: var(--r-m);
-		background: var(--toast-bg);
-		color: var(--toast-ink);
 		font-size: 15.5px;
 	}
-	.undo {
-		position: fixed;
-		right: 32px;
-		bottom: 28px;
+	tr {
+		position: relative;
+		transition: background-color 0.15s;
+	}
+	tbody tr:hover {
+		background: var(--hover);
+	}
+	tbody tr.sel {
+		background: var(--sel);
+	}
+	tr.flash {
+		animation: flash 1.6s var(--ease);
+	}
+	@keyframes flash {
+		0%,
+		30% {
+			background: var(--terra-soft);
+		}
+	}
+	.c-ck {
+		width: 34px;
+		padding-right: 0;
+		position: relative;
+		z-index: 1;
+	}
+	.c-ck .ck {
+		opacity: 0;
+	}
+	tr:hover .ck,
+	tr:focus-within .ck,
+	.picking .ck,
+	.ck:checked {
+		opacity: 1;
+	}
+	@media (hover: none) {
+		.c-ck .ck {
+			opacity: 1;
+		}
+	}
+	.c-name {
+		text-align: left;
+		max-width: 0;
+		width: 100%;
+	}
+	.nm-wrap {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-width: 0;
+	}
+	.nm {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font: 600 16.5px/1.3 var(--f-head);
+		color: var(--ink);
+		text-decoration: none;
+	}
+	/* O link cobre a linha inteira (como .wrow); a caixa fica por cima. */
+	.nm::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+	}
+	.nm:focus-visible {
+		outline: none;
+	}
+	.nm:focus-visible::after {
+		border-radius: var(--r-m);
+		box-shadow: inset 0 0 0 2px var(--ring);
+	}
+	.nm.paused {
+		color: var(--ink-3);
+	}
+	.dflt {
+		font-size: 13px;
+		white-space: nowrap;
+	}
+	.child .nm-wrap {
+		padding-left: 22px;
+		position: relative;
+	}
+	.child .nm-wrap::before {
+		content: '';
+		position: absolute;
+		left: 6px;
+		top: -8px;
+		width: 9px;
+		height: 18px;
+		border-left: 1px solid var(--line-2);
+		border-bottom: 1px solid var(--line-2);
+		border-bottom-left-radius: 5px;
+	}
+	.m-meta {
+		display: none;
+	}
+	.c-n {
+		width: 112px;
+		white-space: nowrap;
+	}
+	.c-today {
+		display: none;
+	}
+	.zero {
+		color: var(--ink-3);
+		opacity: 0.6;
+	}
+	.rev {
+		color: var(--terra-ink);
+		font-weight: 600;
+	}
+	.c-empty {
+		text-align: right;
+	}
+	.solo td {
+		border-bottom: 0;
+	}
+	.hint {
+		margin: 14px 0 0 46px;
+		font-size: 14.5px;
+	}
+	.hint a {
+		color: inherit;
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.card-in {
-			transition: none;
+	@media (max-width: 560px) {
+		.hide-s {
+			display: none;
 		}
-		.card3d.enter,
-		.grade-row,
-		.done {
-			animation: none;
-		}
-	}
-
-	@media (max-width: 768px) {
-		.rv {
-			min-height: calc(100dvh - 50px - var(--tab-h) - 110px);
-		}
-		.rv-top {
-			grid-template-columns: 1fr auto;
-			grid-template-areas: 'l r' 'w w';
-			gap: 12px;
-		}
-		.rv-top .l {
-			grid-area: l;
-		}
-		.rv-top .r {
-			grid-area: r;
-		}
-		.rv-top .bar {
-			grid-area: w;
-		}
-		.rv-stage {
-			padding: 22px 0 4px;
+		.ph-acts {
 			justify-content: flex-start;
 		}
-		.card3d {
-			height: 380px;
-		}
-		.face {
-			padding: 16px 20px 22px;
-		}
-		.word {
-			font-size: 47.5px;
-		}
-		.front .ask + .word {
-			font-size: 34.5px;
-		}
-		.ctx {
-			font-size: 16.5px;
-		}
-		.tr {
-			font-size: 33.5px;
-		}
-		.rv-acts {
-			margin-top: 18px;
-			min-height: 0;
-		}
-		.rv-acts .show {
-			width: 100%;
-		}
-		.grade-row {
-			gap: 6px;
-		}
-		.gbtn {
-			height: 60px;
-		}
-		.gbtn kbd {
-			display: none;
-		}
-		.gbtn b {
-			font-size: 16px;
-		}
-		.rv-hint {
-			display: none;
-		}
-		.done h2 {
-			font-size: 36.5px;
-		}
-		.sum {
-			grid-template-columns: repeat(4, minmax(0, 1fr));
-			width: 100%;
-		}
-		.done .acts {
+		.study {
 			flex-direction: column;
+			align-items: stretch;
+			gap: 14px;
+			padding: 16px;
 		}
-		.undo {
-			right: 16px;
-			bottom: calc(var(--tab-h) + 16px);
+		.study .bar {
+			max-width: none;
 		}
-		.aviso {
-			bottom: calc(var(--tab-h) + 16px);
+		.study .btn {
+			width: 100%;
+		}
+		.table-tools {
+			display: flex;
+			justify-content: flex-end;
+			margin: -12px 0 4px;
+		}
+		th.c-n,
+		td.c-n {
+			display: none;
+		}
+		th.c-today,
+		td.c-today {
+			display: table-cell;
+			width: 56px;
+		}
+		.c-ck {
+			display: none;
+		}
+		.picking .c-ck {
+			display: table-cell;
+		}
+		td {
+			height: auto;
+			padding-top: 12px;
+			padding-bottom: 12px;
+		}
+		.m-meta {
+			display: block;
+			margin-top: 2px;
+			font-size: 13.5px;
+			color: var(--ink-3);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+		.hint {
+			margin-left: 12px;
 		}
 	}
 </style>

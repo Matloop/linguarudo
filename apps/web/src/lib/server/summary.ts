@@ -1,18 +1,14 @@
-// Contagens por idioma de estudo para o shell (seletor de idioma, "N para
-// revisar"): review_counts por idioma (com irmãos ocultos, como a fila) e a
-// contagem "head" de itens.
+// Contagens por idioma de estudo para o shell (seletor de idioma, badge "N para hoje" e
+// subitens de deck na sidebar). Usa o mesmo cálculo do hub /flashcards (deck_summaries +
+// orçamento do idioma, ADR 0005), para os números baterem.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '#lib/database.types.ts';
+import { isPausedIn } from '#lib/decks.ts';
+import { forToday, rowCounts, todayTotals } from '#lib/decks-ui.ts';
 import type { Language } from '#lib/languages.ts';
-import {
-	DEFAULT_CLOCK,
-	DEFAULT_NEW_PER_DAY,
-	dayStart,
-	formatWhen,
-	newRemaining,
-	type DayClock
-} from '#lib/review.ts';
+import { DEFAULT_CLOCK, formatWhen, type DayClock } from '#lib/review.ts';
+import { loadDeckSummaries } from './decks.ts';
 
 type Client = SupabaseClient<Database>;
 
@@ -20,18 +16,23 @@ export interface LanguageSummary {
 	language: Language;
 	/** Itens no banco (ativos e conhecidos), sem os apagados. */
 	items: number;
-	/** Flashcards que entram na revisão agora: vencidos + novos até o orçamento do idioma. */
+	/** "N para hoje" de Estudar tudo: novas que cabem + aprendendo + revisões até o fim do dia. */
 	toReview: number;
-	dueNow: number;
-	newAvailable: number;
-	/** Orçamento do dia no idioma: novas por dia + extras de hoje. */
-	newLimit: number;
-	/** Novas começadas hoje no idioma (qualquer aparelho). */
-	newDoneToday: number;
+	/** Novas dentro de toReview. */
+	fresh: number;
+}
+
+/** Deck de topo com algo para hoje, para os subitens da sidebar. */
+export interface ShellDeck {
+	id: string;
+	name: string;
+	forToday: number;
 }
 
 export interface ShellSummary {
 	languages: LanguageSummary[];
+	/** Decks do idioma ativo com algo para hoje (vazio se o idioma tem um deck só). */
+	decks: ShellDeck[];
 }
 
 async function count(query: PromiseLike<{ count: number | null; error: unknown }>) {
@@ -45,10 +46,10 @@ export async function loadShellSummary(
 	supabase: Client,
 	userId: string,
 	study: readonly Language[],
+	active: Language | null,
 	now: Date,
 	clock: DayClock = DEFAULT_CLOCK
 ): Promise<ShellSummary> {
-	const p_day_start = dayStart(now, clock).toISOString();
 	const perLanguage = await Promise.all(
 		study.map((language) =>
 			Promise.all([
@@ -60,30 +61,23 @@ export async function loadShellSummary(
 						.eq('language', language)
 						.is('deleted_at', null)
 				),
-				supabase.rpc('review_counts', { p_day_start, p_language: language }).single()
+				loadDeckSummaries(supabase, language, now, clock)
 			])
 		)
 	);
-	return {
-		languages: study.map((language, i) => {
-			const [items, counts] = perLanguage[i];
-			if (counts.error) throw new Error('contagem por idioma');
-			const dueNow = counts.data?.due_now ?? 0;
-			const newAvailable = counts.data?.new_available ?? 0;
-			const newLimit =
-				(counts.data?.new_limit ?? DEFAULT_NEW_PER_DAY) + (counts.data?.extra_new ?? 0);
-			const newDoneToday = counts.data?.new_done_today ?? 0;
-			return {
-				language,
-				items,
-				dueNow,
-				newAvailable,
-				newLimit,
-				newDoneToday,
-				toReview: dueNow + Math.min(newAvailable, newRemaining(newLimit, newDoneToday))
-			};
-		})
-	};
+	let decks: ShellDeck[] = [];
+	const languages = study.map((language, i) => {
+		const [items, overview] = perLanguage[i];
+		const totals = todayTotals(overview.decks, overview.budget);
+		if (language === active && overview.decks.length > 1) {
+			decks = overview.decks
+				.filter((d) => d.depth === 0 && !isPausedIn(d, overview.decks))
+				.map((d) => ({ id: d.id, name: d.name, forToday: forToday(rowCounts(d)) }))
+				.filter((d) => d.forToday > 0);
+		}
+		return { language, items, toReview: totals.total, fresh: totals.fresh };
+	});
+	return { languages, decks };
 }
 
 /** Quando o próximo flashcard do idioma vence, para o "volta amanhã às 09:00". */

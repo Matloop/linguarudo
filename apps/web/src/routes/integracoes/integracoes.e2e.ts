@@ -211,7 +211,7 @@ test('API v1: salvar com encontro e obra, repetir, listar com prefer, visto e CO
 	await expect(drawer).toContainText('Kaguya · T1E2, 42:10');
 	await expect(drawer.locator('mark')).toHaveText('feste');
 
-	await page.goto('/flashcards');
+	await page.goto('/flashcards/estudar');
 	const front = page.locator('section[aria-label="Frente do flashcard"]');
 	await expect(front).toContainText('festa');
 	await expect(front.locator('u')).toHaveText('feste');

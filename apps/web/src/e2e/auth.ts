@@ -2,7 +2,35 @@ import { expect, type Page } from '@playwright/test';
 
 // Mailpit do `supabase start` (pega o e-mail do link mágico).
 const MAILPIT = 'http://127.0.0.1:54324';
-export const SUPABASE_URL = 'http://127.0.0.1:54321';
+// E2E_SUPABASE_URL + E2E_SECRET_KEY: roda contra outra stack local (worktree) sem Mailpit,
+// gerando o link mágico pela API admin.
+export const SUPABASE_URL = process.env.E2E_SUPABASE_URL ?? 'http://127.0.0.1:54321';
+const SECRET_KEY = process.env.E2E_SECRET_KEY;
+
+async function adminMagicLink(email: string): Promise<string> {
+	const headers = {
+		apikey: SECRET_KEY!,
+		authorization: `Bearer ${SECRET_KEY}`,
+		'content-type': 'application/json'
+	};
+	await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+		method: 'POST',
+		headers,
+		body: JSON.stringify({ email, email_confirm: true })
+	});
+	const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
+		method: 'POST',
+		headers,
+		body: JSON.stringify({ type: 'magiclink', email })
+	});
+	const link = (await res.json()) as {
+		hashed_token?: string;
+		properties?: { hashed_token?: string };
+	};
+	const hash = link.hashed_token ?? link.properties?.hashed_token;
+	if (!hash) throw new Error(`sem link mágico para ${email}`);
+	return `/auth/confirm?token_hash=${hash}&type=magiclink`;
+}
 
 export function uniqueEmail() {
 	return `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@linguetta.test`;
@@ -34,11 +62,15 @@ async function magicLinkFor(email: string): Promise<string> {
  * O primeiro fica ativo. `[]` deixa a conta sem idioma.
  */
 export async function login(page: Page, email = uniqueEmail(), languages = ['en', 'it']) {
-	await page.goto('/entrar');
-	await page.getByLabel('E-mail').fill(email);
-	await page.getByRole('button', { name: 'Mandar link' }).click();
-	await expect(page.getByRole('status')).toContainText(`Link enviado para ${email}`);
-	await page.goto(await magicLinkFor(email));
+	if (SECRET_KEY) {
+		await page.goto(await adminMagicLink(email));
+	} else {
+		await page.goto('/entrar');
+		await page.getByLabel('E-mail').fill(email);
+		await page.getByRole('button', { name: 'Mandar link' }).click();
+		await expect(page.getByRole('status')).toContainText(`Link enviado para ${email}`);
+		await page.goto(await magicLinkFor(email));
+	}
 	await expect(page).toHaveURL(/\/inicio$/);
 	if (languages.length > 0) await chooseLanguages(page, languages);
 	await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
@@ -83,4 +115,22 @@ export async function switchLanguage(page: Page, name: string, code: string) {
 	await side.getByLabel(/Trocar idioma/).click();
 	await side.getByRole('menuitemradio', { name: new RegExp(name) }).click();
 	await expect(side.getByTestId('idioma-ativo')).toHaveText(code);
+}
+
+/** GET no PostgREST como o usuário logado na página (RLS de verdade), lendo o cookie da sessão. */
+export async function restAsUser<T = unknown>(page: Page, path: string): Promise<T> {
+	const parts = (await page.context().cookies())
+		.filter((c) => /^sb-.*-auth-token(\.\d+)?$/.test(c.name))
+		.sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
+	const raw = parts.map((c) => c.value).join('');
+	const json = raw.startsWith('base64-')
+		? Buffer.from(raw.slice(7), 'base64url').toString()
+		: decodeURIComponent(raw);
+	const { access_token } = JSON.parse(json) as { access_token: string };
+	const key = process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+	const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+		headers: { apikey: key, authorization: `Bearer ${access_token}` }
+	});
+	expect(res.ok, path).toBe(true);
+	return (await res.json()) as T;
 }

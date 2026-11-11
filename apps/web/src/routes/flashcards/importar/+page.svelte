@@ -274,7 +274,7 @@
 		<div class="acts">
 			<a class="btn btn-ghost" href={resolve('/palavras')}>Ver palavras</a>
 			<a class="btn btn-ghost" href={resolve('/flashcards/fichas')}>Ver fichas</a>
-			<a class="btn btn-primary" href={resolve('/flashcards')}>Revisar</a>
+			<a class="btn btn-primary" href={resolve('/flashcards/estudar')}>Revisar</a>
 		</div>
 	</div>
 {/if}

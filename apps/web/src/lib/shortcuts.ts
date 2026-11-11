@@ -3,7 +3,8 @@
 
 import type { Grade } from './review.ts';
 
-export type Screen = 'inicio' | 'palavras' | 'flashcards' | 'outra';
+/** 'decks' é o hub /flashcards e a página do deck; 'flashcards' é o player. */
+export type Screen = 'inicio' | 'decks' | 'palavras' | 'flashcards' | 'outra';
 
 export interface KeyContext {
 	screen: Screen;
@@ -42,6 +43,7 @@ export function shortcutFor(e: KeyLike, ctx: KeyContext): Shortcut | null {
 
 	switch (ctx.screen) {
 		case 'inicio':
+		case 'decks':
 			return k === 'r' ? { type: 'flashcards' } : null;
 		case 'palavras':
 			return k === '/' ? { type: 'buscar' } : null;

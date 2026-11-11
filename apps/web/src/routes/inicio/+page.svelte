@@ -29,7 +29,7 @@
 	const toReview = $derived(summary?.toReview ?? 0);
 	const empty = $derived(summary?.items === 0);
 	const minutes = $derived(estimateMinutes(toReview));
-	const fresh = $derived(Math.max(0, toReview - (summary?.dueNow ?? 0)));
+	const fresh = $derived(Math.min(toReview, summary?.fresh ?? 0));
 
 	function onSave(e: MouseEvent) {
 		if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
@@ -123,7 +123,7 @@
 					</h1>
 					<p class="sub">{sub}</p>
 					<div class="h1-cta">
-						<a class="btn btn-primary btn-lg" href={resolve('/flashcards')}
+						<a class="btn btn-primary btn-lg" href={resolve('/flashcards/estudar')}
 							><Icon name="play" size="sm" />Revisar agora</a
 						>
 						<span class="hint">ou aperte <kbd>R</kbd></span>

@@ -46,7 +46,7 @@
 		<p>Flashcards de frente e verso livres em {languageName}.</p>
 	</div>
 	<div class="acts">
-		<a class="btn btn-ghost" href={resolve('/flashcards')}><Icon name="repeat" />Revisar</a>
+		<a class="btn btn-ghost" href={resolve('/flashcards/estudar')}><Icon name="repeat" />Revisar</a>
 		<a class="btn btn-ghost" href={resolve('/flashcards/importar')}
 			><Icon name="upload" />Importar do Anki</a
 		>

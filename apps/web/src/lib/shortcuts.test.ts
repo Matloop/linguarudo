@@ -30,6 +30,7 @@ describe('atalhos globais', () => {
 describe('atalhos por tela', () => {
 	test('R no Início abre a revisão; fora dele não faz nada', () => {
 		expect(shortcutFor(key('r'), { ...base, screen: 'inicio' })).toEqual({ type: 'flashcards' });
+		expect(shortcutFor(key('r'), { ...base, screen: 'decks' })).toEqual({ type: 'flashcards' });
 		expect(shortcutFor(key('r'), base)).toBeNull();
 	});
 

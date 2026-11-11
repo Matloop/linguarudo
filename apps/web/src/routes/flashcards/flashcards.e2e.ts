@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { login, saveWord, SUPABASE_URL } from '../../e2e/auth.ts';
+import { login, restAsUser, saveWord, SUPABASE_URL } from '../../e2e/auth.ts';
 
 async function addWord(page: Page, lemma: string, sense: string, sentence = '') {
 	const dialog = await saveWord(page, lemma, sense, sentence);
@@ -14,6 +14,14 @@ const card = (page: Page) => page.getByTestId('flashcard');
 const counter = (page: Page) => page.getByTestId('contador');
 const grades = (page: Page) => page.getByRole('form', { name: 'Como foi?' });
 const endTitle = (page: Page) => page.getByRole('heading', { name: /^Pronto por/ });
+
+/** Nav → hub de decks → "Estudar tudo" (navegação no cliente: o player já está hidratado). */
+async function study(page: Page) {
+	await reviewLink(page).click();
+	await expect(page).toHaveURL(/\/flashcards$/);
+	await page.getByTestId('estudar-tudo').click();
+	await expect(page).toHaveURL(/\/flashcards\/estudar$/);
+}
 
 async function markKnown(page: Page, lemma: string, known = true) {
 	await page.goto('/palavras');
@@ -47,21 +55,20 @@ test('revisão: conhecida, virar, avaliar, desfazer, teclado, fim e estado vazio
 	page
 }) => {
 	await login(page);
-	await expect(reviewLink(page)).not.toContainText('para revisar');
+	await expect(reviewLink(page)).not.toContainText('para hoje');
 
 	await addWord(page, 'give up', 'desistir', 'Never give up on the small boat.');
 	await addWord(page, 'however', 'porém');
 	await addWord(page, 'maybe', 'talvez');
 
 	// Todo item nasce com um flashcard Reconhecer.
-	await expect(reviewLink(page)).toContainText('3 para revisar');
+	await expect(reviewLink(page)).toContainText('3 para hoje');
 
 	// Conhecida não entra na revisão.
 	await markKnown(page, 'maybe');
-	await expect(reviewLink(page)).toContainText('2 para revisar');
+	await expect(reviewLink(page)).toContainText('2 para hoje');
 
-	await reviewLink(page).click();
-	await expect(page).toHaveURL(/\/flashcards$/);
+	await study(page);
 
 	const progresso = page.getByRole('progressbar', { name: 'Progresso da revisão' });
 	await expect(progresso).toHaveAttribute('aria-valuenow', '0');
@@ -106,9 +113,9 @@ test('revisão: conhecida, virar, avaliar, desfazer, teclado, fim e estado vazio
 	await page.keyboard.press('3');
 
 	await expect(endTitle(page)).toHaveText('Pronto por hoje');
-	await expect(page.getByText('Você revisou 2 palavras.')).toBeVisible();
+	await expect(page.getByText('Você revisou 2 flashcards.')).toBeVisible();
 	await expect(page.getByTestId('resumo').locator('[data-g="3"] b')).toHaveText('2');
-	await expect(reviewLink(page)).not.toContainText('para revisar');
+	await expect(reviewLink(page)).not.toContainText('para hoje');
 
 	// Z desfaz a última nota mesmo na tela final.
 	await page.keyboard.press('z');
@@ -120,22 +127,26 @@ test('revisão: conhecida, virar, avaliar, desfazer, teclado, fim e estado vazio
 	// Recarregar: nada vencido, o estado vazio diz quando volta.
 	await page.reload();
 	await expect(page.getByRole('heading', { name: 'Nada para revisar' })).toBeVisible();
-	await expect(page.getByText(/A próxima palavra em inglês volta/)).toBeVisible();
+	await expect(page.getByText(/O próximo flashcard em inglês volta/)).toBeVisible();
 
 	// Voltar a conhecida para a revisão traz o flashcard de volta.
 	await markKnown(page, 'maybe', false);
-	await expect(reviewLink(page)).toContainText('1 para revisar');
-	await reviewLink(page).click();
-	await expect(page).toHaveURL(/\/flashcards$/);
+	await expect(reviewLink(page)).toContainText('1 para hoje');
+	await study(page);
 	await expect(front(page)).toContainText('maybe');
 });
 
-test('Produzir nasce quando o Reconhecer passa de 7 dias e pede o lema', async ({ page }) => {
+/** Flashcards Produzir do usuário, lidos pela API com a sessão da página. */
+const produces = (page: Page) =>
+	restAsUser<{ id: string; state: number }[]>(page, 'flashcards?select=id,state&kind=eq.produzir');
+
+test('Produzir nasce quando o Reconhecer passa de 7 dias e espera o dia seguinte', async ({
+	page
+}) => {
 	await login(page);
 	await addWord(page, 'wait', 'esperar');
 	await addWord(page, 'here', '');
-	// Navegação no cliente: a página já está hidratada quando as teclas chegam.
-	await reviewLink(page).click();
+	await study(page);
 
 	// Fácil num flashcard novo dá semanas de intervalo.
 	for (const lemma of ['wait', 'here']) {
@@ -143,31 +154,26 @@ test('Produzir nasce quando o Reconhecer passa de 7 dias e pede o lema', async (
 		await page.keyboard.press('Space');
 		await page.keyboard.press('4');
 	}
-	await expect(endTitle(page)).toHaveText('Pronto por agora');
+	// O Produzir nasce novo, mas o irmão foi revisado hoje: só entra amanhã (ADR 0005).
+	await expect(endTitle(page)).toHaveText('Pronto por hoje');
+	await expect(page.getByText('Você revisou 2 flashcards.')).toBeVisible();
 
 	// Só o item com sentido ganha o Produzir.
-	await expect(page.getByText('Ainda tem 1 palavra para revisar.')).toBeVisible();
-	await page.getByRole('button', { name: 'Continuar revisando' }).click();
-	await expect(front(page)).toContainText('Como se diz em inglês?');
-	await expect(front(page)).toContainText('esperar');
-	await expect(front(page)).not.toContainText('wait');
-	await page.keyboard.press('Space');
-	await expect(back(page)).toContainText('wait');
-
-	await page.keyboard.press('3');
-	await expect(endTitle(page)).toBeVisible();
+	await expect.poll(async () => (await produces(page)).map((c) => c.state)).toEqual([0]);
+	await page.reload();
+	await expect(page.getByText('Como se diz')).toHaveCount(0);
 });
 
 test('desfazer o Fácil do Reconhecer apaga o Produzir que ele liberou', async ({ page }) => {
 	await login(page);
 	await addWord(page, 'wait', 'esperar');
-	await reviewLink(page).click();
+	await study(page);
 
 	await expect(front(page)).toContainText('wait');
 	await page.keyboard.press('Space');
 	await page.keyboard.press('4');
-	await expect(endTitle(page)).toHaveText('Pronto por agora');
-	await expect(page.getByText('Ainda tem 1 palavra para revisar.')).toBeVisible();
+	await expect(endTitle(page)).toHaveText('Pronto por hoje');
+	await expect.poll(async () => (await produces(page)).length).toBe(1);
 
 	await page.keyboard.press('z');
 	await expect(front(page)).toContainText('wait');
@@ -175,10 +181,8 @@ test('desfazer o Fácil do Reconhecer apaga o Produzir que ele liberou', async (
 	await page.keyboard.press('3');
 	await expect(endTitle(page)).toHaveText('Pronto por hoje');
 
-	// "Bom" deixa o flashcard em minutos: o Produzir não volta.
-	await page.goto('/palavras');
-	await page.goto('/flashcards');
-	await expect(page.getByText('Como se diz')).toHaveCount(0);
+	// "Bom" deixa o flashcard em minutos: o Produzir some.
+	await expect.poll(async () => (await produces(page)).length).toBe(0);
 });
 
 test('a revisão só traz as palavras do idioma ativo', async ({ page }) => {
@@ -190,11 +194,48 @@ test('a revisão só traz as palavras do idioma ativo', async ({ page }) => {
 	await expect(side.getByTestId('idioma-ativo')).toHaveText('IT');
 	await addWord(page, 'magari', 'quem dera');
 
-	await reviewLink(page).click();
+	await study(page);
 	await expect(counter(page)).toHaveText('1 de 1');
 	await expect(front(page)).toContainText('magari');
 	await page.keyboard.press('Space');
 	await page.keyboard.press('3');
 	await expect(endTitle(page)).toBeVisible();
 	await expect(page.getByText('however')).toHaveCount(0);
+});
+
+test('decks: criar, mover palavras, página do deck e estudar só o deck', async ({ page }) => {
+	await login(page);
+	await addWord(page, 'however', 'porém');
+	await addWord(page, 'maybe', 'talvez');
+
+	await reviewLink(page).click();
+	await expect(page.getByTestId('para-hoje')).toHaveText('2 para hoje');
+	// Só o deck padrão: sem cabeçalho de tabela, com a dica.
+	await expect(page.getByText('Separe por tema ou')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Novo deck' }).click();
+	await page.getByLabel('Nome do deck').fill('Viagem');
+	await page.getByRole('button', { name: 'Criar' }).click();
+	await expect(page.getByText('Deck “Viagem” criado')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Viagem', exact: true })).toBeVisible();
+
+	await page.goto('/palavras');
+	await page.getByRole('checkbox', { name: 'Selecionar maybe' }).check();
+	await page.getByRole('button', { name: 'Mover para deck…' }).click();
+	await page
+		.getByRole('toolbar', { name: 'Ações das palavras' })
+		.getByRole('option', { name: 'Viagem' })
+		.click();
+	await expect(page.getByText('1 palavra movida para Viagem')).toBeVisible();
+
+	await page.goto('/flashcards');
+	await page.getByRole('link', { name: 'Viagem', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Viagem' })).toBeVisible();
+	await expect(page.getByRole('link', { name: /maybe/ })).toBeVisible();
+	await expect(page.getByRole('link', { name: /however/ })).toHaveCount(0);
+
+	await page.getByTestId('estudar-deck').click();
+	await expect(page).toHaveURL(/\/flashcards\/estudar\?deck=/);
+	await expect(counter(page)).toHaveText('1 de 1');
+	await expect(front(page)).toContainText('maybe');
 });
