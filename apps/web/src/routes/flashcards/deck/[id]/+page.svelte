@@ -14,6 +14,8 @@
 		rowCounts,
 		type DeckTab
 	} from '#lib/decks-ui.ts';
+	import { answers } from '#lib/ui/answers.svelte.ts';
+	import AnswersToggle from '#lib/ui/AnswersToggle.svelte';
 	import BulkBar from '#lib/ui/BulkBar.svelte';
 	import DeckPicker from '#lib/ui/DeckPicker.svelte';
 	import { clozePlain } from '#lib/fichas.ts';
@@ -47,16 +49,7 @@
 
 	let tab = $state<DeckTab>('todas');
 
-	// Ver a resposta na lista é cola: fica escondida até a pessoa pedir.
-	const ANSWERS_KEY = 'linguetta.respostas';
-	let showAnswers = $state(false);
-	onMount(() => {
-		showAnswers = localStorage.getItem(ANSWERS_KEY) === '1';
-	});
-	function toggleAnswers() {
-		showAnswers = !showAnswers;
-		localStorage.setItem(ANSWERS_KEY, showAnswers ? '1' : '0');
-	}
+	onMount(() => answers.load());
 	const counts = $derived(
 		Object.fromEntries(
 			TABS.map(([k]) => [k, data.entries.filter((e) => inTab(e.flags, k)).length])
@@ -182,12 +175,7 @@
 
 	function onkeydown(e: KeyboardEvent) {
 		sel.onkeydown(e);
-		const t = e.target as HTMLElement | null;
-		const typing = t?.closest('input, textarea, select, [contenteditable]');
-		if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'h') {
-			e.preventDefault();
-			toggleAnswers();
-		}
+		answers.onkeydown(e);
 	}
 </script>
 
@@ -385,16 +373,7 @@
 				>
 			{/each}
 		</nav>
-		<button
-			class="btn btn-ghost answers"
-			type="button"
-			aria-pressed={showAnswers}
-			title="Atalho: H"
-			onclick={toggleAnswers}
-			><Icon name="eye" size="sm" />{showAnswers
-				? 'Ocultar respostas'
-				: 'Mostrar respostas'}</button
-		>
+		<AnswersToggle />
 	</div>
 
 	{#if tab === 'teimosas'}
@@ -425,8 +404,8 @@
 							: resolve('/flashcards/fichas/[id]', { id: e.id })}
 					>
 						<span class="w"
-							><b>{e.kind === 'ficha' ? clozePlain(e.title, showAnswers) : e.title}</b
-							>{#if showAnswers}<span>{e.sub || ' '}</span>{:else}<span
+							><b>{e.kind === 'ficha' ? clozePlain(e.title, answers.shown) : e.title}</b
+							>{#if answers.shown}<span>{e.sub || ' '}</span>{:else}<span
 									class="veil"
 									aria-label="Resposta oculta"
 								></span>{/if}</span
@@ -753,15 +732,12 @@
 		gap: 12px;
 		flex-wrap: wrap;
 	}
-	.answers[aria-pressed='true'] {
-		color: var(--ink);
-	}
 	.w .veil {
 		width: 88px;
 		height: 0.8em;
 		margin-top: 7px;
 		border-radius: 999px;
-		background: var(--tile-2, var(--line));
+		background: var(--line);
 	}
 	.kind {
 		display: grid;

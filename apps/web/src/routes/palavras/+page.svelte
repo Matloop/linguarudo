@@ -16,6 +16,8 @@
 	import { deckDisplayName, plural } from '#lib/decks-ui.ts';
 	import BulkBar from '#lib/ui/BulkBar.svelte';
 	import DeckPicker from '#lib/ui/DeckPicker.svelte';
+	import { answers } from '#lib/ui/answers.svelte.ts';
+	import AnswersToggle from '#lib/ui/AnswersToggle.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Popover from '#lib/ui/Popover.svelte';
 	import { postAction } from '#lib/ui/post-action.ts';
@@ -126,6 +128,7 @@
 
 	onMount(() => {
 		canSpeak = 'speechSynthesis' in window;
+		answers.load();
 	});
 	// Trocar de palavra fecha a edição.
 	$effect(() => {
@@ -172,6 +175,7 @@
 
 	function onKeydown(e: KeyboardEvent) {
 		if (!selected && sel.onkeydown(e)) return;
+		if (!selected && answers.onkeydown(e)) return;
 		if (e.key === 'Escape' && selected && !document.querySelector('dialog[open]')) {
 			if (editing) editing = false;
 			else closeDrawer();
@@ -280,6 +284,7 @@
 			{/if}
 		</p>
 	</div>
+	{#if data.items.length > 0}<AnswersToggle />{/if}
 </div>
 
 {#if data.items.length === 0}
@@ -374,7 +379,9 @@
 						aria-current={item.id === data.selectedId ? 'true' : undefined}
 					>
 						<span class="w"
-							><b {...study}>{item.lemma}</b><span>{item.sense || 'Sem tradução'}</span></span
+							><b {...study}>{item.lemma}</b>{#if answers.shown}<span
+									>{item.sense || 'Sem tradução'}</span
+								>{:else}<span class="veil" aria-label="Tradução oculta"></span>{/if}</span
 						>
 						<span class="ctx"
 							>{#if enc?.sentence}{@render sentence(
@@ -824,6 +831,13 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	.w .veil {
+		width: 88px;
+		height: 0.8em;
+		margin-top: 7px;
+		border-radius: 999px;
+		background: var(--line);
 	}
 	.ctx {
 		font-size: 15px;
