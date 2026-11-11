@@ -360,7 +360,10 @@ test('sincronia: o palpite pela duração aparece em clipe, e aplicar fica salvo
 	// O vídeo tem 12 s a mais que a faixa do LRCLIB: a letra é achada mesmo assim e vem o palpite.
 	const dica = page.getByTestId('dica-sincronia');
 	await expect(dica).toContainText('12,0 s a mais que a música');
-	await dica.getByRole('button', { name: 'Aplicar +12,0 s' }).click();
+	await Promise.all([
+		page.waitForResponse((r) => r.url().includes('/musica/sincronia') && r.ok()),
+		dica.getByRole('button', { name: 'Aplicar +12,0 s' }).click()
+	]);
 	await expect(dica).toBeHidden();
 
 	await page.reload();
@@ -374,7 +377,11 @@ test('sincronia: ignorar o palpite também fica salvo', async ({ page }) => {
 	await installFakeYoutube(page);
 	await login(page);
 	await pickSong(page, VIDEOS.clip);
-	await page.getByTestId('dica-sincronia').getByRole('button', { name: 'Ignorar' }).click();
+	// Salvar é em segundo plano: espera a resposta antes de recarregar.
+	await Promise.all([
+		page.waitForResponse((r) => r.url().includes('/musica/sincronia') && r.ok()),
+		page.getByTestId('dica-sincronia').getByRole('button', { name: 'Ignorar' }).click()
+	]);
 	await expect(page.getByTestId('dica-sincronia')).toBeHidden();
 	await page.reload();
 	await expect(page.getByRole('button', { name: 'Começar' })).toBeVisible();

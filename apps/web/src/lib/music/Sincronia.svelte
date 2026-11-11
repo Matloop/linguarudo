@@ -70,7 +70,7 @@
 		<p>O jogo está pausado. Ouça o vídeo e toque quando a linha começar a ser cantada.</p>
 	</div>
 
-	<div class="grade">
+	<div class="corpo">
 		<div class="alvo">
 			<small>Próxima linha</small>
 			<p class="txt" data-testid="sinc-alvo">
@@ -149,7 +149,7 @@
 		color: var(--verde-texto);
 	}
 
-	.grade {
+	.corpo {
 		display: grid;
 		grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
 		gap: 14px;
@@ -368,7 +368,7 @@
 			display: none;
 		}
 
-		.grade {
+		.corpo {
 			grid-template-columns: 1fr;
 			gap: 10px;
 		}
