@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="pt-BR" class="tema-claro">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Flashcards · Linguetta (protótipo)</title>
+<style>
+:root{
+  --f-head:'Manrope','Inter',system-ui,sans-serif;--f-body:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --ease:cubic-bezier(.22,.8,.24,1);--r-s:6px;--r-m:8px;--r-l:12px;
+}
+.tema-claro{color-scheme:light;--page:#f1ebdf;--panel:#fbf8f2;--raise:#fff;--tile:#f6f2ea;--sunk:#efe9de;--hover:rgba(17,38,26,.04);--press:rgba(17,38,26,.07);--line:rgba(17,38,26,.08);--line-2:rgba(17,38,26,.14);--ink:#16231b;--ink-2:#545c55;--ink-3:#8a8d84;--primary:#1a3626;--on-primary:#f7f1e6;--prog:#1a3626;--prog-track:rgba(17,38,26,.09);--terra-ink:#9a5536;--terra-soft:rgba(168,97,63,.1);--hl:#e3e8dd;--ring:rgba(26,54,38,.28);--sh-card:0 0 0 1px rgba(17,38,26,.07),0 1px 1px rgba(17,38,26,.03);--sh-lift:0 0 0 1px rgba(17,38,26,.07),0 4px 14px -8px rgba(17,38,26,.16);--art:#e7e0d1;--art-2:#d6dccf}
+.tema-escuro{color-scheme:dark;--page:#0d1f15;--panel:#12281c;--raise:#173022;--tile:rgba(247,241,230,.035);--sunk:rgba(0,0,0,.16);--hover:rgba(247,241,230,.045);--press:rgba(247,241,230,.075);--line:rgba(247,241,230,.08);--line-2:rgba(247,241,230,.14);--ink:#f3ede1;--ink-2:#b9c0b6;--ink-3:#87938a;--primary:#f3ede1;--on-primary:#11261a;--prog:#e9e2d3;--prog-track:rgba(247,241,230,.1);--terra-ink:#d79b7b;--terra-soft:rgba(215,155,123,.12);--hl:rgba(138,163,146,.24);--ring:rgba(243,237,225,.35);--sh-card:0 0 0 1px rgba(247,241,230,.07);--sh-lift:0 0 0 1px rgba(247,241,230,.08),0 8px 20px -12px rgba(0,0,0,.6);--art:#1d3a2a;--art-2:#264a36}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);font:400 14.5px/1.5 var(--f-body);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.ic{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.ic.sm{width:15px;height:15px}
+kbd{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;font:500 11px/1 var(--f-body);color:var(--ink-3);background:var(--sunk);border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+
+/* shell */
+.app{display:grid;grid-template-columns:232px 1fr;background:var(--page);border-radius:12px;overflow:hidden}
+.proto{position:absolute!important}
+.side{padding:16px 12px;display:flex;flex-direction:column;gap:2px}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 10px 18px;font:700 16px var(--f-head);letter-spacing:-.01em}
+.brand svg{height:22px;width:auto;fill:currentColor}
+.nav{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:var(--r-m);color:var(--ink-2);text-decoration:none;font-weight:500;border:0;background:none;width:100%;text-align:left}
+.nav:hover{background:var(--hover)}
+.nav.on{background:var(--raise);color:var(--ink);box-shadow:var(--sh-card)}
+.nav .n{margin-left:auto;font-size:12px;color:var(--ink-3)}
+.side .sep{height:1px;background:var(--line);margin:12px 6px}
+.side .lbl{font-size:11.5px;color:var(--ink-3);padding:4px 10px;text-transform:uppercase;letter-spacing:.06em}
+.main{padding:28px 40px 60px;max-width:980px;width:100%}
+.proto{position:fixed;right:14px;bottom:14px;display:flex;gap:6px;background:var(--raise);padding:6px;border-radius:10px;box-shadow:var(--sh-lift);font-size:12px;z-index:5}
+.proto button{border:0;background:var(--sunk);border-radius:6px;padding:5px 9px}
+
+/* page header */
+.ph{display:flex;align-items:flex-end;gap:16px;margin-bottom:22px}
+.ph h1{font:700 26px/1.15 var(--f-head);letter-spacing:-.02em;margin:0}
+.ph .sub{color:var(--ink-3);margin-top:4px}
+.ph .acts{margin-left:auto;display:flex;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border:0;border-radius:var(--r-m);background:none;font:500 14px/1 var(--f-body);white-space:nowrap;transition:background .18s var(--ease)}
+.btn-primary{background:var(--primary);color:var(--on-primary)}
+.btn-soft{background:var(--raise);box-shadow:var(--sh-card)}
+.btn-soft:hover{background:var(--tile)}
+.btn-ghost:hover{background:var(--hover)}
+.btn-lg{height:44px;padding:0 20px;font-size:15px}
+.icon-btn{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:var(--r-m);border:0;background:none;color:var(--ink-2)}
+.icon-btn:hover{background:var(--hover);color:var(--ink)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:99px;background:var(--raise);box-shadow:var(--sh-card);font-size:12.5px;color:var(--ink-2);border:0}
+.chip.on{background:var(--primary);color:var(--on-primary);box-shadow:none}
+.tag{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:99px;background:var(--sunk);font-size:12px;color:var(--ink-2)}
+
+/* review */
+.rv-top{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.rv-top .l{display:flex;align-items:center;gap:8px;color:var(--ink-2);font-weight:500}
+.bar{flex:1;height:4px;border-radius:9px;background:var(--prog-track);overflow:hidden}
+.bar i{display:block;height:100%;width:38%;background:var(--prog);border-radius:9px}
+.rv-top .r{color:var(--ink-3);font-size:13px;display:flex;align-items:center;gap:6px}
+.filters{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+.card{background:var(--raise);border-radius:16px;box-shadow:var(--sh-lift);min-height:400px;display:flex;flex-direction:column;max-width:620px;margin:0 auto}
+.fh{display:flex;align-items:center;gap:8px;padding:14px 16px 0 18px;color:var(--ink-3);font-size:12.5px}
+.fh .kind{display:inline-flex;align-items:center;gap:6px}
+.fh .sp{margin-left:auto}
+.mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:22px 34px 30px;gap:10px}
+.ask{color:var(--ink-3);font-size:13px}
+.word{font:700 40px/1.1 var(--f-head);letter-spacing:-.025em}
+.ipa{color:var(--ink-3);font-size:14px}
+.tr{font:600 22px/1.25 var(--f-head);letter-spacing:-.01em}
+.small-w{color:var(--ink-3);font-size:14px}
+.ctx{color:var(--ink-2);max-width:440px;margin:6px 0 0;font-size:15px}
+.ctx u{text-decoration-color:var(--ink-3);text-underline-offset:3px}
+.divider{width:48px;height:1px;background:var(--line-2);margin:8px 0}
+.pic{width:220px;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:var(--art);display:grid;place-items:center;box-shadow:inset 0 0 0 1px var(--line)}
+.pic.big{width:280px}
+.pic svg{width:100%;height:100%}
+.audio{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px 0 10px;border-radius:99px;border:0;background:var(--sunk);color:var(--ink);font-weight:500;font-size:13px}
+.audio:hover{background:var(--press)}
+.audio .wv{display:inline-flex;gap:2px;align-items:center;height:14px}
+.audio .wv i{width:2px;background:currentColor;border-radius:2px;opacity:.55}
+.audio.playing .wv i{animation:wv .8s ease-in-out infinite alternate}
+.audio.playing .wv i:nth-child(2){animation-delay:.15s}.audio.playing .wv i:nth-child(3){animation-delay:.3s}.audio.playing .wv i:nth-child(4){animation-delay:.45s}
+@keyframes wv{from{transform:scaleY(.4)}to{transform:scaleY(1.2)}}
+.rv-acts{max-width:620px;margin:18px auto 0}
+.show{width:100%}
+.grade-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.gbtn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 6px;border-radius:var(--r-l);border:0;background:var(--raise);box-shadow:var(--sh-card);font-weight:600}
+.gbtn small{font-weight:400;color:var(--ink-3);font-size:12px}
+.gbtn:hover{background:var(--tile)}
+.gbtn.bad{color:var(--terra-ink)}
+.rv-hint{display:flex;justify-content:center;gap:16px;color:var(--ink-3);font-size:12px;margin-top:14px}
+.ficha-face{font-size:18px;line-height:1.45;max-width:460px}
+.ficha-face b{font-weight:650}
+.cloze{display:inline-block;min-width:64px;border-bottom:2px solid var(--ink-3);color:transparent}
+.cloze.open{color:var(--ink);border-color:var(--primary);font-weight:650}
+
+/* forms */
+.panel{background:var(--raise);border-radius:14px;box-shadow:var(--sh-card);padding:20px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.field>label,.flabel{font-size:12.5px;font-weight:600;color:var(--ink-2)}
+.input,select.input,textarea.input{height:38px;padding:0 12px;border-radius:var(--r-m);border:0;background:var(--page);box-shadow:inset 0 0 0 1px var(--line-2);outline:none;width:100%}
+textarea.input{height:auto;min-height:96px;padding:10px 12px;resize:vertical;line-height:1.5}
+.toolbar{display:flex;gap:2px;margin-bottom:6px}
+.toolbar .icon-btn{width:28px;height:28px;font-weight:700;font-size:13px}
+.side-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.side-head h3{margin:0;font:700 15px var(--f-head)}
+.drop{display:flex;align-items:center;gap:12px;padding:12px;border-radius:var(--r-l);border:1.5px dashed var(--line-2);color:var(--ink-3);font-size:13px;background:var(--tile)}
+.drop .thumb{width:56px;height:42px;border-radius:7px;overflow:hidden;background:var(--art);flex:none}
+.drop .x{margin-left:auto}
+.attach{display:flex;gap:8px;margin-top:8px}
+.check{display:flex;align-items:center;gap:10px;font-size:14px;margin:4px 0 14px}
+.check input{width:16px;height:16px;accent-color:var(--primary)}
+.hint{color:var(--ink-3);font-size:12.5px}
+.foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.preview-mini{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.preview-mini div{background:var(--tile);border-radius:10px;padding:12px;font-size:13px;min-height:62px;color:var(--ink-2)}
+.preview-mini b{display:block;font-size:11px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+
+/* import */
+.steps{display:flex;gap:6px;align-items:center;margin-bottom:22px;color:var(--ink-3);font-size:13px}
+.steps span{display:inline-flex;align-items:center;gap:6px}
+.steps i{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:99px;background:var(--sunk);font-style:normal;font-size:11px;font-weight:600}
+.steps .on{color:var(--ink);font-weight:600}.steps .on i{background:var(--primary);color:var(--on-primary)}
+.steps .ok i{background:var(--hl);color:var(--ink)}
+.steps .dash{width:28px;height:1px;background:var(--line-2)}
+.bigdrop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:56px 20px;border-radius:16px;border:1.5px dashed var(--line-2);background:var(--panel);text-align:center}
+.bigdrop .ico{width:46px;height:46px;border-radius:12px;background:var(--raise);box-shadow:var(--sh-card);display:grid;place-items:center}
+.bigdrop h2{margin:4px 0 0;font:700 19px var(--f-head)}
+.pkg{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--raise);border-radius:14px;box-shadow:var(--sh-card);margin-bottom:16px}
+.pkg .ico{width:38px;height:38px;border-radius:10px;background:var(--sunk);display:grid;place-items:center}
+.pkg .meta{color:var(--ink-3);font-size:13px}
+.pkg .lang{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}
+.pkg .lang select{width:auto;height:32px}
+.nt{background:var(--raise);border-radius:14px;box-shadow:var(--sh-card);margin-bottom:12px;overflow:hidden}
+.nt-h{display:flex;align-items:center;gap:12px;padding:14px 16px}
+.nt-h .name{font-weight:600}
+.nt-h .meta{color:var(--ink-3);font-size:12.5px}
+.seg{margin-left:auto;display:inline-flex;background:var(--sunk);border-radius:9px;padding:3px}
+.seg button{border:0;background:none;height:28px;padding:0 12px;border-radius:7px;font-size:13px;font-weight:500;color:var(--ink-2)}
+.seg button.on{background:var(--raise);color:var(--ink);box-shadow:var(--sh-card)}
+.nt-b{border-top:1px solid var(--line);padding:14px 16px;display:grid;grid-template-columns:repeat(3,1fr) 1.3fr;gap:12px;align-items:start}
+.nt-b .field{margin:0}
+.nt-b select{height:34px}
+.sample{background:var(--tile);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--ink-2)}
+.sample b{color:var(--ink)}
+.sug{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--ink-3);margin-left:8px}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin-top:6px}
+.sum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:6px 0 18px}
+.stat{background:var(--raise);border-radius:12px;box-shadow:var(--sh-card);padding:14px}
+.stat b{display:block;font:700 24px var(--f-head);letter-spacing:-.02em}
+.stat span{color:var(--ink-3);font-size:12.5px}
+.prog{height:6px;border-radius:9px;background:var(--prog-track);overflow:hidden;margin:10px 0 6px}
+.prog i{display:block;height:100%;width:64%;background:var(--prog)}
+.warn{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:var(--terra-soft);color:var(--terra-ink);font-size:13px;margin-bottom:12px}
+.list{background:var(--raise);border-radius:14px;box-shadow:var(--sh-card)}
+.row{display:flex;align-items:center;gap:12px;padding:11px 16px;border-top:1px solid var(--line);font-size:13.5px}
+.row:first-child{border-top:0}
+.row .muted{color:var(--ink-3)}
+.row .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+.screen{display:none}.screen.on{display:block}
+[hidden]{display:none!important}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{flex-direction:row;flex-wrap:wrap;gap:4px;padding:12px}.side .sep,.side .lbl,.brand{display:none}.nav{width:auto}.main{padding:18px 16px 70px}.nt-b{grid-template-columns:1fr 1fr!important}.sum-grid{grid-template-columns:1fr 1fr}.ph h1{font-size:22px}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-cards" viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></symbol>
+  <symbol id="i-img" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-pkg" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4zM3 7v10l9 4 9-4V7M12 11v10"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/></symbol>
+  <symbol id="i-anki" viewBox="0 0 24 24"><path d="m12 3 2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M7 11V6a1.5 1.5 0 0 1 3 0v4M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V12M16 9a1.5 1.5 0 0 1 3 0v5a7 7 0 0 1-12.2 4.6L4 15a1.6 1.6 0 0 1 2.4-2L7 14"/></symbol>
+  <symbol id="i-tv" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="m8 3 4 3 4-3"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4M12 17v.5"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></symbol>
+  <symbol id="pic-cat" viewBox="0 0 220 165"><rect width="220" height="165" fill="var(--art)"/><circle cx="168" cy="40" r="16" fill="var(--art-2)"/><path d="M0 130 C60 110 140 120 220 105 V165 H0Z" fill="var(--art-2)"/><g fill="var(--ink)" opacity=".82"><path d="M82 128c0-26 14-44 34-44s34 18 34 44z"/><circle cx="116" cy="74" r="20"/><path d="M100 62l-4-18 14 10zM132 62l4-18-14 10z"/><path d="M148 122c18 0 26-8 24-22" stroke="var(--ink)" stroke-width="6" fill="none" stroke-linecap="round"/></g></symbol>
+  <symbol id="pic-mill" viewBox="0 0 220 165"><rect width="220" height="165" fill="var(--art)"/><path d="M0 120h220v45H0z" fill="var(--art-2)"/><g stroke="var(--ink)" stroke-width="4" fill="none" opacity=".8" stroke-linecap="round"><path d="M110 120V70M96 120l14-50 14 50"/><path d="M110 70 80 40M110 70l30-30M110 70l-30 30M110 70l30 30"/></g><path d="M20 128c20-6 40-6 60 0s40 6 60 0 40-6 60 0" stroke="var(--ink-3)" stroke-width="3" fill="none"/></symbol>
+</svg>
+
+<div class="app" style="position:relative">
+  <aside class="side">
+    <div class="brand"><svg viewBox="0 0 218 236"><path d="M0 0h62v174h156v62H0z"/><path d="M90 0h62v118L90 146z" opacity=".55"/></svg>Linguetta</div>
+    <button class="nav"><svg class="ic"><use href="#i-home"/></svg>Início</button>
+    <button class="nav on" data-go="review"><svg class="ic"><use href="#i-cards"/></svg>Flashcards<span class="n">24</span></button>
+    <button class="nav"><svg class="ic"><use href="#i-book"/></svg>Vocabulário</button>
+    <button class="nav"><svg class="ic"><use href="#i-music"/></svg>Música</button>
+    <div class="sep"></div>
+    <div class="lbl">Flashcards</div>
+    <button class="nav" data-go="review">Revisar agora</button>
+    <button class="nav" data-go="ficha">Nova ficha</button>
+    <button class="nav" data-go="import">Importar do Anki</button>
+    <div class="sep"></div>
+    <button class="nav"><svg class="ic"><use href="#i-plug"/></svg>Integrações</button>
+  </aside>
+
+  <main class="main">
+
+    <!-- ============ REVISÃO ============ -->
+    <section class="screen on" id="s-review">
+      <div class="rv-top">
+        <span class="l"><svg class="ic sm"><use href="#i-cards"/></svg>Flashcards de hoje</span>
+        <div class="bar"><i></i></div>
+        <span class="r">9 de 24 · italiano</span>
+        <button class="icon-btn" title="Sair"><svg class="ic sm"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="filters">
+        <button class="chip on">Tudo</button>
+        <button class="chip"><svg class="ic sm"><use href="#i-tag"/></svg>Italiano::Viagem</button>
+        <button class="chip"><svg class="ic sm"><use href="#i-tag"/></svg>gramática</button>
+        <button class="chip"><svg class="ic sm"><use href="#i-tag"/></svg>A2</button>
+      </div>
+
+      <div id="card"></div>
+
+      <div class="rv-acts">
+        <button class="btn btn-primary btn-lg show" id="showBtn">Mostrar resposta <kbd style="background:rgba(247,241,230,.12);color:rgba(247,241,230,.75);box-shadow:none">Espaço</kbd></button>
+        <div class="grade-row" id="grades" hidden>
+          <button class="gbtn bad">Errei<small>1 min</small></button>
+          <button class="gbtn">Difícil<small>8 min</small></button>
+          <button class="gbtn">Bom<small>3 dias</small></button>
+          <button class="gbtn">Fácil<small>9 dias</small></button>
+        </div>
+      </div>
+      <div class="rv-hint"><span><kbd>Espaço</kbd> virar</span><span><kbd>1</kbd>–<kbd>4</kbd> avaliar</span><span><kbd>R</kbd> ouvir</span><span><kbd>Z</kbd> desfazer</span></div>
+    </section>
+
+    <!-- ============ NOVA FICHA ============ -->
+    <section class="screen" id="s-ficha">
+      <div class="ph">
+        <div><h1>Nova ficha</h1><div class="sub">Para o que não é uma palavra: frases, regras, conjugações.</div></div>
+      </div>
+      <div class="panel">
+        <div class="grid2">
+          <div>
+            <div class="side-head"><h3>Frente</h3></div>
+            <div class="toolbar"><button class="icon-btn">B</button><button class="icon-btn" style="font-style:italic">I</button></div>
+            <textarea class="input" id="fFront">Passato prossimo de **andare** (io)</textarea>
+            <div class="attach">
+              <button class="btn btn-soft"><svg class="ic sm"><use href="#i-img"/></svg>Imagem</button>
+              <button class="btn btn-soft"><svg class="ic sm"><use href="#i-sound"/></svg>Áudio</button>
+            </div>
+          </div>
+          <div>
+            <div class="side-head"><h3>Verso</h3></div>
+            <div class="toolbar"><button class="icon-btn">B</button><button class="icon-btn" style="font-style:italic">I</button></div>
+            <textarea class="input" id="fBack">**sono andato / andata**
+Usa *essere* porque é verbo de movimento.</textarea>
+            <div class="drop" style="margin-top:8px">
+              <svg class="ic"><use href="#i-sound"/></svg>
+              <div><div style="color:var(--ink);font-weight:500">sono-andato.mp3</div><div>0:02 · 38 KB</div></div>
+              <button class="icon-btn x" title="Tirar"><svg class="ic sm"><use href="#i-x"/></svg></button>
+            </div>
+          </div>
+        </div>
+        <div class="grid2" style="margin-top:18px">
+          <div class="field"><label>Idioma de estudo</label><select class="input"><option>Italiano</option><option>Inglês</option></select></div>
+          <div class="field"><label>Tags</label><input class="input" value="gramática, verbos" /></div>
+        </div>
+        <label class="check"><input type="checkbox" checked /> Criar também o inverso (verso → frente)</label>
+        <div class="flabel">Vai gerar 2 flashcards</div>
+        <div class="preview-mini">
+          <div><b>Flashcard 1</b>Passato prossimo de <strong>andare</strong> (io) → <strong>sono andato / andata</strong></div>
+          <div><b>Flashcard 2 · inverso</b><strong>sono andato / andata</strong> → Passato prossimo de <strong>andare</strong> (io)</div>
+        </div>
+        <div class="foot"><button class="btn btn-ghost">Cancelar</button><button class="btn btn-primary">Salvar ficha</button></div>
+      </div>
+
+      <div class="ph" style="margin-top:34px"><div><h1 style="font-size:20px">Mídia de um item</h1><div class="sub">No detalhe do item do vocabulário: uma imagem e uma pronúncia.</div></div></div>
+      <div class="panel">
+        <div style="display:flex;gap:18px;align-items:center">
+          <div style="flex:1">
+            <div style="font:700 26px var(--f-head);letter-spacing:-.02em">il mulino</div>
+            <div class="hint">/mu.ˈli.no/ · substantivo · moinho</div>
+            <div style="display:flex;gap:6px;margin-top:10px"><span class="tag">Italiano::Viagem</span><span class="tag">A2</span></div>
+          </div>
+          <div style="width:300px">
+            <div class="drop"><div class="thumb"><svg viewBox="0 0 220 165" width="56" height="42"><use href="#pic-mill"/></svg></div><div><div style="color:var(--ink);font-weight:500">Imagem</div><div>webp · 1024 px · 64 KB</div></div><button class="icon-btn x"><svg class="ic sm"><use href="#i-x"/></svg></button></div>
+            <div class="drop" style="margin-top:8px"><svg class="ic"><use href="#i-up"/></svg><div><div style="color:var(--ink);font-weight:500">Adicionar pronúncia</div><div>mp3, ogg ou m4a até 1 MB</div></div></div>
+          </div>
+        </div>
+        <div class="hint" style="margin-top:14px">Uso: 41 MB de 200 MB</div>
+      </div>
+    </section>
+
+    <!-- ============ IMPORT ============ -->
+    <section class="screen" id="s-import">
+      <div class="ph"><div><h1>Importar do Anki</h1><div class="sub">O arquivo é lido no seu navegador. Nada sai daqui até você confirmar.</div></div></div>
+      <div class="steps" id="steps"></div>
+
+      <div id="imp-1">
+        <div class="bigdrop">
+          <div class="ico"><svg class="ic"><use href="#i-pkg"/></svg></div>
+          <h2>Solte um arquivo .apkg ou .colpkg</h2>
+          <div class="hint">Exporte do Anki com “Incluir histórico de estudo” e “Incluir mídia”.</div>
+          <button class="btn btn-primary" style="margin-top:8px" onclick="imp(2)">Escolher arquivo</button>
+        </div>
+      </div>
+
+      <div id="imp-2" hidden>
+        <div class="pkg">
+          <div class="ico"><svg class="ic"><use href="#i-pkg"/></svg></div>
+          <div><div style="font-weight:600">Italiano 2000 + Grammatica.apkg</div><div class="meta">1.284 notas · 3 tipos de nota · 412 arquivos de mídia (58 MB) · 9.731 revisões</div></div>
+          <div class="lang">Idioma de estudo <select class="input"><option>Italiano</option></select></div>
+        </div>
+
+        <div class="nt" data-mode="vocab">
+          <div class="nt-h">
+            <div><div class="name">Italiano Vocab <span class="sug"><svg class="ic sm"><use href="#i-spark"/></svg>sugerido: vocabulário</span></div><div class="meta">962 notas · 2 cards por nota (frente→verso e inverso)</div></div>
+            <div class="seg"><button class="on" data-m="vocab">Vocabulário</button><button data-m="ficha">Ficha</button><button data-m="skip">Não importar</button></div>
+          </div>
+          <div class="nt-b">
+            <div class="field"><label>Lema</label><select class="input"><option>Word</option><option>Meaning</option></select></div>
+            <div class="field"><label>Sentido</label><select class="input"><option>Meaning</option><option>Word</option></select></div>
+            <div class="field"><label>Frase (vira encontro)</label><select class="input"><option>Example</option><option>—</option></select></div>
+            <div class="sample"><b>il mulino</b> → moinho<br>“Il mulino gira lento sul fiume.”<br><span class="hint">Imagem: Picture · Áudio: Audio · Nota: Notes</span></div>
+            <div class="opts" style="grid-column:1/-1">
+              <span class="hint"><svg class="ic sm" style="vertical-align:-3px"><use href="#i-check"/></svg> O card inverso vira Produzir com o histórico</span>
+              <span class="hint"><svg class="ic sm" style="vertical-align:-3px"><use href="#i-check"/></svg> 38 lemas já existem e vão ser mesclados</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="nt" data-mode="ficha">
+          <div class="nt-h">
+            <div><div class="name">Cloze <span class="sug"><svg class="ic sm"><use href="#i-spark"/></svg>sugerido: ficha</span></div><div class="meta">214 notas · 1 flashcard por lacuna (301)</div></div>
+            <div class="seg"><button data-m="vocab">Vocabulário</button><button class="on" data-m="ficha">Ficha</button><button data-m="skip">Não importar</button></div>
+          </div>
+          <div class="nt-b" style="grid-template-columns:1fr 1fr">
+            <div class="sample"><b>Frente</b><br>Ieri <span class="cloze">siamo</span> andati al mare.</div>
+            <div class="sample"><b>Verso</b><br>Ieri <strong>siamo</strong> andati al mare.</div>
+          </div>
+        </div>
+
+        <div class="nt" data-mode="ficha">
+          <div class="nt-h">
+            <div><div class="name">Basic <span class="sug"><svg class="ic sm"><use href="#i-spark"/></svg>sugerido: ficha</span></div><div class="meta">108 notas · frentes longas, com HTML</div></div>
+            <div class="seg"><button data-m="vocab">Vocabulário</button><button class="on" data-m="ficha">Ficha</button><button data-m="skip">Não importar</button></div>
+          </div>
+          <div class="nt-b" style="grid-template-columns:1fr 1fr">
+            <div class="sample"><b>Frente</b><br>Quando usar <i>essere</i> no passato prossimo?</div>
+            <div class="sample"><b>Verso</b><br>Verbos de movimento, estado e reflexivos.</div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:6px">
+          <div class="flabel" style="margin-bottom:6px">Também</div>
+          <label class="check" style="margin:4px 0"><input type="checkbox" checked /> Trazer o histórico de revisões (9.731)</label>
+          <label class="check" style="margin:4px 0"><input type="checkbox" checked /> Decks e tags do Anki viram tags</label>
+          <label class="check" style="margin:4px 0"><input type="checkbox" checked /> Suspensos entram como conhecidos (27)</label>
+        </div>
+        <div class="foot"><button class="btn btn-ghost" onclick="imp(1)">Voltar</button><button class="btn btn-primary" onclick="imp(3)">Importar 1.284 notas</button></div>
+      </div>
+
+      <div id="imp-3" hidden>
+        <div class="flabel">Importando…</div>
+        <div class="prog"><i></i></div>
+        <div class="hint" style="margin-bottom:20px">Enviando mídia: 264 de 412 · lote 8 de 13</div>
+        <div class="sum-grid">
+          <div class="stat"><b>924</b><span>itens novos</span></div>
+          <div class="stat"><b>38</b><span>itens mesclados</span></div>
+          <div class="stat"><b>322</b><span>fichas</span></div>
+          <div class="stat"><b>1.887</b><span>flashcards</span></div>
+        </div>
+        <div class="warn"><svg class="ic sm" style="margin-top:2px"><use href="#i-warn"/></svg><div><b>A cota de 200 MB acabou no meio da mídia.</b> 61 imagens ficaram de fora. O resto foi importado. Libere espaço e reimporte o mesmo arquivo para completar, sem duplicar.</div></div>
+        <div class="list">
+          <div class="row"><svg class="ic sm"><use href="#i-anki"/></svg>il mulino<span class="muted">mesclado · ganhou imagem e áudio</span><span class="r"><span class="tag">Italiano::Viagem</span></span></div>
+          <div class="row"><svg class="ic sm"><use href="#i-anki"/></svg>la gatta<span class="muted">novo · Reconhecer e Produzir com histórico</span><span class="r"><span class="tag">A2</span></span></div>
+          <div class="row"><svg class="ic sm"><use href="#i-anki"/></svg>Ieri siamo andati al mare.<span class="muted">ficha · 1 lacuna</span><span class="r"><span class="tag">gramática</span></span></div>
+          <div class="row"><svg class="ic sm"><use href="#i-anki"/></svg>la rana<span class="muted">conhecido (estava suspenso)</span></div>
+        </div>
+        <div class="foot"><button class="btn btn-soft" onclick="imp(1)">Importar outro</button><button class="btn btn-primary" onclick="go('review')">Ir para Flashcards</button></div>
+      </div>
+    </section>
+  </main>
+<div class="proto">
+  <button onclick="cycle()">Próximo exemplo</button>
+  <button onclick="document.documentElement.classList.toggle('tema-escuro');document.documentElement.classList.toggle('tema-claro')">Tema</button>
+</div>
+</div>
+
+
+
+<script>
+const AUDIO = '<button class="audio" onclick="play(this,TXT)"><svg class="ic sm"><use href="#i-sound"/></svg><span class="wv"><i style="height:6px"></i><i style="height:12px"></i><i style="height:9px"></i><i style="height:13px"></i></span>Ouvir</button>';
+const audio = t => AUDIO.replace('TXT', JSON.stringify(t).replace(/"/g,"'"));
+const pic = (id, big) => `<div class="pic${big?' big':''}"><svg viewBox="0 0 220 165"><use href="#${id}"/></svg></div>`;
+const head = (icon, src, kind) => `<div class="fh"><span class="kind"><svg class="ic sm"><use href="#i-${icon}"/></svg>${src}</span><span class="sp">${kind}</span></div>`;
+
+const EX = [
+  { // Reconhecer: lema + áudio na frente, imagem no verso
+    front: () => head('tv','Il commissario Montalbano · T2E4','Reconhecer') + `<div class="mid"><div class="word" lang="it">la gatta</div><div class="ipa">/ˈɡat.ta/</div>${audio('la gatta')}</div>`,
+    back:  () => head('tv','Il commissario Montalbano · T2E4','Reconhecer') + `<div class="mid"><div class="small-w">la gatta · /ˈɡat.ta/</div>${pic('pic-cat')}<div class="tr">a gata</div><p class="ctx" lang="it">«Dov'è finita <u>la gatta</u>? Non l'ho vista stamattina.»</p></div>`
+  },
+  { // Produzir: imagem + sentido na frente, áudio ao revelar
+    front: () => head('anki','Anki · Italiano::Viagem','Produzir') + `<div class="mid"><div class="ask">Como se diz em italiano?</div>${pic('pic-mill',true)}<div class="tr">moinho</div></div>`,
+    back:  () => head('anki','Anki · Italiano::Viagem','Produzir') + `<div class="mid"><div class="small-w">moinho</div><div class="word" lang="it">il mulino</div><div class="ipa">/mu.ˈli.no/</div>${audio('il mulino').replace('class="audio"','class="audio playing"')}<p class="ctx" lang="it">«<u>Il mulino</u> gira lento sul fiume.»</p></div>`
+  },
+  { // Ficha cloze
+    front: () => head('anki','Ficha · gramática','Lacuna 1') + `<div class="mid"><div class="ficha-face" lang="it">Ieri <span class="cloze">siamo</span> andati al mare con i bambini.</div></div>`,
+    back:  () => head('anki','Ficha · gramática','Lacuna 1') + `<div class="mid"><div class="ficha-face" lang="it">Ieri <span class="cloze open">siamo</span> andati al mare con i bambini.</div><div class="divider"></div><div class="small-w">Passato prossimo com <i>essere</i>: verbo de movimento.</div></div>`
+  },
+  { // Ficha manual com áudio no verso
+    front: () => head('hand','Ficha · verbos','Frente → verso') + `<div class="mid"><div class="ficha-face">Passato prossimo de <b>andare</b> (io)</div></div>`,
+    back:  () => head('hand','Ficha · verbos','Frente → verso') + `<div class="mid"><div class="ficha-face"><b>sono andato / andata</b><br><span style="font-size:15px;color:var(--ink-2)">Usa <i>essere</i> porque é verbo de movimento.</span></div>${audio('sono andato')}</div>`
+  }
+];
+let ex = 0, flipped = false;
+function render(){
+  document.getElementById('card').innerHTML = `<div class="card">${flipped ? EX[ex].back() : EX[ex].front()}</div>`;
+  document.getElementById('showBtn').hidden = flipped;
+  document.getElementById('grades').hidden = !flipped;
+}
+function flip(){ flipped = !flipped; render(); }
+function cycle(){ go('review'); ex = (ex+1) % EX.length; flipped = false; render(); }
+document.getElementById('showBtn').onclick = flip;
+document.querySelectorAll('.gbtn').forEach(b => b.onclick = cycle);
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,textarea,select')) return;
+  if (!document.getElementById('s-review').classList.contains('on')) return;
+  if (e.code === 'Space'){ e.preventDefault(); if(!flipped) flip(); }
+  if (/^[1-4]$/.test(e.key) && flipped) cycle();
+  if (e.key === 'r'){ const b = document.querySelector('.card .audio'); b && b.click(); }
+});
+function play(btn, text){
+  btn.classList.add('playing');
+  if ('speechSynthesis' in window){ const u = new SpeechSynthesisUtterance(text); u.lang='it-IT'; u.onend=()=>btn.classList.remove('playing'); speechSynthesis.cancel(); speechSynthesis.speak(u); }
+  setTimeout(()=>btn.classList.remove('playing'), 1400);
+}
+function go(s){
+  document.querySelectorAll('.screen').forEach(x => x.classList.toggle('on', x.id === 's-'+s));
+  document.querySelectorAll('.nav[data-go]').forEach(n => n.classList.toggle('on', n.dataset.go === s && !n.closest('.side').querySelector('.lbl') || false));
+  document.querySelectorAll('.nav').forEach(n=>n.classList.remove('on'));
+  document.querySelector('.nav[data-go="review"]').classList.add('on');
+}
+document.querySelectorAll('.nav[data-go]').forEach(n => n.onclick = () => go(n.dataset.go));
+function imp(n){
+  [1,2,3].forEach(i => document.getElementById('imp-'+i).hidden = i !== n);
+  const names = ['Arquivo','Mapear tipos de nota','Importar'];
+  document.getElementById('steps').innerHTML = names.map((t,i)=>`<span class="${i+1===n?'on':i+1<n?'ok':''}"><i>${i+1<n?'✓':i+1}</i>${t}</span>`).join('<span class="dash"></span>');
+}
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
+  const body = seg.closest('.nt').querySelector('.nt-b'); body.hidden = b.dataset.m === 'skip';
+}));
+imp(1); render();
+</script>
+</body>
+</html>

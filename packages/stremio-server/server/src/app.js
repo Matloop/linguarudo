@@ -1,5 +1,7 @@
 import { createServer } from 'node:http';
 import { cacheKey } from './cache.js';
+import { HttpError } from './errors.js';
+import { lookup, parseLookupRequest, parseTranslateRequest, translate } from './lookup.js';
 import { normalizeLang } from './lang.js';
 import { validateBatch } from './validate.js';
 
@@ -8,12 +10,7 @@ export const MAX_CUES = 500;
 export const DEFAULT_DENSITY = 0.1;
 export const MAX_PREFER_WORDS = 1000;
 
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
+export { HttpError };
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -47,6 +44,15 @@ function readBody(req, limit = MAX_BODY) {
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
+}
+
+async function readJson(req, limit) {
+  try {
+    return JSON.parse(await readBody(req, limit));
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    throw new HttpError(400, 'JSON inválido');
+  }
 }
 
 /** Valida e normaliza o corpo de POST /annotate. */
@@ -101,7 +107,7 @@ export async function annotate({ provider, cache }, req) {
   } else {
     const key = cacheKey({ provider: provider.name, model: provider.model, sourceLang, targetLang, density, texts, preferWords });
     byIndex = cache ? await cache.get(key) : null;
-    if (byIndex && byIndex.length === texts.length) {
+    if (Array.isArray(byIndex) && byIndex.length === texts.length) {
       cached = true;
     } else {
       const raw = await provider.annotate({ sourceLang, targetLang, density, texts, preferWords });
@@ -126,15 +132,24 @@ export function createApp({ provider, cache = null, log = console }) {
         if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'use GET');
         return send(res, 200, { ok: true, provider: provider.name, model: provider.model });
       }
+      if (url.pathname === '/lookup' || url.pathname === '/translate') {
+        if (req.method !== 'POST') throw new HttpError(405, 'use POST');
+        const body = await readJson(req, 64 * 1024);
+        const t0 = Date.now();
+        if (url.pathname === '/lookup') {
+          const parsed = parseLookupRequest(body);
+          const out = await lookup({ provider, cache }, parsed);
+          log.info?.(`[lookup] ${parsed.lang} "${parsed.text}" → ${out.result.lemma}, ${out.cached ? 'cache' : provider.name} ${Date.now() - t0}ms`);
+          return send(res, 200, out.result);
+        }
+        const parsed = parseTranslateRequest(body);
+        const out = await translate({ provider, cache }, parsed);
+        log.info?.(`[translate] ${parsed.sourceLang}->${parsed.targetLang}, ${out.cached ? 'cache' : provider.name} ${Date.now() - t0}ms`);
+        return send(res, 200, { translation: out.translation });
+      }
       if (url.pathname === '/annotate') {
         if (req.method !== 'POST') throw new HttpError(405, 'use POST');
-        let body;
-        try {
-          body = JSON.parse(await readBody(req));
-        } catch (e) {
-          if (e instanceof HttpError) throw e;
-          throw new HttpError(400, 'JSON inválido');
-        }
+        const body = await readJson(req);
         const parsed = parseAnnotateRequest(body);
         const t0 = Date.now();
         const out = await annotate({ provider, cache }, parsed);

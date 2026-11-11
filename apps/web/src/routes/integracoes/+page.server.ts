@@ -19,7 +19,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const [tokens, words, last] = await Promise.all([
 		locals.supabase
 			.from('api_tokens')
-			.select('id, label, token_hint, created_at, last_used_at')
+			.select('id, label, token_hint, created_at, last_used_at, kind, device_model')
 			.eq('user_id', user.id)
 			.order('created_at', { ascending: false }),
 		locals.supabase
@@ -46,8 +46,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 		items: { lemma: string };
 		works: { title: string; subtitle: string } | null;
 	} | null;
+	// Tokens do Stremio (gerados aqui) e aparelhos pareados (e-reader) aparecem à parte.
+	const strip = ({ kind: _kind, device_model: _model, ...t }: (typeof tokens.data)[number]) => t;
 	return {
-		tokens: tokens.data,
+		tokens: tokens.data.filter((t) => t.kind !== 'aparelho').map(strip),
+		devices: tokens.data
+			.filter((t) => t.kind === 'aparelho')
+			.map((t) => ({ ...strip(t), model: t.device_model })),
 		stremio: {
 			words: words.count ?? 0,
 			last: lastRow

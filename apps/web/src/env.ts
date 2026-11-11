@@ -44,5 +44,10 @@ export const variables = defineEnvVars({
 	YOUTUBE_OEMBED_URL: {
 		schema: optionalUrl('YOUTUBE_OEMBED_URL', 'https://www.youtube.com/oembed'),
 		description: 'oEmbed do YouTube (título e canal do vídeo). Padrão: o endpoint oficial'
+	},
+	SYNC_PAIR_LIMITS: {
+		schema: (value: string | undefined): 'on' | 'off' => (value === 'off' ? 'off' : 'on'),
+		description:
+			'Limites por IP do pareamento do e-reader (10 por hora, 5 pendentes). "off" só nos e2e. Padrão: on'
 	}
 });

@@ -110,6 +110,8 @@ export interface ApiItem {
 	/** Entra primeiro na legenda (ver isPreferred). */
 	prefer: boolean;
 	cards: ApiCard[];
+	/** Grafias já vistas nos encontros, além do lema (destaque na legenda do modo só-alvo). */
+	forms: string[];
 }
 
 function cardBriefs(raw: unknown): (CardBrief & { kind: CardKind; stability: number })[] {
@@ -127,7 +129,7 @@ function cardBriefs(raw: unknown): (CardBrief & { kind: CardKind; stability: num
 
 /** Uma linha de api_items como sai em GET /api/v1/items. */
 export function apiItem(
-	row: { id: string; lemma: string; sense: string; status: string; cards: unknown },
+	row: { id: string; lemma: string; sense: string; status: string; cards: unknown; forms?: unknown },
 	now: Date
 ): ApiItem {
 	const cards = cardBriefs(row.cards);
@@ -144,7 +146,8 @@ export function apiItem(
 			state: c.state,
 			dueAt: c.due_at,
 			stability: c.stability
-		}))
+		})),
+		forms: Array.isArray(row.forms) ? row.forms.filter((f): f is string => typeof f === 'string') : []
 	};
 }
 

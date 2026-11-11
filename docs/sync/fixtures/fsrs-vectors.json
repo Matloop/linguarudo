@@ -1,0 +1,600 @@
+{
+	"generatedBy": "docs/sync/fixtures/generate-fsrs-vectors.ts",
+	"tsFsrs": "6.0.0",
+	"scheduler": {
+		"version": "FSRS-7",
+		"desiredRetention": 0.9,
+		"enableFuzz": true,
+		"enableShortTerm": true,
+		"learningSteps": [
+			"1m",
+			"10m"
+		],
+		"relearningSteps": [
+			"10m"
+		],
+		"maximumInterval": 36500,
+		"weights": "default (FSRS7_DEFAULT_WEIGHTS)",
+		"fuzzSeed": "cardId + String(reps after the review)"
+	},
+	"tolerance": {
+		"float": 0.000001,
+		"dueAtMs": 1000
+	},
+	"cases": [
+		{
+			"name": "bom-sempre",
+			"note": "Novo, depois Bom em cada vencimento (aprendizado → revisão, fuzz nos intervalos longos).",
+			"cardId": "0b9f3c2e-6a51-4d7e-9c1a-3f2b8d4e5a01",
+			"createdAt": "2026-11-01T12:00:00.000Z",
+			"steps": [
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-01T12:00:00.000Z",
+					"expected": {
+						"due_at": "2026-11-04T12:00:00.000Z",
+						"stability": 3.9221,
+						"stability_fast": 3.13768,
+						"difficulty": 3.53072398,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-01T12:00:00.000Z",
+						"reps": 1,
+						"lapses": 0,
+						"scheduled_days": 3,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-01T12:10:30.000Z",
+					"expected": {
+						"due_at": "2026-11-12T12:10:30.000Z",
+						"stability": 5.71391472,
+						"stability_fast": 32.91907481,
+						"difficulty": 3.49771674,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-01T12:10:30.000Z",
+						"reps": 2,
+						"lapses": 0,
+						"scheduled_days": 11,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-02T09:00:00.000Z",
+					"expected": {
+						"due_at": "2026-11-22T09:00:00.000Z",
+						"stability": 9.71359814,
+						"stability_fast": 191.43556383,
+						"difficulty": 3.46503957,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-02T09:00:00.000Z",
+						"reps": 3,
+						"lapses": 0,
+						"scheduled_days": 20,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-05T20:15:00.000Z",
+					"expected": {
+						"due_at": "2026-12-20T20:15:00.000Z",
+						"stability": 16.4802269,
+						"stability_fast": 441.95109273,
+						"difficulty": 3.43268918,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-05T20:15:00.000Z",
+						"reps": 4,
+						"lapses": 0,
+						"scheduled_days": 45,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-15T08:00:00.000Z",
+					"expected": {
+						"due_at": "2027-02-05T08:00:00.000Z",
+						"stability": 28.93083484,
+						"stability_fast": 790.11035887,
+						"difficulty": 3.40066229,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-15T08:00:00.000Z",
+						"reps": 5,
+						"lapses": 0,
+						"scheduled_days": 82,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-12-20T08:00:00.000Z",
+					"expected": {
+						"due_at": "2027-07-04T08:00:00.000Z",
+						"stability": 59.71857792,
+						"stability_fast": 1313.18728056,
+						"difficulty": 3.36895567,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-12-20T08:00:00.000Z",
+						"reps": 6,
+						"lapses": 0,
+						"scheduled_days": 196,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2027-03-30T08:00:00.000Z",
+					"expected": {
+						"due_at": "2028-08-02T08:00:00.000Z",
+						"stability": 132.20354111,
+						"stability_fast": 2028.35242503,
+						"difficulty": 3.33756612,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2027-03-30T08:00:00.000Z",
+						"reps": 7,
+						"lapses": 0,
+						"scheduled_days": 491,
+						"learning_step": 0
+					}
+				}
+			]
+		},
+		{
+			"name": "erros-e-lapsos",
+			"note": "Errei no aprendizado, depois um lapso em revisão (reaprendendo) e volta.",
+			"cardId": "5d2a7e10-0c43-4b8f-a6d9-71e0c4b2f902",
+			"createdAt": "2026-11-01T12:00:00.000Z",
+			"steps": [
+				{
+					"rating": 1,
+					"reviewedAt": "2026-11-01T12:00:00.000Z",
+					"expected": {
+						"due_at": "2026-11-01T12:01:00.000Z",
+						"stability": 0.1104,
+						"stability_fast": 0.08832,
+						"difficulty": 6.1686,
+						"state": 1,
+						"schedule_status": "learning",
+						"last_review_at": "2026-11-01T12:00:00.000Z",
+						"reps": 1,
+						"lapses": 0,
+						"scheduled_days": 0.0006944444444444445,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 1,
+					"reviewedAt": "2026-11-01T12:01:10.000Z",
+					"expected": {
+						"due_at": "2026-11-01T12:02:10.000Z",
+						"stability": 0.05467431,
+						"stability_fast": 0.00889944,
+						"difficulty": 8.82585495,
+						"state": 1,
+						"schedule_status": "learning",
+						"last_review_at": "2026-11-01T12:01:10.000Z",
+						"reps": 2,
+						"lapses": 0,
+						"scheduled_days": 0.0006944444444444445,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-01T12:02:30.000Z",
+					"expected": {
+						"due_at": "2026-11-01T12:12:30.000Z",
+						"stability": 0.20316873,
+						"stability_fast": 4.50627553,
+						"difficulty": 8.7398964,
+						"state": 1,
+						"schedule_status": "learning",
+						"last_review_at": "2026-11-01T12:02:30.000Z",
+						"reps": 3,
+						"lapses": 0,
+						"scheduled_days": 0.006944444444444444,
+						"learning_step": 1
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-01T12:13:00.000Z",
+					"expected": {
+						"due_at": "2026-11-02T12:13:00.000Z",
+						"stability": 0.37948622,
+						"stability_fast": 12.96205121,
+						"difficulty": 8.65479744,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-01T12:13:00.000Z",
+						"reps": 4,
+						"lapses": 0,
+						"scheduled_days": 1,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-02T18:00:00.000Z",
+					"expected": {
+						"due_at": "2026-11-04T18:00:00.000Z",
+						"stability": 1.21892951,
+						"stability_fast": 64.41549035,
+						"difficulty": 8.57054947,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-02T18:00:00.000Z",
+						"reps": 5,
+						"lapses": 0,
+						"scheduled_days": 2,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 1,
+					"reviewedAt": "2026-11-08T07:30:00.000Z",
+					"expected": {
+						"due_at": "2026-11-08T07:40:00.000Z",
+						"stability": 0.54059314,
+						"stability_fast": 0.43247452,
+						"difficulty": 9.4372025,
+						"state": 3,
+						"schedule_status": "learning",
+						"last_review_at": "2026-11-08T07:30:00.000Z",
+						"reps": 6,
+						"lapses": 1,
+						"scheduled_days": 0.006944444444444444,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-08T07:41:00.000Z",
+					"expected": {
+						"due_at": "2026-11-09T07:41:00.000Z",
+						"stability": 0.93505402,
+						"stability_fast": 7.6240866,
+						"difficulty": 9.34513048,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-08T07:41:00.000Z",
+						"reps": 7,
+						"lapses": 1,
+						"scheduled_days": 1,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 2,
+					"reviewedAt": "2026-11-09T21:00:00.000Z",
+					"expected": {
+						"due_at": "2026-11-10T21:00:00.000Z",
+						"stability": 1.68066562,
+						"stability_fast": 29.81768855,
+						"difficulty": 9.51912078,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-09T21:00:00.000Z",
+						"reps": 8,
+						"lapses": 1,
+						"scheduled_days": 1,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-12T10:00:00.000Z",
+					"expected": {
+						"due_at": "2026-11-14T10:00:00.000Z",
+						"stability": 3.20990983,
+						"stability_fast": 71.30720165,
+						"difficulty": 9.42622957,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-12T10:00:00.000Z",
+						"reps": 9,
+						"lapses": 1,
+						"scheduled_days": 2,
+						"learning_step": 0
+					}
+				}
+			]
+		},
+		{
+			"name": "facil-e-dificil",
+			"note": "Fácil direto do novo, depois Difícil e Fácil em revisão.",
+			"cardId": "a7c41f88-2e0b-4c55-8d13-9b6e2f7a0c03",
+			"createdAt": "2026-10-20T08:00:00.000Z",
+			"steps": [
+				{
+					"rating": 4,
+					"reviewedAt": "2026-11-01T12:00:00.000Z",
+					"expected": {
+						"due_at": "2026-12-22T12:00:00.000Z",
+						"stability": 11.7841,
+						"stability_fast": 9.42728,
+						"difficulty": 1,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-01T12:00:00.000Z",
+						"reps": 1,
+						"lapses": 0,
+						"scheduled_days": 51,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 2,
+					"reviewedAt": "2026-11-10T12:00:00.000Z",
+					"expected": {
+						"due_at": "2026-12-18T12:00:00.000Z",
+						"stability": 19.05884117,
+						"stability_fast": 199.31583509,
+						"difficulty": 4.636193,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-10T12:00:00.000Z",
+						"reps": 2,
+						"lapses": 0,
+						"scheduled_days": 38,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 4,
+					"reviewedAt": "2026-11-25T12:00:00.000Z",
+					"expected": {
+						"due_at": "2027-04-19T12:00:00.000Z",
+						"stability": 36.84784572,
+						"stability_fast": 548.73550456,
+						"difficulty": 2.42044898,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-25T12:00:00.000Z",
+						"reps": 3,
+						"lapses": 0,
+						"scheduled_days": 145,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 2,
+					"reviewedAt": "2027-01-15T12:00:00.000Z",
+					"expected": {
+						"due_at": "2027-05-25T12:00:00.000Z",
+						"stability": 62.61261707,
+						"stability_fast": 940.17101242,
+						"difficulty": 5.46733037,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2027-01-15T12:00:00.000Z",
+						"reps": 4,
+						"lapses": 0,
+						"scheduled_days": 130,
+						"learning_step": 0
+					}
+				}
+			]
+		},
+		{
+			"name": "atrasado-e-adiantado",
+			"note": "Revisão muito atrasada (meses) e revisão antes do vencimento.",
+			"cardId": "c3e85b21-9f7d-4a2c-b0e4-5d1f6a8c9b04",
+			"createdAt": "2026-06-01T00:00:00.000Z",
+			"steps": [
+				{
+					"rating": 3,
+					"reviewedAt": "2026-06-01T10:00:00.000Z",
+					"expected": {
+						"due_at": "2026-06-06T10:00:00.000Z",
+						"stability": 3.9221,
+						"stability_fast": 3.13768,
+						"difficulty": 3.53072398,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-06-01T10:00:00.000Z",
+						"reps": 1,
+						"lapses": 0,
+						"scheduled_days": 5,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-06-01T10:10:00.000Z",
+					"expected": {
+						"due_at": "2026-06-10T10:10:00.000Z",
+						"stability": 5.69148946,
+						"stability_fast": 32.23815599,
+						"difficulty": 3.49771674,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-06-01T10:10:00.000Z",
+						"reps": 2,
+						"lapses": 0,
+						"scheduled_days": 9,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-06-02T10:00:00.000Z",
+					"expected": {
+						"due_at": "2026-06-22T10:00:00.000Z",
+						"stability": 9.85145902,
+						"stability_fast": 197.05150269,
+						"difficulty": 3.46503957,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-06-02T10:00:00.000Z",
+						"reps": 3,
+						"lapses": 0,
+						"scheduled_days": 20,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-11T10:00:00.000Z",
+					"expected": {
+						"due_at": "2027-04-17T10:00:00.000Z",
+						"stability": 49.585956,
+						"stability_fast": 813.67467259,
+						"difficulty": 3.43268918,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-11T10:00:00.000Z",
+						"reps": 4,
+						"lapses": 0,
+						"scheduled_days": 157,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-12T10:00:00.000Z",
+					"expected": {
+						"due_at": "2027-05-03T10:00:00.000Z",
+						"stability": 54.9336246,
+						"stability_fast": 937.86224911,
+						"difficulty": 3.40066229,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-12T10:00:00.000Z",
+						"reps": 5,
+						"lapses": 0,
+						"scheduled_days": 172,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 1,
+					"reviewedAt": "2026-11-12T10:05:00.000Z",
+					"expected": {
+						"due_at": "2026-11-13T07:27:06.012Z",
+						"stability": 7.15064365,
+						"stability_fast": 0.39807685,
+						"difficulty": 9.2467734,
+						"state": 3,
+						"schedule_status": "learning",
+						"last_review_at": "2026-11-12T10:05:00.000Z",
+						"reps": 6,
+						"lapses": 1,
+						"scheduled_days": 0.8903473697896866,
+						"learning_step": 0
+					}
+				}
+			]
+		},
+		{
+			"name": "fora-de-ordem",
+			"note": "O log chega fora de ordem (o aparelho estava offline). Os passos estão em ordem de reviewed_at, que é como o servidor reaplica; o campo arrivalOrder mostra a ordem em que chegaram.",
+			"cardId": "e1f02d3c-7b6a-4958-8e2f-0a9c1b3d4e05",
+			"createdAt": "2026-11-01T09:00:00.000Z",
+			"arrivalOrder": [
+				0,
+				1,
+				3,
+				2,
+				4
+			],
+			"steps": [
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-01T09:00:00.000Z",
+					"expected": {
+						"due_at": "2026-11-07T09:00:00.000Z",
+						"stability": 3.9221,
+						"stability_fast": 3.13768,
+						"difficulty": 3.53072398,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-01T09:00:00.000Z",
+						"reps": 1,
+						"lapses": 0,
+						"scheduled_days": 6,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-01T09:12:00.000Z",
+					"expected": {
+						"due_at": "2026-11-09T09:12:00.000Z",
+						"stability": 5.77487022,
+						"stability_fast": 34.82732576,
+						"difficulty": 3.49771674,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-01T09:12:00.000Z",
+						"reps": 2,
+						"lapses": 0,
+						"scheduled_days": 8,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 2,
+					"reviewedAt": "2026-11-03T22:00:00.000Z",
+					"expected": {
+						"due_at": "2026-11-11T22:00:00.000Z",
+						"stability": 9.41292944,
+						"stability_fast": 165.9089167,
+						"difficulty": 6.09766451,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-03T22:00:00.000Z",
+						"reps": 3,
+						"lapses": 0,
+						"scheduled_days": 8,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 3,
+					"reviewedAt": "2026-11-04T07:00:00.000Z",
+					"expected": {
+						"due_at": "2026-11-19T07:00:00.000Z",
+						"stability": 12.11498839,
+						"stability_fast": 233.41831562,
+						"difficulty": 6.03898787,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-04T07:00:00.000Z",
+						"reps": 4,
+						"lapses": 0,
+						"scheduled_days": 15,
+						"learning_step": 0
+					}
+				},
+				{
+					"rating": 4,
+					"reviewedAt": "2026-11-09T07:00:00.000Z",
+					"expected": {
+						"due_at": "2026-12-22T07:00:00.000Z",
+						"stability": 20.55922933,
+						"stability_fast": 435.05487294,
+						"difficulty": 4.37717528,
+						"state": 2,
+						"schedule_status": "review",
+						"last_review_at": "2026-11-09T07:00:00.000Z",
+						"reps": 5,
+						"lapses": 0,
+						"scheduled_days": 43,
+						"learning_step": 0
+					}
+				}
+			]
+		}
+	]
+}

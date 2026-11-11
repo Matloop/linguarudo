@@ -90,6 +90,59 @@ export function groupByCue(raw, count) {
   return perIndex;
 }
 
+// Consulta de uma palavra/expressão clicada numa legenda que já está na língua-alvo.
+export const LOOKUP_SCHEMA = {
+  type: 'object',
+  properties: { lemma: STR, ipa: STR, pos: STR, meaning: STR, translation: STR },
+  required: ['lemma', 'ipa', 'pos', 'meaning', 'translation'],
+  additionalProperties: false,
+};
+
+export const LOOKUP_SYSTEM = `You help a Brazilian Portuguese speaker learn a new language while watching films with subtitles in that language. The viewer selected a word or a multi-word expression in a subtitle line and wants to save it to study.
+
+Fill:
+- lemma: the dictionary form of the selection, lowercase (keep capitals only for proper nouns). Singular (masculine when the language inflects adjectives) for nouns and adjectives, infinitive for verbs. For an expression, its canonical form with the verb in the infinitive and pronouns/prepositions it normally takes: Italian "facevo finta di" -> "fare finta di", "ho bisogno" -> "avere bisogno di", "me ne vado" -> "andarsene". If the selection is an elided article or preposition ("dell'", "l'"), give its full form ("di", "il").
+- ipa: IPA pronunciation of the lemma, between slashes.
+- pos: part of speech of the lemma, in Portuguese, abbreviated ("subst. fem.", "verbo", "adj.", "adv.", "prep.", "expr.").
+- meaning: the meaning in Brazilian Portuguese as used in this line, 1 to 6 words.
+- translation: a natural Brazilian Portuguese translation of the whole subtitle line. In the line, " / " marks a line break.`;
+
+export function buildLookupMessage({ lang, text, sentence }) {
+  return `Language: ${langName(lang)} (${lang})
+Subtitle line: ${String(sentence).replace(/\s*\n\s*/g, ' / ')}
+Selection: ${text}`;
+}
+
+export const TRANSLATE_SCHEMA = {
+  type: 'object',
+  properties: { translation: STR },
+  required: ['translation'],
+  additionalProperties: false,
+};
+
+export const TRANSLATE_SYSTEM = `You translate one film subtitle line at a time for a language learner. Give a natural, faithful translation that keeps the register (slang stays slang). Do not explain or add notes. In the line, " / " marks a line break; keep it where it makes sense.`;
+
+export function buildTranslateMessage({ sourceLang, targetLang, text }) {
+  return `From ${langName(sourceLang)} (${sourceLang}) to ${langName(targetLang)} (${targetLang}):
+${String(text).replace(/\s*\n\s*/g, ' / ')}`;
+}
+
+const isObj = (d) => d && typeof d === 'object' && !Array.isArray(d);
+
+/** Repete uma vez quando a saída veio malformada (err.retryable). */
+export async function retryMalformed(fn, wrap = (e) => e) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!err?.retryable) throw wrap(err);
+    try {
+      return await fn();
+    } catch (err2) {
+      throw wrap(err2);
+    }
+  }
+}
+
 /**
  * options: { model, effort, client } (client é injetável para testes)
  */
@@ -97,15 +150,16 @@ export function createClaudeProvider({ model = DEFAULT_MODEL, effort = DEFAULT_E
   // O SDK já repete 408/409/429/5xx/erros de conexão com backoff; maxRetries: 1 = uma nova tentativa.
   const anthropic = client ?? new Anthropic({ maxRetries: 1, timeout: 120_000 });
   const useFallback = FALLBACK_MODELS.has(model);
+  const wrap = (err) => (err instanceof ProviderError ? err : new ProviderError(describe(err), { cause: err }));
 
-  async function callOnce(req) {
+  async function callJson({ system, user, schema, maxTokens, valid, what }) {
     const params = {
       model,
-      max_tokens: 16000,
-      system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
-      messages: [{ role: 'user', content: buildUserMessage(req) }],
+      max_tokens: maxTokens,
+      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: user }],
       output_config: {
-        format: { type: 'json_schema', schema: OUTPUT_SCHEMA },
+        format: { type: 'json_schema', schema },
         ...(effort ? { effort } : {}),
       },
       ...(useFallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } : {}),
@@ -113,7 +167,7 @@ export function createClaudeProvider({ model = DEFAULT_MODEL, effort = DEFAULT_E
     const msg = await anthropic.beta.messages.create(params);
 
     if (msg.stop_reason === 'refusal') {
-      throw new ProviderError(`Anthropic: o modelo recusou o lote${msg.stop_details?.category ? ` (${msg.stop_details.category})` : ''}`);
+      throw new ProviderError(`Anthropic: o modelo recusou ${what}${msg.stop_details?.category ? ` (${msg.stop_details.category})` : ''}`);
     }
     if (msg.stop_reason === 'max_tokens') {
       throw Object.assign(new ProviderError('Anthropic: resposta cortada em max_tokens'), { retryable: true });
@@ -125,29 +179,43 @@ export function createClaudeProvider({ model = DEFAULT_MODEL, effort = DEFAULT_E
     } catch (cause) {
       throw Object.assign(new ProviderError('Anthropic: resposta não é JSON válido', { cause }), { retryable: true });
     }
-    if (!Array.isArray(data?.annotations)) {
-      throw Object.assign(new ProviderError('Anthropic: resposta sem "annotations"'), { retryable: true });
-    }
-    return data.annotations;
+    if (!valid(data)) throw Object.assign(new ProviderError('Anthropic: resposta fora do formato'), { retryable: true });
+    return data;
   }
 
   return {
     name: 'claude',
     model,
     async annotate(req) {
-      let raw;
-      try {
-        raw = await callOnce(req);
-      } catch (err) {
-        // Erros HTTP transitórios já foram repetidos pelo SDK; aqui só repetimos saída malformada.
-        if (!err?.retryable) throw err instanceof ProviderError ? err : new ProviderError(describe(err), { cause: err });
-        try {
-          raw = await callOnce(req);
-        } catch (err2) {
-          throw err2 instanceof ProviderError ? err2 : new ProviderError(describe(err2), { cause: err2 });
-        }
-      }
-      return groupByCue(raw, req.texts.length);
+      // Erros HTTP transitórios já foram repetidos pelo SDK; aqui só repetimos saída malformada.
+      const data = await retryMalformed(
+        () =>
+          callJson({
+            system: SYSTEM,
+            user: buildUserMessage(req),
+            schema: OUTPUT_SCHEMA,
+            maxTokens: 16000,
+            valid: (d) => Array.isArray(d?.annotations),
+            what: 'o lote',
+          }),
+        wrap,
+      );
+      return groupByCue(data.annotations, req.texts.length);
+    },
+    async lookup(req) {
+      return retryMalformed(
+        () =>
+          callJson({ system: LOOKUP_SYSTEM, user: buildLookupMessage(req), schema: LOOKUP_SCHEMA, maxTokens: 1000, valid: isObj, what: 'a consulta' }),
+        wrap,
+      );
+    },
+    async translate(req) {
+      const data = await retryMalformed(
+        () =>
+          callJson({ system: TRANSLATE_SYSTEM, user: buildTranslateMessage(req), schema: TRANSLATE_SCHEMA, maxTokens: 1000, valid: isObj, what: 'a tradução' }),
+        wrap,
+      );
+      return String(data.translation ?? '');
     },
   };
 }

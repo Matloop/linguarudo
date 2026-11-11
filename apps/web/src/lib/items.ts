@@ -12,6 +12,7 @@ export const LIMITS = {
 	form: 80,
 	sentence: 500,
 	highlight: 80,
+	translation: 1000,
 	title: 200,
 	subtitle: 200,
 	path: 500,
@@ -165,6 +166,8 @@ export type WorkRefs = {
 	season?: number;
 	episode?: number;
 	path?: string;
+	/** Hash parcial do KOSync do arquivo do livro (32 hex), do e-reader. */
+	ko_hash?: string;
 };
 
 export type WorkEntry =
@@ -177,13 +180,22 @@ export type WorkEntry =
 			language: Language | null;
 	  };
 
-export type Position = { seconds?: number; page?: number };
+export type Position = {
+	seconds?: number;
+	page?: number;
+	/** Livro no e-reader: título do capítulo, índice no spine e progresso (0–100). */
+	chapter?: string;
+	spine?: number;
+	percent?: number;
+};
 
 export type EncounterEntry = {
 	form: string;
 	sentence: string;
 	highlight: string;
 	sense: string;
+	/** A frase traduzida para a língua nativa (ex.: a fala do filme em PT). */
+	translation?: string;
 	position: Position;
 	origin: Origin;
 	seen_at: string | null;
@@ -284,12 +296,14 @@ function parseEncounter(raw: unknown, defaultOrigin: Origin): EncounterEntry | {
 	const clientId = asString(e.clientId);
 	if (clientId && !UUID.test(clientId)) return { error: 'encounter.clientId deve ser um UUID' };
 	const highlight = normalizeLemma(asString(e.highlight));
+	const translation = clip(e.translation, LIMITS.translation);
 	return {
 		form: clip(e.form, LIMITS.form, normalizeLemma),
 		sentence: clip(e.sentence, LIMITS.sentence),
 		// Destaque cortado não destacaria nada: longo demais some.
 		highlight: charLength(highlight) <= LIMITS.highlight ? highlight : '',
 		sense: clip(e.sense, LIMITS.sense),
+		...(translation ? { translation } : {}),
 		position: parsePosition(e.position),
 		origin: origin as Origin,
 		seen_at: isoDate(e.seenAt),
@@ -344,12 +358,25 @@ function clock(totalSeconds: number): string {
 	return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
-/** De onde veio o encontro: "Kaguya · T1E2, 42:10", "Volare · Modugno". */
+/**
+ * De onde veio o encontro: "Kaguya · T1E2, 42:10", "Volare · Modugno" e, no livro do
+ * e-reader, "O nome da rosa · Primeiro dia · 12%".
+ */
 export function formatWorkSource(
 	work: { title: string; subtitle: string } | null,
 	position: unknown
 ): string {
-	const seconds = wholeNumber(record(position)?.seconds, LIMITS.seconds);
+	const pos = record(position);
+	const chapter = asString(pos?.chapter).trim();
+	const percent =
+		typeof pos?.percent === 'number' && Number.isFinite(pos.percent) && pos.percent >= 0
+			? Math.min(100, Math.floor(pos.percent))
+			: undefined;
+	if (chapter || percent !== undefined) {
+		const parts = [work?.title ?? '', chapter, percent === undefined ? '' : `${percent}%`];
+		return parts.filter(Boolean).join(' · ');
+	}
+	const seconds = wholeNumber(pos?.seconds, LIMITS.seconds);
 	const name = work ? [work.title, work.subtitle].filter(Boolean).join(' · ') : '';
 	return [name, seconds === undefined ? '' : clock(seconds)].filter(Boolean).join(', ');
 }

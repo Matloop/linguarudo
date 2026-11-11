@@ -1,0 +1,9 @@
+{
+	"400 bad_request": { "message": "Mande { protocol, deviceNow, ops: [...] } com até 200 operações.", "code": "bad_request" },
+	"401 invalid_token": { "message": "Token inválido ou revogado.", "code": "invalid_token" },
+	"410 page_expired": { "message": "A página do snapshot expirou. Comece de novo.", "code": "page_expired" },
+	"413 payload_too_large": { "message": "Corpo maior que 512 KB.", "code": "payload_too_large" },
+	"426 protocol_unsupported": { "message": "Versão de protocolo não suportada.", "code": "protocol_unsupported", "supported": [1] },
+	"429 rate_limited": { "message": "Muitas tentativas. Espere um pouco.", "code": "rate_limited", "retryAfter": 60 },
+	"500 server_error": { "message": "Não deu para falar com o banco agora.", "code": "server_error" }
+}

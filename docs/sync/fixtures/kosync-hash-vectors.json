@@ -1,0 +1,64 @@
+{
+	"generatedBy": "docs/sync/fixtures/generate-kosync-vectors.ts",
+	"content": "byte[k] = (k * 31 + 7) mod 256, para k = 0 .. size-1",
+	"offsets": [
+		0,
+		1024,
+		4096,
+		16384,
+		65536,
+		262144,
+		1048576,
+		4194304,
+		16777216,
+		67108864,
+		268435456,
+		1073741824
+	],
+	"cases": [
+		{
+			"size": 0,
+			"hash": "d41d8cd98f00b204e9800998ecf8427e"
+		},
+		{
+			"size": 1,
+			"hash": "89e74e640b8c46257a29de0616794d5d"
+		},
+		{
+			"size": 200,
+			"hash": "4c1e627a4bcc5ffb25084afedb8477c8"
+		},
+		{
+			"size": 1024,
+			"hash": "63b2177a7af739b5cc52ab1d1c714702"
+		},
+		{
+			"size": 1025,
+			"hash": "31d56d8e673d2856b7a4eee144ee8275"
+		},
+		{
+			"size": 1500,
+			"hash": "af9c96c4a71b9d281d66b79ec8281c1b"
+		},
+		{
+			"size": 5000,
+			"hash": "5ed57c7e8b80bdccb94703bbbbe792b7"
+		},
+		{
+			"size": 70000,
+			"hash": "7c495b34b24f561520622156e96f834d"
+		},
+		{
+			"size": 1100000,
+			"hash": "9176994efdf840ffd6a4fb8d1cd31fb1"
+		},
+		{
+			"size": 5000000,
+			"hash": "4448bc4b5b98051a0a8f767b1d69ebcb"
+		},
+		{
+			"size": 20000000,
+			"hash": "4aecf4a98c45aeb2066cb2ddc66e3ee2"
+		}
+	]
+}

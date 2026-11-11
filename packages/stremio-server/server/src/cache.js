@@ -11,13 +11,18 @@ export function cacheKey({ provider, model, sourceLang, targetLang, density, tex
   return createHash('sha256').update(payload).digest('hex');
 }
 
+/** Chave das consultas (lookup/translate): tipo + provider/modelo + partes do pedido. */
+export function lookupKey(kind, provider, model, parts) {
+  return createHash('sha256').update(JSON.stringify([`${kind}-v1`, provider, model ?? '', ...parts])).digest('hex');
+}
+
 export function createDiskCache(dir) {
   return {
     dir,
     async get(key) {
       try {
         const data = JSON.parse(await readFile(join(dir, key.slice(0, 2), `${key}.json`), 'utf8'));
-        return Array.isArray(data?.annotations) ? data.annotations : null;
+        return data?.annotations ?? null;
       } catch {
         return null;
       }

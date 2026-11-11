@@ -1,0 +1,78 @@
+{
+	"protocol": 1,
+	"serverNow": "2026-11-11T21:30:01.208Z",
+	"results": [
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625100",
+			"status": "duplicate",
+			"itemId": "7a1e4c90-5b2d-4f3a-9e8c-1d2f3a4b5c01",
+			"cardId": "0b9f3c2e-6a51-4d7e-9c1a-3f2b8d4e5a01",
+			"created": false,
+			"encounterId": "0d1c2b3a-4f5e-4d6c-9b8a-7f6e5d4c3b01"
+		},
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625101",
+			"status": "applied",
+			"cardId": "5d2a7e10-0c43-4b8f-a6d9-71e0c4b2f902",
+			"card": {
+				"id": "5d2a7e10-0c43-4b8f-a6d9-71e0c4b2f902",
+				"createdAt": "2026-11-03T10:00:00.000Z",
+				"dueAt": "2026-12-08T22:40:00.000Z",
+				"stability": 12.27853769,
+				"stabilityFast": 186.37954266,
+				"difficulty": 3.49771674,
+				"state": 2,
+				"scheduleStatus": "review",
+				"lastReviewAt": "2026-11-10T22:40:00.000Z",
+				"reps": 2,
+				"lapses": 0,
+				"scheduledDays": 28,
+				"learningStep": 0
+			}
+		},
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625102",
+			"status": "dropped",
+			"reason": "item_deleted"
+		},
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625103",
+			"status": "applied",
+			"itemId": "4e6f8a12-9b3c-4d5e-8f7a-6b5c4d3e2f03",
+			"cardId": "9c4b1d77-3e2f-4a60-b8c5-2d7e9f0a1b06",
+			"created": true,
+			"encounterId": "0d1c2b3a-4f5e-4d6c-9b8a-7f6e5d4c3b02"
+		},
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625104",
+			"status": "applied",
+			"cardId": "9c4b1d77-3e2f-4a60-b8c5-2d7e9f0a1b06",
+			"card": {
+				"id": "9c4b1d77-3e2f-4a60-b8c5-2d7e9f0a1b06",
+				"createdAt": "2026-11-11T21:30:01.000Z",
+				"dueAt": "2026-11-11T08:17:00.000Z",
+				"stability": 0.1104,
+				"stabilityFast": 0.08832,
+				"difficulty": 6.1686,
+				"state": 1,
+				"scheduleStatus": "learning",
+				"lastReviewAt": "2026-11-11T08:16:00.000Z",
+				"reps": 1,
+				"lapses": 0,
+				"scheduledDays": 0.0006944444444444445,
+				"learningStep": 0
+			}
+		},
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625105",
+			"status": "applied",
+			"itemId": "7a1e4c90-5b2d-4f3a-9e8c-1d2f3a4b5c01"
+		},
+		{
+			"clientId": "d4b3a2c1-0f9e-4d8c-b7a6-958473625106",
+			"status": "rejected",
+			"reason": "invalid",
+			"errors": { "lemma": "lema vazio" }
+		}
+	]
+}

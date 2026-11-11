@@ -55,10 +55,31 @@ export function findHits(text) {
   return hits;
 }
 
+// IT → entrada do dicionário (pela forma flexionada ou pelo lema), para a consulta do modo só-italiano.
+let IT_PT = null;
+function itIndex() {
+  if (IT_PT) return IT_PT;
+  IT_PT = new Map();
+  for (const [pt, e] of PT_IT) {
+    for (const k of [e.target.toLowerCase(), e.lemma]) if (!IT_PT.has(k)) IT_PT.set(k, { ...e, pt });
+  }
+  return IT_PT;
+}
+
 export function createMockProvider() {
   return {
     name: 'mock',
     model: 'mock-dict-v1',
+    // Sem LLM: acha a seleção no dicionário embutido (só IT); o resto volta vazio.
+    async lookup({ lang, text }) {
+      const key = text.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+      const e = lang === 'it' ? itIndex().get(key) : null;
+      if (!e) return { lemma: key, ipa: '', pos: '', meaning: '', translation: '' };
+      return { lemma: e.lemma, ipa: e.ipa, pos: e.pos, meaning: e.meaning, translation: '' };
+    },
+    async translate() {
+      return '';
+    },
     async annotate({ sourceLang, targetLang, density, texts, preferWords = [] }) {
       const result = texts.map(() => []);
       if (sourceLang !== 'pt' || targetLang !== 'it' || !(density > 0)) return result;

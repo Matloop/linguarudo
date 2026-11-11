@@ -18,7 +18,9 @@ export default defineConfig({
 			reuseExistingServer: !process.env.CI,
 			env: {
 				LRCLIB_URL: 'http://127.0.0.1:4599',
-				YOUTUBE_OEMBED_URL: 'http://127.0.0.1:4599/oembed'
+				YOUTUBE_OEMBED_URL: 'http://127.0.0.1:4599/oembed',
+				// Os e2e pareiam várias vezes do mesmo IP.
+				SYNC_PAIR_LIMITS: 'off'
 			}
 		}
 	],

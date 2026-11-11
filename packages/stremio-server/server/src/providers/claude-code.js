@@ -2,7 +2,20 @@
 // Claude (Pro/Max) logada no Claude Code em vez de uma ANTHROPIC_API_KEY.
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { OUTPUT_SCHEMA, ProviderError, SYSTEM, buildUserMessage, groupByCue } from './claude.js';
+import {
+  LOOKUP_SCHEMA,
+  LOOKUP_SYSTEM,
+  OUTPUT_SCHEMA,
+  ProviderError,
+  SYSTEM,
+  TRANSLATE_SCHEMA,
+  TRANSLATE_SYSTEM,
+  buildLookupMessage,
+  buildTranslateMessage,
+  buildUserMessage,
+  groupByCue,
+  retryMalformed,
+} from './claude.js';
 
 export const DEFAULT_CLI_MODEL = 'haiku';
 const TIMEOUT_MS = 180_000;
@@ -43,7 +56,7 @@ export function runCli(bin, args, input, { env = process.env, timeout = TIMEOUT_
   });
 }
 
-function parseResult(stdout) {
+function parseResult(stdout, valid = (d) => Array.isArray(d?.annotations)) {
   let out;
   try {
     out = JSON.parse(stdout);
@@ -63,42 +76,47 @@ function parseResult(stdout) {
       throw Object.assign(new ProviderError('Claude Code: resposta sem JSON estruturado', { cause }), { retryable: true });
     }
   }
-  if (!Array.isArray(data?.annotations)) {
-    throw Object.assign(new ProviderError('Claude Code: resposta sem "annotations"'), { retryable: true });
+  if (!valid(data)) {
+    throw Object.assign(new ProviderError('Claude Code: resposta fora do formato'), { retryable: true });
   }
-  return data.annotations;
+  return data;
 }
 
-/** options: { model, bin, run } (run é injetável para testes) */
-export function createClaudeCodeProvider({ model = DEFAULT_CLI_MODEL, bin = 'claude', run = runCli } = {}) {
-  const args = [
+function buildArgs(model, system, schema) {
+  return [
     '-p',
     '--model', model,
     '--output-format', 'json',
-    '--json-schema', JSON.stringify(OUTPUT_SCHEMA),
-    '--system-prompt', SYSTEM,
+    '--json-schema', JSON.stringify(schema),
+    '--system-prompt', system,
     '--tools', '',
     '--strict-mcp-config',
     '--setting-sources', '',
     '--no-session-persistence',
   ];
+}
 
-  async function callOnce(req) {
-    return parseResult(await run(bin, args, buildUserMessage(req)));
-  }
+const isObj = (d) => d && typeof d === 'object' && !Array.isArray(d);
+
+/** options: { model, bin, run } (run é injetável para testes) */
+export function createClaudeCodeProvider({ model = DEFAULT_CLI_MODEL, bin = 'claude', run = runCli } = {}) {
+  const annotateArgs = buildArgs(model, SYSTEM, OUTPUT_SCHEMA);
+  const lookupArgs = buildArgs(model, LOOKUP_SYSTEM, LOOKUP_SCHEMA);
+  const translateArgs = buildArgs(model, TRANSLATE_SYSTEM, TRANSLATE_SCHEMA);
 
   return {
     name: 'claude-code',
     model,
     async annotate(req) {
-      let raw;
-      try {
-        raw = await callOnce(req);
-      } catch (err) {
-        if (!err?.retryable) throw err;
-        raw = await callOnce(req);
-      }
-      return groupByCue(raw, req.texts.length);
+      const data = await retryMalformed(async () => parseResult(await run(bin, annotateArgs, buildUserMessage(req))));
+      return groupByCue(data.annotations, req.texts.length);
+    },
+    async lookup(req) {
+      return retryMalformed(async () => parseResult(await run(bin, lookupArgs, buildLookupMessage(req)), isObj));
+    },
+    async translate(req) {
+      const data = await retryMalformed(async () => parseResult(await run(bin, translateArgs, buildTranslateMessage(req)), isObj));
+      return String(data.translation ?? '');
     },
   };
 }

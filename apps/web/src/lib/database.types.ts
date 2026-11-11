@@ -12,27 +12,39 @@ export type Database = {
       api_tokens: {
         Row: {
           created_at: string
+          device_model: string
           id: string
+          kind: string
           label: string
           last_used_at: string | null
+          rate_count: number
+          rate_window_at: string | null
           token_hash: string
           token_hint: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          device_model?: string
           id?: string
+          kind?: string
           label?: string
           last_used_at?: string | null
+          rate_count?: number
+          rate_window_at?: string | null
           token_hash: string
           token_hint: string
           user_id?: string
         }
         Update: {
           created_at?: string
+          device_model?: string
           id?: string
+          kind?: string
           label?: string
           last_used_at?: string | null
+          rate_count?: number
+          rate_window_at?: string | null
           token_hash?: string
           token_hint?: string
           user_id?: string
@@ -118,6 +130,7 @@ export type Database = {
           seen_at: string
           sense: string
           sentence: string
+          translation: string
           user_id: string
           work_id: string | null
         }
@@ -134,6 +147,7 @@ export type Database = {
           seen_at?: string
           sense?: string
           sentence?: string
+          translation?: string
           user_id: string
           work_id?: string | null
         }
@@ -150,6 +164,7 @@ export type Database = {
           seen_at?: string
           sense?: string
           sentence?: string
+          translation?: string
           user_id?: string
           work_id?: string | null
         }
@@ -225,6 +240,7 @@ export type Database = {
         Row: {
           card_id: string
           client_id: string | null
+          duration_ms: number | null
           id: string
           rating: number
           received_at: string
@@ -234,6 +250,7 @@ export type Database = {
         Insert: {
           card_id: string
           client_id?: string | null
+          duration_ms?: number | null
           id?: string
           rating: number
           received_at?: string
@@ -243,6 +260,7 @@ export type Database = {
         Update: {
           card_id?: string
           client_id?: string | null
+          duration_ms?: number | null
           id?: string
           rating?: number
           received_at?: string
@@ -337,6 +355,7 @@ export type Database = {
         Args: { p_language: string; p_token: string }
         Returns: {
           cards: Json
+          forms: string[]
           id: string
           lemma: string
           sense: string
@@ -367,6 +386,65 @@ export type Database = {
           lemma: string
         }[]
       }
+      api_sync_begin: { Args: { p_token: string }; Returns: number }
+      api_sync_reject: {
+        Args: {
+          p_client_id: string
+          p_result: Json
+          p_token: string
+          p_type: string
+        }
+        Returns: Json
+      }
+      api_sync_review: {
+        Args: {
+          p_card_id: string
+          p_client_id: string
+          p_duration_ms: number
+          p_expected_reps: number
+          p_next: Json
+          p_rating: number
+          p_result: Json
+          p_reviewed_at: string
+          p_token: string
+          p_unlock_produce: boolean
+        }
+        Returns: Json
+      }
+      api_sync_review_target: {
+        Args: {
+          p_card_id: string
+          p_client_id: string
+          p_save_client_id: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      api_sync_save: {
+        Args: { p_at: string; p_client_id: string; p_entry: Json; p_token: string }
+        Returns: Json
+      }
+      api_sync_seen: {
+        Args: {
+          p_at: string
+          p_client_id: string
+          p_language: string
+          p_lemma: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      api_sync_snapshot: {
+        Args: {
+          p_after: string
+          p_day_start: string
+          p_language: string
+          p_limit: number
+          p_token: string
+        }
+        Returns: Json
+      }
+      api_sync_unpair: { Args: { p_token: string }; Returns: undefined }
       api_token_owner: { Args: { p_token: string }; Returns: string }
       open_work: { Args: { p_work: Json }; Returns: string }
       record_review: {
@@ -413,6 +491,48 @@ export type Database = {
           item_id: string
           language: string
           lemma: string
+        }[]
+      }
+      sync_pair_decide: {
+        Args: { p_approve: boolean; p_user_code: string }
+        Returns: string
+      }
+      sync_pair_lookup: {
+        Args: { p_user_code: string }
+        Returns: {
+          created_at: string
+          device_model: string
+          device_name: string
+          expires_at: string
+          firmware: string
+        }[]
+      }
+      sync_pair_poll: {
+        Args: {
+          p_device_code_hash: string
+          p_token_hash: string
+          p_token_hint: string
+        }
+        Returns: {
+          account: Json
+          device_name: string
+          poll_interval: number
+          status: string
+        }[]
+      }
+      sync_pair_start: {
+        Args: {
+          p_device_code_hash: string
+          p_device_model: string
+          p_device_name: string
+          p_enforce_limits?: boolean
+          p_firmware: string
+          p_ip_hash: string
+          p_user_code: string
+        }
+        Returns: {
+          retry_after: number
+          status: string
         }[]
       }
       undo_review: {

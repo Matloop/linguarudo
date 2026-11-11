@@ -1,0 +1,19 @@
+{
+	"pending": { "protocol": 1, "status": "pending", "interval": 5 },
+	"slow_down": { "protocol": 1, "status": "slow_down", "interval": 10 },
+	"denied": { "protocol": 1, "status": "denied" },
+	"expired": { "protocol": 1, "status": "expired" },
+	"approved": {
+		"protocol": 1,
+		"status": "approved",
+		"token": "lr_pY2vQ9xN4cM8bR1tK6wZ3aL7dF0hJ5sE2uG8oP4iT1k",
+		"tokenHint": "iT1k",
+		"deviceName": "X4 Pro",
+		"account": {
+			"id": "3f6c9a12-8d4e-4b7a-9c2f-1e0d5a6b7c80",
+			"email": "matheus@example.com",
+			"nativeLanguage": "pt",
+			"studyLanguages": ["it", "en"]
+		}
+	}
+}

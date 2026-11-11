@@ -178,6 +178,20 @@ describe('parseSaveEntry', () => {
 		});
 	});
 
+	test('encounter.translation: a frase na língua nativa, cortada no limite', () => {
+		const entry = (translation: unknown) => {
+			const r = parseSaveEntry(
+				{ language: 'it', lemma: 'fare finta di', encounter: { sentence: 'Facevo finta di dormire.', translation } },
+				'stremio'
+			);
+			return r.ok ? r.entry.encounter : undefined;
+		};
+		expect(entry('  Eu fingia que dormia. ')?.translation).toBe('Eu fingia que dormia.');
+		expect(entry('x'.repeat(1200))?.translation).toHaveLength(1000);
+		expect(entry('')).not.toHaveProperty('translation');
+		expect(entry(42)).not.toHaveProperty('translation');
+	});
+
 	test('só language e lemma são obrigatórios; item sem encontro vale', () => {
 		expect(parseSaveEntry({ language: 'ja', lemma: '猫' }, 'stremio')).toEqual({
 			ok: true,

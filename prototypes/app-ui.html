@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Linguarudo · nova UI do app</title>
+<style>
+.lr{
+  --verde:#0C4033;--verde2:#073026;--verde3:#145441;--salvia:#7FA886;--salvia2:#DCE8D6;
+  --creme:#FDF4E3;--papel:#FFFBF3;--linha:#ECE1CB;--linha2:#E2D5BB;
+  --coral:#F07C7C;--coral-esc:#D45E5E;--coral2:#FDE6E2;--ouro:#E0A458;--ouro-esc:#BF843A;--ouro2:#FBEBD3;
+  --azul:#6C8EBF;--azul-esc:#4F70A0;--azul2:#E3EAF5;
+  --tinta:#16302A;--suave:#5F726B;--claro:#93A39C;
+  --fonte:ui-rounded,"SF Pro Rounded","Nunito",system-ui,sans-serif;
+  font:15px/1.45 var(--fonte);color:var(--tinta);background:var(--creme);
+  border-radius:18px;overflow:hidden;container-type:inline-size;
+  display:grid;grid-template-columns:200px 1fr;min-height:760px;
+  -webkit-font-smoothing:antialiased;
+}
+.lr *{box-sizing:border-box}
+.lr h1,.lr h2,.lr h3,.lr p{margin:0}
+.lr button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.ic{width:22px;height:22px;flex:none}
+
+/* sidebar */
+.side{background:var(--papel);border-right:2px solid var(--linha);padding:20px 12px;display:flex;flex-direction:column;gap:4px}
+.marca{display:flex;align-items:center;gap:10px;padding:2px 10px 22px;font-weight:900;font-size:21px;color:var(--verde);letter-spacing:-.02em}
+.marca img{width:34px;height:34px;border-radius:10px}
+.nav{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:14px;border:2px solid transparent;font-weight:800;font-size:13.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--suave)}
+.nav:hover{background:#F6EEDD}
+.nav.on{background:var(--salvia2);border-color:#B9D3B4;color:var(--verde)}
+.nav .badge{margin-left:auto;background:var(--coral);color:#fff;border-radius:99px;font-size:11px;padding:1px 7px;letter-spacing:0}
+.side .fim{margin-top:auto}
+.lingua{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;border:2px solid var(--linha);font-weight:800;font-size:13px;margin-bottom:6px}
+.lingua .seta{margin-left:auto;color:var(--claro)}
+.bandeira{width:26px;height:18px;border-radius:5px;display:grid;place-items:center;font-size:10px;font-weight:900;color:#fff}
+
+/* corpo */
+.corpo{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:28px;padding:28px 32px;align-content:start}
+.topo{display:flex;align-items:end;justify-content:space-between;margin-bottom:18px}
+.topo h1{font-size:28px;font-weight:900;letter-spacing:-.02em}
+.topo small{color:var(--suave);font-weight:700}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+/* hero revisar */
+.hero{background:var(--verde);color:var(--creme);border-radius:22px;padding:22px 24px;display:flex;align-items:center;gap:20px;position:relative;overflow:hidden}
+.hero .txt{flex:1;min-width:0}
+.hero small{font-weight:800;letter-spacing:.08em;text-transform:uppercase;font-size:11.5px;color:var(--salvia)}
+.hero h2{font-size:22px;font-weight:900;margin:3px 0 4px}
+.hero p{color:#C9DCC9;font-size:14px}
+.hero img{width:92px;margin:-8px -4px -26px 0;transform:scaleX(-1)}
+.onda{display:block;width:100%;max-width:260px;height:14px;margin-top:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:14px;letter-spacing:.05em;text-transform:uppercase;border-radius:14px;padding:12px 20px;transition:transform .08s}
+.btn:active{transform:translateY(3px);box-shadow:none !important}
+.btn.coral{background:var(--coral);color:#fff;box-shadow:0 4px 0 var(--coral-esc)}
+.btn.verde{background:var(--verde);color:var(--creme);box-shadow:0 4px 0 var(--verde2)}
+.lr .btn.claro{background:#fff;color:var(--verde);border:2px solid var(--linha2);box-shadow:0 3px 0 var(--linha2);padding:10px 16px}
+
+/* guardar */
+.guardar{background:#fff;border:2px solid var(--linha);border-radius:20px;padding:14px;display:flex;gap:10px;align-items:center}
+.campo{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--papel);border:2px solid var(--linha);border-radius:14px;padding:10px 12px;color:var(--claro);font-weight:700}
+.campo.t{flex:.8}
+.seg{display:flex;background:var(--papel);border:2px solid var(--linha);border-radius:14px;padding:3px}
+.seg span{padding:7px 11px;border-radius:10px;font-weight:900;font-size:12.5px;color:var(--suave)}
+.seg .on{background:var(--verde);color:var(--creme)}
+.mais{width:46px;height:46px;border-radius:14px;background:var(--coral);box-shadow:0 4px 0 var(--coral-esc);display:grid;place-items:center;color:#fff;flex:none}
+
+/* filtros */
+.filtros{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.lr .chip{border:2px solid var(--linha);background:#fff;border-radius:99px;padding:6px 14px;font-weight:800;font-size:13px;color:var(--suave)}
+.lr .chip.on{background:var(--tinta);border-color:var(--tinta);color:var(--creme)}
+.busca{margin-left:auto;display:flex;align-items:center;gap:6px;color:var(--claro);font-weight:700;font-size:13px;border-bottom:2px solid var(--linha);padding:4px 2px}
+
+/* lista */
+.lista{display:flex;flex-direction:column;gap:10px}
+.pal{background:#fff;border:2px solid var(--linha);border-bottom-width:4px;border-radius:18px;padding:14px 16px;display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:center}
+.pal > div{min-width:0}
+.pal:hover{border-color:var(--linha2)}
+.orig{width:44px;height:44px;border-radius:14px;display:grid;place-items:center}
+.orig.filme{background:var(--azul2);color:var(--azul-esc)}
+.orig.musica{background:var(--ouro2);color:var(--ouro-esc)}
+.orig.manual{background:var(--salvia2);color:var(--verde)}
+.pal b{font-size:17px;font-weight:900}
+.tag{font-size:10.5px;font-weight:900;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:2px;color:#fff}
+.tag.it{background:var(--ouro)}.tag.en{background:var(--azul)}
+.pal .tr{color:var(--suave);font-weight:700}
+.pal .ctx{font-size:13px;color:var(--claro);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal .ctx mark{background:none;color:var(--verde);font-weight:800}
+.prox{display:flex;flex-direction:column;align-items:end;gap:6px}
+.quando{font-size:12px;font-weight:800;border-radius:99px;padding:3px 10px;white-space:nowrap}
+.quando.hoje{background:var(--coral2);color:var(--coral-esc)}
+.quando.dias{background:var(--salvia2);color:var(--verde)}
+.forca{display:flex;gap:3px}
+.forca i{width:14px;height:5px;border-radius:3px;background:var(--linha)}
+.forca i.f{background:var(--salvia)}
+
+/* trilho direito */
+.rail{display:flex;flex-direction:column;gap:16px}
+.box{background:#fff;border:2px solid var(--linha);border-radius:20px;padding:18px}
+.box h3{font-size:16px;font-weight:900;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.box h3 a{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--azul-esc);text-decoration:none}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{border-radius:14px;padding:10px;text-align:center;border:2px solid var(--linha)}
+.stat b{display:block;font-size:22px;font-weight:900}
+.stat span{font-size:11.5px;font-weight:800;color:var(--suave)}
+.stat.a b{color:var(--coral-esc)}.stat.b b{color:var(--ouro-esc)}.stat.c b{color:var(--verde)}
+.meta{display:flex;align-items:center;gap:12px}
+.meta .ico{width:42px;height:42px;border-radius:12px;background:var(--ouro2);display:grid;place-items:center;flex:none}
+.barra{flex:1}
+.barra p{font-weight:800;font-size:14px;margin-bottom:6px}
+.trilho{height:14px;border-radius:99px;background:var(--linha);position:relative;overflow:hidden}
+.trilho i{position:absolute;inset:0 auto 0 0;width:40%;background:var(--ouro);border-radius:99px}
+.trilho span{position:absolute;inset:0;display:grid;place-items:center;font-size:10.5px;font-weight:900;color:var(--tinta)}
+.musica{display:flex;gap:12px;align-items:center}
+.capa{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#6C8EBF,#3D4F8A);position:relative;flex:none;overflow:hidden}
+.capa::after{content:"";position:absolute;right:-14px;top:8px;width:40px;height:40px;border-radius:50%;background:#152033;box-shadow:inset 0 0 0 13px #152033,inset 0 0 0 16px #7FA886}
+.musica b{font-weight:900;display:block}
+.musica small{color:var(--suave);font-weight:700}
+.dica{background:var(--salvia2);border-color:#C5DBC0;display:flex;gap:12px;align-items:start}
+.dica img{width:52px;flex:none}
+.dica p{font-size:13.5px;color:var(--verde);font-weight:700}
+.dica b{display:block;font-weight:900;margin-bottom:2px}
+
+@container (max-width:1060px){
+  .lr .corpo{grid-template-columns:1fr}
+  .lr .rail{display:grid;grid-template-columns:repeat(2,1fr)}
+  .lr .rail .dica{display:none}
+}
+@container (max-width:780px){
+  .lr{grid-template-columns:64px 1fr}
+  .lr .nav .rot,.lr .marca span,.lr .lingua .rot,.lr .lingua .seta,.lr .nav .badge{display:none}
+  .lr .nav,.lr .lingua{justify-content:center;padding:10px}
+  .lr .marca{padding:2px 0 22px;justify-content:center}
+  .lr .corpo{padding:20px 16px}
+  .lr .rail{grid-template-columns:1fr}
+  .lr .campo.t,.lr .seg{display:none}
+  .lr .hero img{display:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-livro" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z" fill="#7FA886"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H19v3H6.5A1 1 0 0 1 4 20.5z" fill="#0C4033"/><path d="M9 7h6M9 10.5h4" stroke="#fff" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-cartas" viewBox="0 0 24 24"><rect x="3" y="6" width="12" height="15" rx="3" fill="#F9B4AC" transform="rotate(-10 9 13)"/><rect x="8" y="3.5" width="12" height="15" rx="3" fill="#F07C7C"/><path d="M11.5 11l2 2 3.5-4" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-nota" viewBox="0 0 24 24"><path d="M9 17V5.5l11-2.5v12" stroke="#BF843A" stroke-width="2.4" fill="none" stroke-linejoin="round"/><circle cx="6.5" cy="17.5" r="3.5" fill="#E0A458"/><circle cx="17.5" cy="15.5" r="3.5" fill="#E0A458"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><rect x="5" y="7" width="14" height="8" rx="3" fill="#6C8EBF"/><path d="M9 3v4M15 3v4M12 15v6" stroke="#4F70A0" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-perfil" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#DCE8D6"/><circle cx="12" cy="10" r="3.5" fill="#0C4033"/><path d="M5.5 18.5a7.5 7.5 0 0 1 13 0" fill="#0C4033"/></symbol>
+  <symbol id="i-filme" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></symbol>
+  <symbol id="i-musica" viewBox="0 0 24 24"><path d="M9 17V6l10-2v11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="6.5" cy="17" r="2.8" fill="currentColor"/><circle cx="16.5" cy="15" r="2.8" fill="currentColor"/></symbol>
+  <symbol id="i-lapis" viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M14 7l3 3" stroke="currentColor" stroke-width="2.2"/></symbol>
+  <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></symbol>
+  <symbol id="i-lupa" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-raio" viewBox="0 0 24 24"><path d="M13 2L5 13.5h6L10 22l9-12h-6.5z" fill="#E0A458"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></symbol>
+</svg>
+
+<div class="lr">
+  <aside class="side">
+    <div class="marca"><img src="/home/matheusdias/.t3/projects/linguarudo/prototypes/lg-icone.png" alt=""><span>linguarudo</span></div>
+    <a class="nav on"><svg class="ic"><use href="#i-livro"/></svg><span class="rot">Palavras</span></a>
+    <a class="nav"><svg class="ic"><use href="#i-cartas"/></svg><span class="rot">Revisar</span><span class="badge">12</span></a>
+    <a class="nav"><svg class="ic"><use href="#i-nota"/></svg><span class="rot">Música</span></a>
+    <a class="nav"><svg class="ic"><use href="#i-plug"/></svg><span class="rot">Integrações</span></a>
+    <div class="fim">
+      <div class="lingua"><span class="bandeira" style="background:#6C8EBF">EN</span><span class="rot">Inglês</span><span class="seta">▾</span></div>
+      <a class="nav"><svg class="ic"><use href="#i-perfil"/></svg><span class="rot">Perfil</span></a>
+    </div>
+  </aside>
+
+  <main class="corpo">
+    <div class="col">
+      <div class="topo"><h1>Minhas palavras</h1><small>126 no banco</small></div>
+
+      <section class="hero">
+        <div class="txt">
+          <small>Revisão de hoje</small>
+          <h2>12 palavras esperando</h2>
+          <p>Uns 4 minutos. As de hoje vêm de um filme e duas músicas.</p>
+          <svg class="onda" viewBox="0 0 260 14" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M2 7 Q 17 0 32 7 T 62 7 T 92 7 T 122 7 T 152 7 T 182 7 T 212 7 T 242 7 T 258 7" fill="none" stroke="#145441" stroke-width="4" stroke-linecap="round"/>
+            <path d="M2 7 Q 17 0 32 7 T 62 7 T 92 7 T 122 7 T 152 7 T 182 7 T 212 7 T 242 7 T 258 7" fill="none" stroke="#7FA886" stroke-width="4" stroke-linecap="round" pathLength="100" stroke-dasharray="35 100"/>
+          </svg>
+        </div>
+        <button class="btn coral">Revisar</button>
+        <img src="/home/matheusdias/.t3/projects/linguarudo/prototypes/lg-mascote.png" alt="">
+      </section>
+
+      <div class="guardar">
+        <div class="campo"><svg class="ic" style="width:18px;height:18px"><use href="#i-lapis"/></svg>Palavra ou expressão</div>
+        <div class="campo t">Tradução</div>
+        <div class="seg"><span class="on">EN</span><span>IT</span></div>
+        <button class="mais" aria-label="Guardar"><svg class="ic"><use href="#i-mais"/></svg></button>
+      </div>
+
+      <div class="filtros">
+        <button class="chip on">Todas</button><button class="chip">Para hoje</button><button class="chip">Do Stremio</button><button class="chip">Da música</button>
+        <span class="busca"><svg class="ic" style="width:16px;height:16px"><use href="#i-lupa"/></svg>Buscar</span>
+      </div>
+
+      <div class="lista">
+        <article class="pal">
+          <span class="orig musica"><svg class="ic"><use href="#i-musica"/></svg></span>
+          <div><b>invece</b><span class="tag it">IT</span><div class="tr">em vez disso</div><div class="ctx">“Prendiamo il treno, <mark>invece</mark>?” · Il tram delle sette, 1:12</div></div>
+          <div class="prox"><span class="quando hoje">hoje</span><span class="forca"><i class="f"></i><i></i><i></i><i></i></span></div>
+        </article>
+        <article class="pal">
+          <span class="orig filme"><svg class="ic"><use href="#i-filme"/></svg></span>
+          <div><b>sangue</b><span class="tag it">IT</span><div class="tr">sangue</div><div class="ctx">“Ela já derramou muito <mark>sangue</mark> inocente.” · Sintel, 1:52</div></div>
+          <div class="prox"><span class="quando dias">em 3 dias</span><span class="forca"><i class="f"></i><i class="f"></i><i></i><i></i></span></div>
+        </article>
+        <article class="pal">
+          <span class="orig musica"><svg class="ic"><use href="#i-musica"/></svg></span>
+          <div><b>busy</b><span class="tag en">EN</span><div class="tr">movimentado, ocupado</div><div class="ctx">“The city's <mark>busy</mark>, loud and grey” · Slow Bus to Saturday, 0:14</div></div>
+          <div class="prox"><span class="quando dias">em 9 dias</span><span class="forca"><i class="f"></i><i class="f"></i><i class="f"></i><i></i></span></div>
+        </article>
+        <article class="pal">
+          <span class="orig manual"><svg class="ic"><use href="#i-lapis"/></svg></span>
+          <div><b>to look forward to</b><span class="tag en">EN</span><div class="tr">aguardar ansiosamente</div><div class="ctx">Guardada à mão</div></div>
+          <div class="prox"><span class="quando dias">em 21 dias</span><span class="forca"><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i></span></div>
+        </article>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <div class="box">
+        <h3>Seu banco</h3>
+        <div class="stats">
+          <div class="stat a"><b>12</b><span>pra hoje</span></div>
+          <div class="stat b"><b>38</b><span>aprendendo</span></div>
+          <div class="stat c"><b>76</b><span>firmes</span></div>
+        </div>
+      </div>
+      <div class="box">
+        <h3>Meta do dia <a href="#">Ajustar</a></h3>
+        <div class="meta">
+          <span class="ico"><svg class="ic" style="width:26px;height:26px"><use href="#i-raio"/></svg></span>
+          <div class="barra"><p>Revise 10 palavras</p><div class="trilho"><i></i><span>4 / 10</span></div></div>
+        </div>
+      </div>
+      <div class="box">
+        <h3>Continue ouvindo <a href="#">Música</a></h3>
+        <div class="musica">
+          <span class="capa"></span>
+          <div style="flex:1;min-width:0"><b>Slow Bus to Saturday</b><small>EN · 3 de 6 lacunas</small></div>
+          <button class="btn verde" style="padding:10px 12px" aria-label="Tocar"><svg class="ic" style="width:18px;height:18px"><use href="#i-play"/></svg></button>
+        </div>
+      </div>
+      <div class="box dica">
+        <img src="/home/matheusdias/.t3/projects/linguarudo/prototypes/lg-mascote.png" alt="">
+        <p><b>Dica do Rudo</b>“Invece” no fim da pergunta soa natural: “Andiamo al mare, invece?”</p>
+      </div>
+    </aside>
+  </main>
+</div>
+</body>
+</html>

@@ -14,6 +14,7 @@
 	const newToken = $derived(form?.action === 'create' && 'token' in form ? form.token : null);
 	const message = $derived(form && 'message' in form ? form.message : null);
 	const connected = $derived(data.tokens.length > 0);
+	const paired = $derived(data.devices.length > 0);
 	const now = $derived(new Date(data.now));
 
 	const submitCreate: SubmitFunction = () => {
@@ -27,10 +28,17 @@
 
 	const submitRevoke: SubmitFunction = ({ formData }) => {
 		revoking = formData.get('id')?.toString() ?? null;
+		const device = formData.get('kind') === 'aparelho';
 		return async ({ update, result }) => {
 			await update();
 			revoking = null;
-			if (result.type === 'success') toast('Token revogado. Ele parou de funcionar.');
+			if (result.type === 'success') {
+				toast(
+					device
+						? 'Aparelho desconectado. Pareie de novo para sincronizar.'
+						: 'Token revogado. Ele parou de funcionar.'
+				);
+			}
 		};
 	};
 
@@ -165,13 +173,64 @@
 		</details>
 	</section>
 
-	<section class="tile ig soon" aria-labelledby="ereader-titulo">
+	<section class="tile ig" class:soon={!paired} aria-labelledby="ereader-titulo">
 		<div class="ig-h">
-			<span class="ig-logo"><Icon name="bookmark" /></span><span class="soon-tag">Em breve</span>
+			<span class="ig-logo"><Icon name="bookmark" /></span>
+			{#if paired}<span class="status">Pareado</span>{:else}<span class="soon-tag">Não pareado</span
+				>{/if}
 		</div>
 		<h2 class="ig-t" id="ereader-titulo">E-reader</h2>
 		<span class="ig-s">CrossNext</span>
-		<p>Marque uma palavra enquanto lê. Ela chega com a frase e a página.</p>
+		<p>
+			Salve uma palavra do blend enquanto lê. Ela chega com a frase e o capítulo, e a revisão do
+			aparelho entra na mesma fila.
+		</p>
+
+		<section class="tokens" aria-labelledby="aparelhos-titulo">
+			<h3 id="aparelhos-titulo">Aparelhos</h3>
+			{#if data.devices.length === 0}
+				<p class="vazio">Nenhum aparelho pareado.</p>
+			{:else}
+				<ul>
+					{#each data.devices as d (d.id)}
+						<li class:saindo={revoking === d.id}>
+							<div class="texto">
+								<p class="nome">{d.label} <code>…{d.token_hint}</code></p>
+								<p class="meta">
+									{#if d.model}{d.model} ·
+									{/if}Última sincronização: {when(d.last_used_at)}
+								</p>
+							</div>
+							<form method="POST" action="?/revoke" use:enhance={submitRevoke}>
+								<input type="hidden" name="id" value={d.id} />
+								<input type="hidden" name="kind" value="aparelho" />
+								<button
+									class="btn btn-ghost sm"
+									type="submit"
+									aria-label={`Revogar aparelho ${d.label} …${d.token_hint}`}
+								>
+									Revogar
+								</button>
+							</form>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+
+		<details class="como">
+			<summary>Como parear</summary>
+			<ol class="steps">
+				<li><span><b>No aparelho</b>Abra Linguetta e escolha Parear. Aparece um código.</span></li>
+				<li>
+					<span
+						><b>Aqui no app</b>Leia o QR ou abra <a href="/parear">a página de pareamento</a> e digite
+						o código.</span
+					>
+				</li>
+				<li><span><b>Aprove</b>O aparelho sincroniza sozinho quando tiver Wi-Fi.</span></li>
+			</ol>
+		</details>
 	</section>
 
 	<section class="tile ig soon" aria-labelledby="anki-titulo">
@@ -305,6 +364,11 @@
 	}
 	.soon .ig-logo {
 		color: var(--ink-3);
+	}
+	.como a {
+		color: var(--accent-ink);
+		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
 
 	.novo {

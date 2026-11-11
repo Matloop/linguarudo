@@ -1,0 +1,9 @@
+{
+	"protocol": 1,
+	"deviceCode": "Zk3pQ8vX1mN7cR2tY6wL0aB4dF9hJ5sE_uK8oP3iG7q",
+	"userCode": "K7Q-4MP",
+	"verificationUri": "https://linguarudo-app.vercel.app/parear",
+	"verificationUriComplete": "https://linguarudo-app.vercel.app/parear?code=K7Q4MP",
+	"expiresIn": 600,
+	"interval": 5
+}

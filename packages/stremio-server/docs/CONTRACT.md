@@ -132,7 +132,8 @@ O vocabulário é o do glossário do app (`CONTEXT.md`): **item** (palavra ou ex
   status: "ativo",             // "ativo" | "conhecido" (conhecido não entra na revisão)
   mastered: false,             // dominado: todo cartão em revisão com estabilidade >= 90 dias
   prefer: true,                // entra primeiro na legenda
-  cards: [{ kind: "reconhecer", state: 2, dueAt: "2026-11-10T12:00:00.000Z", stability: 12.5 }]
+  cards: [{ kind: "reconhecer", state: 2, dueAt: "2026-11-10T12:00:00.000Z", stability: 12.5 }],
+  forms: ["feste"]             // formas vistas nos encontros, minúsculas, sem o lema (até 20)
 }
 ```
 
@@ -140,6 +141,7 @@ O vocabulário é o do glossário do app (`CONTEXT.md`): **item** (palavra ou ex
 - `state` é o estado FSRS do cartão: 0 novo, 1 aprendendo, 2 revisão, 3 reaprendendo.
 - `prefer` vale para item ativo com algum cartão em 1 ou 3, ou em 2 com `dueAt` vencido. `preferWords` é a lista desses lemas, pronta para o `/annotate`.
 - Itens apagados não aparecem.
+- `forms` serve ao modo só língua-alvo (seção 6): uma palavra da legenda conta como do banco se for o lema ou uma dessas formas.
 
 ### `SaveItem`
 
@@ -158,6 +160,7 @@ Só `language` e `lemma` são obrigatórios. Textos longos demais são cortados;
     sentence: "Eu não quero só ir às feste.", // displayText
     highlight: "feste",            // o que o Revisar destaca na frase
     sense: "festas",               // sentido naquele contexto
+    translation: "",               // a frase na língua do usuário (modo só língua-alvo), até 1000
     position: { seconds: 2530 },   // ou { page } num livro
     seenAt: "2026-11-10T12:00:00.000Z",
     clientId: "uuid v4",           // idempotência: o mesmo clientId não cria outro encontro
@@ -204,3 +207,55 @@ No `stremio-web`:
 - **Primeira conexão** com um token: as palavras antigas de `lingoblend.savedWords` vão para a fila. Elas não têm lema, então o lema é a forma vista.
 - **No seu banco.** Se a palavra clicada já está no banco, o cartão mostra o selo "No seu banco" e a próxima revisão no lugar de Salvar. Item conhecido mostra "Você já conhece".
 - **Visto.** Os itens do banco que aparecem na legenda (evento `shown`) são enviados em lote a cada 15 s e ao fechar o player.
+
+## 6. Modo só língua-alvo ("Só italiano")
+
+O menu IT tem três modos: **Blend** (a legenda em português com palavras trocadas, seções 1 a 4), **Só <língua>** e **Desligado**. No modo só língua-alvo a legenda é uma faixa real na língua-alvo (addon ou `.srt`; faixas embutidas no MKV ficam fora da v1). Nenhuma fala é anotada antes: cada clique custa uma consulta.
+
+### `stremio-video`
+
+```js
+lingoBlend.setTargetMode({
+  matchLang: (lang) => boolean,     // a faixa conta como da língua-alvo?
+  elision: true,                    // corta no apóstrofo: "dell'anno" → "dell'" + "anno" (it, fr)
+  lemmaOf: (word) => lemma | null,  // lema do banco para sublinhar a palavra
+});
+lingoBlend.setTargetMode(null);     // volta ao Blend
+lingoBlend.clearSelection();        // o cartão fechou
+lingoBlend.getVisibleCues();        // [{ id, text }] das falas na tela
+```
+
+- O provider não é chamado. O status fica `target` (faixa na língua-alvo), `mismatch` (outra língua) ou `idle`.
+- Toda palavra vira `<span class="lingoblend-token" data-lingoblend-i>`. Palavra do banco ganha `data-lingoblend-known` e sublinhado discreto, e entra no evento `shown` como `{ lemma }` (conta como visto, sem mexer no FSRS).
+- `mousedown` numa palavra dispara `lingoblend:select` (`detail.phase: "start"`); o player pausa. Arrastar até outra palavra da mesma fala seleciona a expressão. No `mouseup` sai `lingoblend:word` com:
+
+```js
+{ mode: "target", text: "Facevo finta di", words: 3, cueText, displayText, lang, rect }
+```
+
+### Servidor: `POST /lookup`
+
+```js
+// pedido
+{ lang: "it", text: "facevo finta di", sentence: "Facevo finta di dormire, ma ti ho sentito." }
+// resposta
+{ lemma: "fare finta di", ipa: "/ˈfa.re ˈfin.ta di/", pos: "expr.", meaning: "fingir", translation: "Eu fingia dormir, mas te ouvi." }
+```
+
+- `lemma` é a forma canônica (infinitivo, singular; expressão no infinitivo). Sem lema, vale a seleção.
+- `text` até 80 caracteres, `sentence` até 500. Cache em disco pela seleção (sem diferenciar maiúsculas) e pela fala.
+
+### Servidor: `POST /translate`
+
+```js
+{ sourceLang: "it", targetLang: "pt", text: "Ciao!" }  // targetLang padrão "pt"
+→ { translation: "Oi!" }
+```
+
+Usado ao segurar **T**: a fala na tela em português, sem pausar. Cache em disco e no cliente.
+
+### No `stremio-web`
+
+- Ligar o modo escolhe a primeira faixa extra na língua-alvo, uma vez por vídeo; sem nenhuma, o menu mostra "Nenhuma legenda em italiano".
+- O cartão abre com esqueleto, chama `/lookup` e mostra lema, IPA, classe, "Nesta fala: <seleção>" e a fala traduzida. Salvar manda `SaveItem` com o lema canônico, `encounter.form` = seleção, `sentence` = a fala e `translation` = a fala traduzida.
+- Se o `/lookup` falhar, dá para salvar com a seleção como lema.

@@ -147,8 +147,18 @@ describe('apiItem', () => {
 			cards: [
 				{ kind: 'reconhecer', state: 2, dueAt: '2026-11-10T00:00:00Z', stability: 12.5 },
 				{ kind: 'produzir', state: 0, dueAt: '2026-11-11T00:00:00Z', stability: 0 }
-			]
+			],
+			forms: []
 		});
+	});
+
+	test('forms: grafias vistas, só strings', () => {
+		expect(apiItem({ ...row, forms: ['aspetto', 'aspettavo'] }, now).forms).toEqual([
+			'aspetto',
+			'aspettavo'
+		]);
+		expect(apiItem({ ...row, forms: ['ok', 3, null] }, now).forms).toEqual(['ok']);
+		expect(apiItem({ ...row, forms: null }, now).forms).toEqual([]);
 	});
 
 	test('cards fora do formato viram lista vazia', () => {

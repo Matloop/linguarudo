@@ -1,6 +1,6 @@
 # ADR 0002: Anki entra por importação, sem fork
 
-- Status: Accepted
+- Status: Superseded em parte pelo [ADR 0003](0003-flashcards-ficha-midia-apkg.md) (o import deixa de ser só vocabulário)
 - Date: 2026-11-11
 
 ## Decisão

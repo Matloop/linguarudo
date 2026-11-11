@@ -6,7 +6,8 @@ const PROTECTED_PREFIXES = [
 	'/revisar',
 	'/integracoes',
 	'/musica',
-	'/perfil'
+	'/perfil',
+	'/parear'
 ];
 
 /** Só aceita caminhos internos ("/algo"), para não virar open redirect. */

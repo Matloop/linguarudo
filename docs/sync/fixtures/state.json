@@ -1,0 +1,22 @@
+{
+	"v": 1,
+	"protocol": 1,
+	"server": "https://linguarudo-app.vercel.app",
+	"token": "lr_pY2vQ9xN4cM8bR1tK6wZ3aL7dF0hJ5sE2uG8oP4iT1k",
+	"tokenHint": "iT1k",
+	"deviceName": "X4 Pro",
+	"account": {
+		"id": "3f6c9a12-8d4e-4b7a-9c2f-1e0d5a6b7c80",
+		"email": "matheus@example.com",
+		"nativeLanguage": "pt",
+		"studyLanguages": [
+			"it",
+			"en"
+		]
+	},
+	"language": "it",
+	"cursor": "v1.MjAyNi0xMS0xMVQyMTozMDowMi40MTdaOjg4MjEz",
+	"lastSyncAt": "2026-11-11T21:30:03.020Z",
+	"lastSyncStatus": "ok",
+	"lastError": null
+}
