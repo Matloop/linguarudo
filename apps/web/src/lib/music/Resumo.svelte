@@ -88,7 +88,7 @@
 				{/if}
 			</h3>
 			<div class="chips">
-				{#each wrong as gap (gap.line)}
+				{#each wrong as gap (gap.key)}
 					{@const inBank = isInBank(gap.key)}
 					<span class="chip" class:nobk={inBank} class:err={!inBank}>
 						{gap.key}

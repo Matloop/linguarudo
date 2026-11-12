@@ -53,11 +53,13 @@ describe('bug: a sincronia mostra as palavras das lacunas', () => {
 		sim.start();
 		sim.run(2_000);
 		sim.send({ type: 'openSync' });
-		const open = sim.view.lines.filter((l) => l.hasGap && !l.result);
+		const open = sim.view.lines.flatMap((l) =>
+			l.gaps.filter((g) => !g.result).map((g) => [l, g] as const)
+		);
 		expect(open.length).toBeGreaterThan(0);
-		for (const line of open) {
-			const gap = sim.session.gaps.find((g) => g.line === line.index)!;
-			expect(line.parts[gap.token]).toEqual({ kind: 'gap', token: gap.token });
+		for (const [line, gap] of open) {
+			expect(line.parts[gap.token]).toMatchObject({ kind: 'gap', token: gap.token });
+			expect(line.parts[gap.token]).not.toHaveProperty('text');
 		}
 		noViolations(sim);
 	});

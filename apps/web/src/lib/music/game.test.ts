@@ -11,8 +11,8 @@ const config = (over: Partial<GameConfig> = {}): GameConfig => ({
 		{ start: 14, end: 18 }
 	],
 	gaps: [
-		{ line: 1, answer: 'bravo', options: OPTIONS },
-		{ line: 3, answer: 'delta', options: OPTIONS }
+		{ line: 1, token: 2, answer: 'bravo', options: OPTIONS },
+		{ line: 3, token: 2, answer: 'delta', options: OPTIONS }
 	],
 	...over
 });
@@ -63,12 +63,12 @@ describe('responder enquanto a linha toca', () => {
 	test('acertar soma 100 × combo e sobe o combo; a música segue tocando', () => {
 		const game = started();
 		game.tick(7, 10);
-		expect(game.answer('bravo')).toEqual([]);
+		expect(game.answer('bravo', 0)).toEqual([]);
 		expect(game.score).toBe(100);
 		expect(game.combo).toBe(2);
 		expect(game.phase).toBe('playing');
 		expect(game.results).toEqual([
-			{ line: 1, answer: 'bravo', chosen: 'bravo', ok: true, points: 100 }
+			{ gap: 0, line: 1, answer: 'bravo', chosen: 'bravo', ok: true, points: 100 }
 		]);
 		// Já respondida: a linha termina e o jogo não espera.
 		expect(game.tick(10.05, 1000)).toEqual([]);
@@ -78,12 +78,12 @@ describe('responder enquanto a linha toca', () => {
 
 	test('o combo vai até ×4 e os pontos acompanham', () => {
 		const lines = Array.from({ length: 6 }, (_, i) => ({ start: i * 4, end: i * 4 + 4 }));
-		const gaps = lines.map((_, line) => ({ line, answer: 'bravo', options: OPTIONS }));
+		const gaps = lines.map((_, line) => ({ line, token: 0, answer: 'bravo', options: OPTIONS }));
 		const game = new Game({ lines, gaps });
 		game.start();
 		lines.forEach((l, i) => {
 			game.tick(l.start + 1, i * 100);
-			game.answer('bravo');
+			game.answer('bravo', 0);
 		});
 		expect(game.results.map((r) => r.points)).toEqual([100, 200, 300, 400, 400, 400]);
 		expect(game.score).toBe(1800);
@@ -94,17 +94,18 @@ describe('responder enquanto a linha toca', () => {
 	test('errar zera o combo, não dá ponto e não tem segunda tentativa', () => {
 		const game = started();
 		game.tick(7, 10);
-		game.answer('charlie');
+		game.answer('charlie', 0);
 		expect(game.score).toBe(0);
 		expect(game.combo).toBe(1);
 		expect(game.results[0]).toEqual({
+			gap: 0,
 			line: 1,
 			answer: 'bravo',
 			chosen: 'charlie',
 			ok: false,
 			points: 0
 		});
-		expect(game.answer('bravo')).toEqual([]);
+		expect(game.answer('bravo', 0)).toEqual([]);
 		expect(game.results).toHaveLength(1);
 		expect(game.score).toBe(0);
 	});
@@ -112,14 +113,14 @@ describe('responder enquanto a linha toca', () => {
 	test('sem lacuna aberta, responder é ignorado', () => {
 		const game = started();
 		game.tick(3, 10);
-		game.answer('bravo');
+		game.answer('bravo', 0);
 		expect(game.results).toEqual([]);
 	});
 
 	test('opção que não existe é ignorada', () => {
 		const game = started();
 		game.tick(7, 10);
-		game.answer('zulu');
+		game.answer('zulu', 0);
 		expect(game.results).toEqual([]);
 		expect(game.answerable?.line).toBe(1);
 	});
@@ -146,7 +147,7 @@ describe('a linha acaba sem resposta', () => {
 
 	test('responder durante a espera retoma o vídeo', () => {
 		const { game } = waiting();
-		expect(game.answer('bravo')).toEqual([{ type: 'play' }]);
+		expect(game.answer('bravo', 0)).toEqual([{ type: 'play' }]);
 		expect(game.phase).toBe('playing');
 		expect(game.score).toBe(100);
 		expect(game.waitLine).toBeNull();
@@ -154,7 +155,7 @@ describe('a linha acaba sem resposta', () => {
 
 	test('errar durante a espera também retoma, mostrando a resposta', () => {
 		const { game } = waiting();
-		expect(game.answer('alpha')).toEqual([{ type: 'play' }]);
+		expect(game.answer('alpha', 0)).toEqual([{ type: 'play' }]);
 		expect(game.results[0].ok).toBe(false);
 		expect(game.phase).toBe('playing');
 	});
@@ -174,7 +175,7 @@ describe('a linha acaba sem resposta', () => {
 	test('o tempo esgotado também zera o combo e não dá pontos', () => {
 		const game = started();
 		game.tick(7, 10);
-		game.answer('bravo');
+		game.answer('bravo', 0);
 		expect(game.combo).toBe(2);
 		game.tick(14.5, 20);
 		game.tick(18.05, 1000);
@@ -215,7 +216,7 @@ describe('a linha acaba sem resposta', () => {
 	test('"Tentar de novo" zera tudo e recomeça a música', () => {
 		const game = started();
 		game.tick(7, 10);
-		game.answer('bravo');
+		game.answer('bravo', 0);
 		game.tick(14.5, 30);
 		game.tick(18.05, 40);
 		game.tick(18.05, 11_000);
@@ -245,7 +246,7 @@ describe('pausa manual', () => {
 		const game = started();
 		game.tick(7, 10);
 		game.pause(20);
-		game.answer('bravo');
+		game.answer('bravo', 0);
 		expect(game.results).toEqual([]);
 	});
 
@@ -300,7 +301,7 @@ describe('sincronia aberta', () => {
 		game.suspend(3_000);
 		expect(game.suspended).toBe(true);
 		expect(game.answerable).toBeNull();
-		expect(game.answer('bravo')).toEqual([]);
+		expect(game.answer('bravo', 0)).toEqual([]);
 		expect(game.tick(20, 60_000)).toEqual([]);
 		expect(game.phase).toBe('waiting');
 		expect(game.waitRemainingMs(60_000)).toBe(8_000);
@@ -317,7 +318,7 @@ describe('sincronia aberta', () => {
 		expect(game.phase).toBe('playing');
 		expect(game.activeLine).toBe(3);
 		expect(game.results).toEqual([
-			{ line: 1, answer: 'bravo', chosen: '', ok: false, points: 0, skipped: true }
+			{ gap: 0, line: 1, answer: 'bravo', chosen: '', ok: false, points: 0, skipped: true }
 		]);
 		expect(game.answerable?.line).toBe(3);
 		expect(game.summary().wrong).toEqual([]);
@@ -385,9 +386,9 @@ describe('fim', () => {
 	test('com tudo respondido, o jogo termina logo depois da última linha', () => {
 		const game = started();
 		game.tick(7, 10);
-		game.answer('bravo');
+		game.answer('bravo', 0);
 		game.tick(15, 30);
-		game.answer('delta');
+		game.answer('delta', 0);
 		expect(game.tick(18.5, 50)).toEqual([]);
 		expect(game.phase).toBe('playing');
 		expect(game.tick(19.6, 60)).toEqual([{ type: 'pause' }]);
@@ -397,7 +398,7 @@ describe('fim', () => {
 	test('lacuna aberta na última linha espera antes de terminar', () => {
 		const game = started();
 		game.tick(7, 10);
-		game.answer('bravo');
+		game.answer('bravo', 0);
 		game.tick(17.9, 30);
 		game.tick(19.6, 40);
 		expect(game.phase).toBe('waiting');
@@ -425,16 +426,76 @@ describe('resumo', () => {
 	test('conta acertos de primeira, erradas e pontos', () => {
 		const game = started();
 		game.tick(7, 10);
-		game.answer('bravo');
+		game.answer('bravo', 0);
 		game.tick(15, 30);
-		game.answer('alpha');
+		game.answer('alpha', 0);
 		expect(game.summary()).toEqual({
 			total: 2,
 			correct: 1,
-			wrong: [{ line: 3, answer: 'delta', chosen: 'alpha', ok: false, points: 0 }],
+			wrong: [{ gap: 1, line: 3, answer: 'delta', chosen: 'alpha', ok: false, points: 0 }],
 			score: 100,
 			maxCombo: 2,
 			timeouts: 0
 		});
+	});
+});
+
+describe('várias lacunas na mesma linha', () => {
+	// Linha 1 com três lacunas (tokens 0, 2 e 4).
+	const multi = () =>
+		started({
+			gaps: [
+				{ line: 1, token: 0, answer: 'alpha', options: OPTIONS },
+				{ line: 1, token: 2, answer: 'bravo', options: OPTIONS },
+				{ line: 1, token: 4, answer: 'charlie', options: OPTIONS }
+			]
+		});
+
+	test('responde da esquerda para a direita', () => {
+		const game = multi();
+		game.tick(7, 0);
+		expect(game.answerable).toMatchObject({ index: 0, token: 0 });
+		game.answer('alpha', 0);
+		expect(game.answerable).toMatchObject({ index: 1, token: 2 });
+		game.answer('delta', 0);
+		expect(game.answerable).toMatchObject({ index: 2, token: 4 });
+		expect(game.results.map((r) => [r.gap, r.ok])).toEqual([
+			[0, true],
+			[1, false]
+		]);
+	});
+
+	test('na espera, cada resposta recomeça o contador; o vídeo só volta sem lacuna aberta', () => {
+		const game = multi();
+		game.tick(7, 0);
+		expect(game.tick(10.05, 1_000)).toEqual([{ type: 'pause' }]);
+		expect(game.answer('alpha', 8_000)).toEqual([]);
+		expect(game.phase).toBe('waiting');
+		expect(game.waitRemainingMs(8_000)).toBe(WAIT_MS);
+		expect(game.answer('bravo', 9_000)).toEqual([]);
+		expect(game.answer('charlie', 9_500)).toEqual([{ type: 'play' }]);
+		expect(game.phase).toBe('playing');
+	});
+
+	test('arrastar o vídeo por cima da linha pula todas as lacunas dela', () => {
+		const game = multi();
+		game.tick(3, 0);
+		game.tick(15, 100);
+		expect(game.results.map((r) => [r.gap, !!r.skipped])).toEqual([
+			[0, true],
+			[1, true],
+			[2, true]
+		]);
+		expect(game.total).toBe(3);
+	});
+
+	test('fim de jogo guarda as lacunas que faltaram', () => {
+		const game = multi();
+		game.tick(7, 0);
+		game.answer('alpha', 0);
+		game.tick(10.05, 1_000);
+		game.tick(10.05, 1_000 + WAIT_MS);
+		expect(game.phase).toBe('gameover');
+		expect(game.openGaps(1).map((g) => g.answer)).toEqual(['bravo', 'charlie']);
 	});
 });

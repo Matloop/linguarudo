@@ -3,7 +3,7 @@
 
 import type { MusicLanguage } from './wordlists.ts';
 import { makeOptions } from './distractors.ts';
-import { chooseGaps, type Difficulty } from './gaps.ts';
+import { DIFFICULTIES, chooseGaps, countWords, gapCount, type Difficulty } from './gaps.ts';
 import type { GameConfig } from './game.ts';
 import type { LyricLine } from './lrc.ts';
 import type { Rng } from './rng.ts';
@@ -28,7 +28,6 @@ export interface SessionGap {
 export interface Session {
 	lines: SessionLine[];
 	gaps: SessionGap[];
-	fromBank: number;
 	config: GameConfig;
 }
 
@@ -53,7 +52,7 @@ export function buildSession(input: SessionInput): Session {
 		)
 	];
 
-	const plans = chooseGaps(lines, { difficulty, lang, bank: new Set(bank.keys()), rng });
+	const plans = chooseGaps(lines, { difficulty, lang, bank: new Set(bank.keys()) });
 	const gaps: SessionGap[] = plans.map((p) => {
 		const inLine = new Set(
 			lines[p.line].tokens.map((t) => t.key).filter((k): k is string => k !== null)
@@ -68,10 +67,31 @@ export function buildSession(input: SessionInput): Session {
 	return {
 		lines,
 		gaps,
-		fromBank: gaps.filter((g) => g.inBank).length,
 		config: {
 			lines: lines.map((l) => ({ start: l.start, end: l.end })),
-			gaps: gaps.map((g) => ({ line: g.line, answer: g.answer, options: g.options }))
+			gaps: gaps.map((g) => ({
+				line: g.line,
+				token: g.token,
+				answer: g.answer,
+				options: g.options
+			}))
 		}
 	};
+}
+
+export interface DifficultyCounts {
+	/** Palavras da letra. */
+	words: number;
+	gaps: Record<Difficulty, number>;
+}
+
+/** Quantas lacunas cada dificuldade dá nesta letra, para a tela de início. */
+export function difficultyCounts(
+	lyrics: readonly LyricLine[],
+	lang: MusicLanguage
+): DifficultyCounts {
+	const words = countWords(lyrics.map((l, index) => ({ index, tokens: tokenize(l.text, lang) })));
+	const gaps = {} as Record<Difficulty, number>;
+	for (const d of DIFFICULTIES) gaps[d] = gapCount(d, words);
+	return { words, gaps };
 }

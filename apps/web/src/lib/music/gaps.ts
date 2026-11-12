@@ -1,25 +1,39 @@
-// Escolha das lacunas: quantas dependem da dificuldade, no máximo uma por linha,
-// palavras que o usuário já tem no banco vêm primeiro e o resto se espalha pela música.
+// Escolha das lacunas, contando todas as palavras da letra: Iniciante esconde 15%
+// delas, Intermediário 30%, Avançado metade e Especialista todas. Uma linha pode ter várias lacunas. Palavras que o usuário já tem
+// no banco vêm primeiro, depois as de conteúdo, por fim as funcionais; cada grupo se
+// espalha pela música.
 
 import type { MusicLanguage } from './wordlists.ts';
-import type { Rng } from './rng.ts';
 import { STOPWORDS } from './wordlists.ts';
 import type { Token } from './tokenize.ts';
 
-export type Difficulty = 'facil' | 'medio' | 'dificil';
+export type Difficulty = 'iniciante' | 'intermediario' | 'avancado' | 'especialista';
 
-export const DIFFICULTIES: readonly Difficulty[] = ['facil', 'medio', 'dificil'];
-
-export const GAP_COUNTS: Record<Difficulty, number> = { facil: 4, medio: 6, dificil: 10 };
+export const DIFFICULTIES: readonly Difficulty[] = [
+	'iniciante',
+	'intermediario',
+	'avancado',
+	'especialista'
+];
 
 export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
-	facil: 'Fácil',
-	medio: 'Médio',
-	dificil: 'Difícil'
+	iniciante: 'Iniciante',
+	intermediario: 'Intermediário',
+	avancado: 'Avançado',
+	especialista: 'Especialista'
 };
 
-export function isDifficulty(v: unknown): v is Difficulty {
-	return typeof v === 'string' && (DIFFICULTIES as readonly string[]).includes(v);
+/** Parte das palavras da letra que vira lacuna em cada dificuldade. */
+const SHARE: Record<Difficulty, number> = {
+	iniciante: 0.15,
+	intermediario: 0.3,
+	avancado: 0.5,
+	especialista: 1
+};
+
+/** Quantas lacunas a dificuldade dá numa letra com `words` palavras. */
+export function gapCount(difficulty: Difficulty, words: number): number {
+	return Math.min(words, Math.max(1, Math.round(words * SHARE[difficulty])));
 }
 
 export interface GapLine {
@@ -41,11 +55,11 @@ export interface ChooseOptions {
 	lang: MusicLanguage;
 	/** Palavras (normalizadas) que o usuário já tem no banco. */
 	bank: ReadonlySet<string>;
-	rng: Rng;
 }
 
 const MIN_LETTERS = 4;
 
+/** Palavra de conteúdo: 4+ letras e não funcional. Tem prioridade depois das do banco. */
 export function isGapCandidate(key: string, lang: MusicLanguage): boolean {
 	return (
 		[...key].length >= MIN_LETTERS && /^[\p{L}\p{M}'-]+$/u.test(key) && !STOPWORDS[lang].has(key)
@@ -59,49 +73,50 @@ export function spread<T>(items: readonly T[], k: number): T[] {
 	return Array.from({ length: k }, (_, i) => items[Math.floor(((i + 0.5) * items.length) / k)]);
 }
 
-function pick<T>(items: readonly T[], rng: Rng): T {
-	return items[Math.floor(rng() * items.length)];
+interface Slot {
+	line: number;
+	token: number;
+	key: string;
+	text: string;
+}
+
+function slots(lines: readonly GapLine[]): Slot[] {
+	return lines.flatMap((line) =>
+		line.tokens.flatMap((t, token) =>
+			t.key === null ? [] : [{ line: line.index, token, key: t.key, text: t.text }]
+		)
+	);
+}
+
+/** Palavras da letra (o "de N" do LingoClip). */
+export function countWords(lines: readonly GapLine[]): number {
+	return slots(lines).length;
 }
 
 export function chooseGaps(lines: readonly GapLine[], options: ChooseOptions): GapPlan[] {
-	const { difficulty, lang, bank, rng } = options;
+	const { difficulty, lang, bank } = options;
+	const all = slots(lines);
+	let left = gapCount(difficulty, all.length);
 
-	const eligible = lines
-		.map((line) => {
-			const words = line.tokens
-				.map((t, token) => ({ token, key: t.key, text: t.text }))
-				.filter(
-					(w): w is { token: number; key: string; text: string } =>
-						w.key !== null && isGapCandidate(w.key, lang)
-				);
-			return { line: line.index, words };
-		})
-		.filter((l) => l.words.length > 0);
-
-	const total = Math.min(GAP_COUNTS[difficulty], eligible.length);
-	const withBank = eligible.filter((l) => l.words.some((w) => bank.has(w.key)));
-	const withoutBank = eligible.filter((l) => !l.words.some((w) => bank.has(w.key)));
-
-	const fromBank = spread(withBank, total);
-	const chosen = new Set(fromBank.map((l) => l.line));
-	for (const l of spread(withoutBank, total - fromBank.length)) chosen.add(l.line);
-
-	const used = new Set<string>();
-	const plans: GapPlan[] = [];
-	for (const l of eligible) {
-		if (!chosen.has(l.line)) continue;
-		const inBank = l.words.filter((w) => bank.has(w.key));
-		const pool = inBank.length > 0 ? inBank : l.words;
-		const fresh = pool.filter((w) => !used.has(w.key));
-		const word = pick(fresh.length > 0 ? fresh : pool, rng);
-		used.add(word.key);
-		plans.push({
-			line: l.line,
-			token: word.token,
-			answer: word.text,
-			key: word.key,
-			inBank: bank.has(word.key)
-		});
+	const tiers = [
+		all.filter((w) => bank.has(w.key)),
+		all.filter((w) => !bank.has(w.key) && isGapCandidate(w.key, lang)),
+		all.filter((w) => !bank.has(w.key) && !isGapCandidate(w.key, lang))
+	];
+	const chosen: Slot[] = [];
+	for (const tier of tiers) {
+		const picked = spread(tier, left);
+		chosen.push(...picked);
+		left -= picked.length;
 	}
-	return plans;
+
+	return chosen
+		.sort((a, b) => a.line - b.line || a.token - b.token)
+		.map((w) => ({
+			line: w.line,
+			token: w.token,
+			answer: w.text,
+			key: w.key,
+			inBank: bank.has(w.key)
+		}));
 }

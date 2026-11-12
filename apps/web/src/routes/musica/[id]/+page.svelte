@@ -24,11 +24,15 @@
 		type MusicEvent,
 		type MusicView
 	} from '#lib/music/controller.ts';
-	import { DIFFICULTIES, type Difficulty } from '#lib/music/gaps.ts';
+	import type { Difficulty } from '#lib/music/gaps.ts';
 	import type { LyricLine } from '#lib/music/lrc.ts';
 	import type { LyricsVersion } from '#lib/music/lrclib.ts';
-	import { mulberry32 } from '#lib/music/rng.ts';
-	import { buildSession, type Session } from '#lib/music/session.ts';
+	import {
+		buildSession,
+		difficultyCounts,
+		type Session,
+		type SessionGap
+	} from '#lib/music/session.ts';
 	import { durationHint, formatOffset, lyricTimeAt, type StoredSync } from '#lib/music/timeline.ts';
 	import type { PlayerAdapter } from '#lib/music/youtube.ts';
 	import { createYoutubePlayer } from '#lib/music/youtube-player.ts';
@@ -233,7 +237,7 @@
 	);
 
 	// ---------- sessão ----------
-	let difficulty = $state<Difficulty>('medio');
+	let difficulty = $state<Difficulty>('intermediario');
 	let session = $state.raw<Session | null>(null);
 	const started = $derived(view !== null && view.mode !== 'idle');
 	const syncing = $derived(view?.mode === 'sync');
@@ -242,17 +246,11 @@
 	const bankKeys = $derived(new Map([...bank].map(([k, v]) => [k, v.sense])));
 
 	// Só para mostrar na tela de início quantas lacunas cada dificuldade tem.
-	const counts = $derived.by(() => {
-		const out = {} as Record<Difficulty, { gaps: number; fromBank: number }>;
-		for (const d of DIFFICULTIES) {
-			const s = buildSession({ lyrics, lang, difficulty: d, bank: bankKeys, rng: mulberry32(1) });
-			out[d] = { gaps: s.gaps.length, fromBank: s.fromBank };
-		}
-		return out;
-	});
+	const counts = $derived(difficultyCounts(lyrics, lang));
 
-	function startGame() {
+	function startGame(d: Difficulty = difficulty) {
 		if (status !== 'ready' || !player || !ctl) return;
+		difficulty = d;
 		session = buildSession({ lyrics, lang, difficulty, bank: bankKeys, rng: Math.random });
 		send({ type: 'start', session });
 	}
@@ -454,10 +452,15 @@
 		else cardMessage = 'Não deu para salvar agora. Tente de novo.';
 	}
 
+	/** Erradas, uma vez por palavra (a mesma palavra pode errar em várias lacunas). */
 	const wrongGaps = $derived.by(() => {
 		if (!session || !view) return [];
-		const wrong = new Set(view.wrong.map((r) => r.line));
-		return session.gaps.filter((g) => wrong.has(g.line));
+		const out: SessionGap[] = [];
+		for (const r of view.wrong) {
+			const g = session.gaps[r.gap];
+			if (g && !out.some((o) => o.key === g.key)) out.push(g);
+		}
+		return out;
 	});
 
 	async function saveAllWrong() {
@@ -596,12 +599,16 @@
 		duration <= 0
 			? []
 			: lines
-					.filter((l) => l.hasGap)
-					.map((l) => ({
-						line: l.index,
-						result: l.result,
-						pct: Math.max(0, Math.min(1, l.start / duration)) * 100
-					}))
+					.filter((l) => l.gaps.length > 0)
+					.map((l) => {
+						const done = l.gaps.every((g) => g.result);
+						return {
+							line: l.index,
+							// Linha toda respondida: certa se acertou todas.
+							result: done ? { ok: l.gaps.every((g) => g.result?.ok) } : null,
+							pct: Math.max(0, Math.min(1, l.start / duration)) * 100
+						};
+					})
 	);
 
 	function clock(s: number) {
@@ -688,7 +695,7 @@
 			<h3>Para revisar</h3>
 			<p>Errou? A palavra fica aqui. Você salva no banco no fim da música.</p>
 			<ul>
-				{#each [...wrongGaps].reverse() as gap (gap.line)}
+				{#each [...wrongGaps].reverse() as gap (gap.key)}
 					<li><b {lang}>{gap.key}</b><span>{bank.get(gap.key)?.sense ?? ''}</span></li>
 				{/each}
 			</ul>
@@ -726,15 +733,16 @@
 											title="Esta linha começa agora"
 											onclick={() => send({ type: 'selectLine', line: i })}
 											>{#each line.parts as p, n (n)}{#if p.kind === 'gap'}<span
-														class="gap"
+														class="gap dica"
 														role="img"
-														aria-label="lacuna"
-													></span>{:else}{p.text}{/if}{/each}</button
+														aria-label="lacuna começando com {p.initial}"
+														>{p.initial}<i style:width="{p.rest * 0.55}em"></i></span
+													>{:else}{p.text}{/if}{/each}</button
 										>
 									{:else}
 										{#each line.parts as p, n (n)}{#if p.kind === 'sep'}{p.text}{:else if p.kind === 'gap'}<span
 													class="gap"
-													class:alvo={answerable?.line === i}
+													class:alvo={answerable?.line === i && answerable.token === p.token}
 													role="img"
 													aria-label="lacuna"
 												></span>{:else}<button
@@ -967,7 +975,7 @@
 		title={song.title}
 		artist={song.artist}
 		{lang}
-		bind:difficulty
+		{difficulty}
 		{counts}
 		{status}
 		message={statusMessage}
@@ -1418,6 +1426,20 @@
 
 	.gap::before {
 		content: '\00a0';
+	}
+
+	/* na sincronia: só a inicial e o tamanho, para reconhecer a linha cantada */
+	.gap.dica {
+		min-width: 0;
+		opacity: 0.75;
+	}
+
+	.gap.dica::before {
+		content: none;
+	}
+
+	.gap.dica i {
+		display: inline-block;
 	}
 
 	/* lacuna aberta agora */

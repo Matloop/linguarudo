@@ -47,9 +47,13 @@ async function pickSong(
 	await expect(page).toHaveURL(/\/musica\/[0-9a-f-]{36}$/);
 }
 
-async function begin(page: Page, difficulty: 'Fácil' | 'Médio' | 'Difícil' = 'Fácil') {
-	await page.getByRole('radio', { name: new RegExp(difficulty) }).click();
-	await page.getByRole('button', { name: 'Começar' }).click();
+type Level = 'Iniciante' | 'Intermediário' | 'Avançado' | 'Especialista';
+const level = (page: Page, name: Level) =>
+	page.getByRole('group', { name: 'Dificuldade' }).getByRole('button', { name: new RegExp(name) });
+
+/** Tocar no nível já começa o jogo. */
+async function begin(page: Page, difficulty: Level = 'Iniciante') {
+	await level(page, difficulty).click();
 	await expect(page.getByTestId('estado')).toBeVisible();
 }
 
@@ -139,7 +143,7 @@ test('música sem letra sincronizada e serviço fora do ar mostram mensagem clar
 
 	await pickSong(page, VIDEOS.noLyrics);
 	await expect(page.getByRole('alert')).toContainText('Não achei letra sincronizada');
-	await expect(page.getByRole('button', { name: 'Começar' })).toHaveCount(0);
+	await expect(page.getByRole('group', { name: 'Dificuldade' })).toHaveCount(0);
 
 	await pickSong(page, VIDEOS.down);
 	await expect(page.getByRole('alert')).toContainText('O serviço de letras não respondeu');
@@ -154,16 +158,18 @@ test('jogo: responde com a música tocando, espera, pausa, fim de jogo e resumo 
 	await login(page);
 	await pickSong(page, VIDEOS.ok);
 
-	// Dificuldade e prioridade do banco
-	await expect(page.getByRole('radio', { name: /Fácil/ })).toContainText('4 lacunas');
-	await expect(page.getByRole('radio', { name: /Médio/ })).toContainText('6 lacunas');
-	await expect(page.getByRole('radio', { name: /Difícil/ })).toContainText('8 lacunas');
-	await begin(page, 'Fácil');
+	// 43 palavras: 15%, 30%, metade e todas.
+	// Iniciante cai nas linhas 0, 1, 3, 4, 5 e 7.
+	await expect(level(page, 'Iniciante')).toContainText('6 de 43 palavras');
+	await expect(level(page, 'Intermediário')).toContainText('13 de 43 palavras');
+	await expect(level(page, 'Avançado')).toContainText('22 de 43 palavras');
+	await expect(level(page, 'Especialista')).toContainText('43 de 43 palavras');
+	await begin(page, 'Iniciante');
 	expect(await calls(page, 'seek:0')).toBe(1);
 	expect(await playing(page)).toBe(true);
 
 	// 1) Responder enquanto a linha toca: acerta, soma 100, combo ×2, o vídeo não para.
-	await answerLine(page, 1, true);
+	await answerLine(page, 0, true);
 	await expect(page.getByTestId('pontos')).toContainText('100');
 	await expect(page.getByTestId('combo')).toHaveText('×2');
 	expect(await playing(page)).toBe(true);
@@ -190,44 +196,42 @@ test('jogo: responde com a música tocando, espera, pausa, fim de jogo e resumo 
 	expect(await calls(page, 'pause')).toBeGreaterThanOrEqual(pausesBefore);
 
 	// Errar durante a espera: mostra a resposta, zera o combo, retoma o vídeo.
-	const word3 = await answerLine(page, 3, false);
+	const word1 = await answerLine(page, 1, false);
 	await expect(page.getByTestId('combo')).toHaveText('×1');
 	await expect(page.getByTestId('rev-n')).toHaveText('1');
-	await expect(page.getByText(`Era “${word3}”`)).toBeVisible();
+	await expect(page.getByText(`Era “${word1}”`)).toBeVisible();
 	await expect.poll(() => playing(page)).toBe(true);
 
-	// 3) Acertar com o atalho do teclado (tecla 1–4 da opção certa).
-	await expect(page.locator('.lin[data-line="5"] .gap.alvo')).toBeVisible({ timeout: 20_000 });
-	const word5 = await missingWord(page, 5);
-	const label = await option(page, word5).innerText();
-	await page.keyboard.press(label.trim()[0]);
-	await expect(page.getByTestId('pontos')).toContainText('200');
-
-	// 4) Passados 10 s sem resposta: Fim de jogo, com os três botões.
+	// 3) Passados 10 s sem resposta: Fim de jogo, com os três botões.
 	const gameOver = page.getByRole('alertdialog', { name: 'Fim de jogo' });
 	await expect(gameOver).toBeVisible({ timeout: 40_000 });
 	expect(await playing(page)).toBe(false);
 	await expect(gameOver.getByRole('button', { name: 'Tentar de novo' })).toBeVisible();
 	await expect(gameOver.getByRole('button', { name: 'Sair' })).toBeVisible();
 
-	// 5) Continuar jogando: volta ao início da linha (22 s) e a lacuna segue aberta.
+	// 4) Continuar jogando: volta ao início da linha 3 (10 s) e a lacuna segue aberta.
 	const seeksBefore = await calls(page, 'seek');
 	await gameOver.getByRole('button', { name: 'Continuar jogando' }).click();
 	await expect(gameOver).toBeHidden();
 	expect(await calls(page, 'seek')).toBe(seeksBefore + 1);
 	expect(
 		await page.evaluate(() => window.__fakeYT.log.filter((l) => l.startsWith('seek:')).at(-1))
-	).toBe('seek:22');
-	// O tempo esgotado zerou o combo: a última vale 100 (200 + 100).
+	).toBe('seek:10');
 	await expect(page.getByTestId('combo')).toHaveText('×1');
-	await answerLine(page, 7, true);
-	await expect(page.getByTestId('pontos')).toContainText('300');
 
-	// 6) Resumo com o Rudo: 3 de 4 de primeira, e salvar a errada manda para o banco.
+	// 5) Acertar com o atalho do teclado (tecla 1–4 da opção certa): 100 + 100.
+	await expect(page.locator('.lin[data-line="3"] .gap.alvo')).toBeVisible({ timeout: 20_000 });
+	const word3 = await missingWord(page, 3);
+	const label = await option(page, word3).innerText();
+	await page.keyboard.press(label.trim()[0]);
+	await expect(page.getByTestId('pontos')).toContainText('200');
+	for (const line of [4, 5, 7]) await answerLine(page, line, true);
+
+	// 6) Resumo: 5 de 6 de primeira, e salvar a errada manda para o banco.
 	const summary = page.getByRole('dialog', { name: 'Música fechada!' });
 	await expect(summary).toBeVisible({ timeout: 30_000 });
-	await expect(summary.getByText('3/4')).toBeVisible();
-	await expect(summary.getByText(word3, { exact: false })).toBeVisible();
+	await expect(summary.getByText('5/6')).toBeVisible();
+	await expect(summary.getByText(word1, { exact: false })).toBeVisible();
 	await expect(page.getByTestId('banco')).toHaveText('0');
 	await summary.getByRole('button', { name: 'Salvar a errada' }).click();
 	await expect(summary.getByRole('button', { name: 'Erradas no banco' })).toBeVisible();
@@ -235,9 +239,9 @@ test('jogo: responde com a música tocando, espera, pausa, fim de jogo e resumo 
 
 	// A palavra foi para "Minhas palavras" com um encontro: o verso e a música.
 	await page.goto('/palavras');
-	const item = bankItem(page, word3.toLowerCase());
+	const item = bankItem(page, word1.toLowerCase());
 	await expect(item).toBeVisible();
-	await expect(item).toContainText(VERSES[3]);
+	await expect(item).toContainText(VERSES[1]);
 	await item.click();
 	await expect(page.getByRole('region', { name: /^Detalhes de/ })).toContainText(
 		`${VIDEOS.ok.title} · ${VIDEOS.ok.artist}`
@@ -251,13 +255,13 @@ test('errar não salva no banco sozinho; tentar de novo zera o jogo; sair volta 
 	await installFakeYoutube(page, 2);
 	await login(page);
 	await pickSong(page, VIDEOS.ok);
-	await begin(page, 'Fácil');
+	await begin(page);
 
-	await answerLine(page, 1, false);
+	await answerLine(page, 0, false);
 	await expect(page.getByTestId('rev-n')).toHaveText('1');
 	await expect(page.getByTestId('banco')).toHaveText('0');
 
-	// Deixa a lacuna da linha 3 vencer.
+	// Deixa a lacuna da linha 1 vencer.
 	const gameOver = page.getByRole('alertdialog', { name: 'Fim de jogo' });
 	await expect(gameOver).toBeVisible({ timeout: 40_000 });
 	await gameOver.getByRole('button', { name: 'Tentar de novo' }).click();
@@ -282,11 +286,7 @@ test('palavras do banco viram lacuna primeiro; o cartão mostra o sentido, ouve 
 	await addWord(page, 'harbor', 'porto');
 	await pickSong(page, VIDEOS.ok);
 
-	await page.getByRole('radio', { name: /Fácil/ }).click();
-	await expect(
-		page.getByText('1 de 4 lacunas são palavras que já estão no seu banco')
-	).toBeVisible();
-	await begin(page, 'Fácil');
+	await begin(page);
 
 	// A lacuna da linha 1 é a palavra do banco.
 	expect(await missingWord(page, 1)).toBe('harbor');
@@ -324,8 +324,10 @@ test('R repete a linha: o vídeo volta ao início dela', async ({ page }) => {
 	await installFakeYoutube(page, 1);
 	await login(page);
 	await pickSong(page, VIDEOS.ok);
-	await begin(page, 'Fácil');
+	await begin(page);
 
+	// A linha 0 tem lacuna: responde para a música seguir até a linha 1.
+	await answerLine(page, 0, true);
 	await expect(page.locator('.lin[data-line="1"].atual')).toBeVisible({ timeout: 15_000 });
 	await page.keyboard.press('r');
 	await expect
@@ -335,12 +337,31 @@ test('R repete a linha: o vídeo volta ao início dela', async ({ page }) => {
 		.toBe('seek:4');
 });
 
+test('Especialista esconde todas as palavras e a linha se responde da esquerda para a direita', async ({
+	page
+}) => {
+	await installFakeYoutube(page, 1);
+	await login(page);
+	await pickSong(page, VIDEOS.ok);
+	await begin(page, 'Especialista');
+
+	const first = page.locator('.lin[data-line="0"]');
+	await expect(first.locator('.gap')).toHaveCount(6);
+	await expect(first.locator('.gap').first()).toHaveClass(/alvo/, { timeout: 15_000 });
+	await option(page, 'Lantern').click();
+	await expect(first.locator('.gap')).toHaveCount(5);
+	await expect(first.locator('.gap').first()).toHaveClass(/alvo/);
+	await option(page, 'light').click();
+	await expect(page.getByTestId('pontos')).toContainText('300');
+	await expect(first).toContainText('Lantern light');
+});
+
 test('no celular o vídeo e as opções cabem na tela', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await installFakeYoutube(page, 1);
 	await login(page);
 	await pickSong(page, VIDEOS.ok);
-	await begin(page, 'Fácil');
+	await begin(page);
 	await expect(page.locator('.video-host')).toBeVisible();
 	const box = await page.locator('.video-host').boundingBox();
 	expect(box!.width).toBeGreaterThanOrEqual(200);
@@ -375,7 +396,7 @@ test('sincronia: clipe mostra o palpite e outra versão da letra fica salva na m
 	const letra = page.waitForRequest((r) => r.url().includes('/musica/letra'));
 	await page.reload();
 	expect((await letra).url()).toContain('id=3');
-	await expect(page.getByRole('button', { name: 'Começar' })).toBeVisible();
+	await expect(page.getByRole('group', { name: 'Dificuldade' })).toBeVisible();
 });
 
 test('sincronia: ignorar o palpite também fica salvo', async ({ page }) => {
@@ -389,7 +410,7 @@ test('sincronia: ignorar o palpite também fica salvo', async ({ page }) => {
 	]);
 	await expect(page.getByTestId('dica-sincronia')).toBeHidden();
 	await page.reload();
-	await expect(page.getByRole('button', { name: 'Começar' })).toBeVisible();
+	await expect(page.getByRole('group', { name: 'Dificuldade' })).toBeVisible();
 	await expect(page.getByTestId('dica-sincronia')).toHaveCount(0);
 });
 
@@ -401,7 +422,7 @@ test('sincronia: não mexe no vídeo, marca trechos, não pula de linha sozinha,
 	await login(page);
 	await pickSong(page, VIDEOS.ok);
 	// Faixa e vídeo com a mesma duração: sem palpite.
-	await expect(page.getByRole('button', { name: 'Começar' })).toBeVisible();
+	await expect(page.getByRole('group', { name: 'Dificuldade' })).toBeVisible();
 	await expect(page.getByTestId('dica-sincronia')).toHaveCount(0);
 	await begin(page);
 	await expect.poll(() => page.evaluate(() => window.__fakeYT.time)).toBeGreaterThan(2);
@@ -409,7 +430,7 @@ test('sincronia: não mexe no vídeo, marca trechos, não pula de linha sozinha,
 	const log = () => page.evaluate(() => [...window.__fakeYT.log]);
 	const panel = page.getByRole('region', { name: 'Sincronizar a letra' });
 	const trechos = page.getByTestId('sinc-trechos');
-	const gapsBefore = await page.locator('.gap').count();
+	const gapsBefore = await page.locator('.lin .gap').count();
 
 	// Abrir não manda nada para o player: nem pausa, nem play, nem seek.
 	const logBefore = await log();
@@ -420,7 +441,7 @@ test('sincronia: não mexe no vídeo, marca trechos, não pula de linha sozinha,
 	expect(await log()).toEqual(logBefore);
 	expect(await playing(page)).toBe(true);
 	// As lacunas continuam escondidas: a sincronia não entrega as respostas.
-	await expect(page.locator('.gap')).toHaveCount(gapsBefore);
+	await expect(page.locator('.lin .gap')).toHaveCount(gapsBefore);
 	await expect(page.locator('.op')).toHaveCount(0);
 
 	// Tocar na linha 2 ancora ela agora.

@@ -12,7 +12,7 @@
 // - a linha escolhida na sincronia só muda por toque ou ↑/↓;
 // - enquanto sincroniza, o jogo congela (pontos, lacunas e contador).
 
-import { Game, type Command, type GameGapConfig, type GapResult, type Phase } from './game.ts';
+import { Game, type Command, type GapResult, type OpenGap, type Phase } from './game.ts';
 import { lineParts, maskTokens, type LinePart } from './mask.ts';
 import { Playhead } from './playhead.ts';
 import type { Session } from './session.ts';
@@ -93,8 +93,14 @@ export interface LineView {
 	start: number;
 	end: number;
 	parts: LinePart[];
-	/** A linha tem lacuna que conta (aberta ou respondida). */
-	hasGap: boolean;
+	/** Lacunas da linha que contam (abertas ou respondidas), em ordem. */
+	gaps: LineGap[];
+}
+
+export interface LineGap {
+	/** Índice em `session.gaps`. */
+	index: number;
+	token: number;
 	result: GapResult | null;
 }
 
@@ -135,7 +141,7 @@ export interface MusicView {
 	results: GapResult[];
 	/** Erradas de verdade (sem as puladas). */
 	wrong: GapResult[];
-	answerable: GameGapConfig | null;
+	answerable: OpenGap | null;
 	totalGaps: number;
 	gapNumber: number;
 	lines: LineView[];
@@ -405,40 +411,41 @@ export class MusicController {
 		const game = this.#game;
 		const session = this.#session;
 		const results = game ? [...game.results] : [];
-		const resultByLine = new Map(results.map((r) => [r.line, r]));
-		const gapByLine = new Map((session?.gaps ?? []).map((g) => [g.line, g]));
+		const resultByGap = new Map(results.map((r) => [r.gap, r]));
+		const gapsByLine = new Map<number, LineGap[]>();
+		(session?.gaps ?? []).forEach((g, index) => {
+			const list = gapsByLine.get(g.line) ?? [];
+			list.push({ index, token: g.token, result: resultByGap.get(index) ?? null });
+			gapsByLine.set(g.line, list);
+		});
 
 		const lines: LineView[] = session
 			? session.lines.map((l, i) => {
 					const timing = this.#timings[i];
-					const result = resultByLine.get(i) ?? null;
-					const gap = gapByLine.get(i);
-					// Linha cortada não tem lacuna: mostra a linha inteira.
-					const counts = gap !== undefined && (timing.present || result !== null);
+					// Linha cortada não tem lacuna: mostra a linha inteira (fora as já respondidas).
+					const gaps = (gapsByLine.get(i) ?? []).filter((g) => timing.present || g.result);
 					return {
 						index: i,
 						present: timing.present,
 						start: timing.start,
 						end: timing.end,
-						parts: lineParts(l.tokens, counts ? gap : null, result),
-						hasGap: counts,
-						result
+						parts: lineParts(l.tokens, gaps),
+						gaps
 					};
 				})
 			: [];
 
 		const answerable = game?.answerable ?? null;
-		const counted = (session?.gaps ?? []).filter((g) => lines[g.line]?.hasGap);
-		const open = answerable ? counted.findIndex((g) => g.line === answerable.line) + 1 : 0;
+		const counted = lines.flatMap((l) => l.gaps);
+		const open = answerable ? counted.findIndex((g) => g.index === answerable.index) + 1 : 0;
 
 		let card: MusicView['card'] = null;
 		if (this.#card && session) {
 			const { line, token } = this.#card;
-			const gap = lines[line]?.hasGap ? gapByLine.get(line) : null;
 			card = {
 				line,
 				token,
-				tokens: maskTokens(session.lines[line].tokens, gap, resultByLine.get(line))
+				tokens: maskTokens(session.lines[line].tokens, lines[line]?.gaps ?? [])
 			};
 		}
 
@@ -446,12 +453,10 @@ export class MusicController {
 		if (game?.phase === 'gameover' && session) {
 			const line = game.gameOverLine;
 			const tokens = session.lines[line]?.tokens ?? [];
-			const gap = gapByLine.get(line);
-			gameOver = {
-				line,
-				revealed: this.#revealed,
-				parts: lineParts(tokens, gap, this.#revealed ? { ok: false } : resultByLine.get(line))
-			};
+			const gaps = (gapsByLine.get(line) ?? []).map((g) =>
+				this.#revealed && !g.result ? { ...g, result: { ok: false } } : g
+			);
+			gameOver = { line, revealed: this.#revealed, parts: lineParts(tokens, gaps) };
 		}
 
 		let sync: SyncView | null = null;
@@ -546,8 +551,8 @@ export class MusicController {
 		if (this.#mode !== 'game' || !game) return [];
 		const gap = game.answerable;
 		if (!gap) return [];
-		const effects = this.#run(game.answer(option), now);
-		const result = game.results.find((r) => r.line === gap.line);
+		const effects = this.#run(game.answer(option, now), now);
+		const result = game.results.find((r) => r.gap === gap.index);
 		if (!result) return effects;
 		this.#feedback = {
 			options: gap.options,
@@ -575,8 +580,8 @@ export class MusicController {
 		const game = this.#game;
 		if (!game || (game.phase !== 'gameover' && game.phase !== 'finished')) return [];
 		if (game.phase === 'gameover') {
-			const gap = this.#session?.gaps.find((g) => g.line === game.gameOverLine);
-			if (gap) this.#say(`Era “${gap.answer}”.`, now, 'err');
+			const open = game.openGaps(game.gameOverLine).map((g) => `“${g.answer}”`);
+			if (open.length > 0) this.#say(`Era ${open.join(' … ')}.`, now, 'err');
 		}
 		this.#revealed = false;
 		this.#feedback = null;
@@ -591,8 +596,7 @@ export class MusicController {
 		const t = session.lines[line]?.tokens[token];
 		if (!t || t.key === null) return [];
 		// A palavra da lacuna aberta não abre cartão (seria a resposta).
-		const gap = session.gaps.find((g) => g.line === line);
-		if (gap && gap.token === token && !game.results.some((r) => r.line === line)) return [];
+		if (game.openGaps(line).some((g) => g.token === token)) return [];
 		this.#card = { line, token };
 		this.#changed();
 		if (game.phase === 'playing' || game.phase === 'waiting') {

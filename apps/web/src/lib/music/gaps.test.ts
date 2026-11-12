@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { GAP_COUNTS, chooseGaps, isGapCandidate, spread, type GapLine } from './gaps.ts';
-import { mulberry32 } from './rng.ts';
+import {
+	DIFFICULTIES,
+	chooseGaps,
+	countWords,
+	gapCount,
+	isGapCandidate,
+	spread,
+	type Difficulty,
+	type GapLine
+} from './gaps.ts';
 import { tokenize } from './tokenize.ts';
 
 const line = (index: number, text: string, lang: 'en' | 'it' = 'en'): GapLine => ({
@@ -37,11 +45,10 @@ const CONTENT = [
 ];
 const song = () => CONTENT.map((w, i) => line(i, `We keep the ${w} close`));
 
-const opts = (difficulty: 'facil' | 'medio' | 'dificil', bank: string[] = []) => ({
+const opts = (difficulty: Difficulty, bank: string[] = []) => ({
 	difficulty,
 	lang: 'en' as const,
-	bank: new Set(bank),
-	rng: mulberry32(11)
+	bank: new Set(bank)
 });
 
 describe('isGapCandidate', () => {
@@ -62,77 +69,107 @@ describe('spread', () => {
 	});
 });
 
-describe('chooseGaps', () => {
-	test('o número de lacunas segue a dificuldade', () => {
-		expect(GAP_COUNTS).toEqual({ facil: 4, medio: 6, dificil: 10 });
-		for (const d of ['facil', 'medio', 'dificil'] as const) {
-			expect(chooseGaps(song(), opts(d))).toHaveLength(GAP_COUNTS[d]);
-		}
+describe('gapCount', () => {
+	test('15%, 30%, metade e todas as palavras', () => {
+		expect(gapCount('iniciante', 200)).toBe(30);
+		expect(gapCount('intermediario', 200)).toBe(60);
+		expect(gapCount('avancado', 200)).toBe(100);
+		expect(gapCount('especialista', 200)).toBe(200);
 	});
 
-	test('no máximo uma lacuna por linha, em ordem de linha', () => {
-		const gaps = chooseGaps(song(), opts('dificil'));
-		const lines = gaps.map((g) => g.line);
-		expect(new Set(lines).size).toBe(lines.length);
-		expect([...lines].sort((a, b) => a - b)).toEqual(lines);
+	test('arredonda para o mais perto', () => {
+		expect(gapCount('iniciante', 294)).toBe(44);
+		expect(gapCount('intermediario', 294)).toBe(88);
+		expect(gapCount('avancado', 43)).toBe(22);
+	});
+
+	test('letra curta tem pelo menos uma lacuna e nunca passa das palavras', () => {
+		expect(gapCount('iniciante', 3)).toBe(1);
+		expect(gapCount('avancado', 1)).toBe(1);
+		expect(gapCount('especialista', 0)).toBe(0);
+	});
+});
+
+describe('countWords', () => {
+	test('conta todas as palavras, funcionais também', () => {
+		expect(countWords([line(0, 'Oh oh, oh!'), line(1, 'We keep the lantern close')])).toBe(8);
+	});
+});
+
+describe('chooseGaps', () => {
+	// 24 linhas × 5 palavras = 120: 18, 36, 60, 120.
+	test('o número de lacunas segue a dificuldade', () => {
+		const counts = DIFFICULTIES.map((d) => chooseGaps(song(), opts(d)).length);
+		expect(counts).toEqual([18, 36, 60, 120]);
+	});
+
+	test('Especialista esconde todas as palavras', () => {
+		const lines = song();
+		const gaps = chooseGaps(lines, opts('especialista'));
+		expect(gaps.filter((g) => g.line === 0).map((g) => g.answer)).toEqual([
+			'We',
+			'keep',
+			'the',
+			lines[0].tokens[6].text,
+			'close'
+		]);
+	});
+
+	test('em ordem de linha e de palavra, sem repetir posição', () => {
+		const gaps = chooseGaps(song(), opts('avancado'));
+		const pos = gaps.map((g) => g.line * 100 + g.token);
+		expect([...pos].sort((a, b) => a - b)).toEqual(pos);
+		expect(new Set(pos).size).toBe(pos.length);
 	});
 
 	test('a lacuna aponta para a palavra certa da linha', () => {
 		const lines = song();
-		for (const g of chooseGaps(lines, opts('medio'))) {
+		for (const g of chooseGaps(lines, opts('avancado'))) {
 			const tok = lines[g.line].tokens[g.token];
 			expect(tok.text).toBe(g.answer);
 			expect(tok.key).toBe(g.key);
 		}
 	});
 
-	test('sem palavras do banco, as lacunas ficam espalhadas pela música toda', () => {
-		const lines = chooseGaps(song(), opts('facil')).map((g) => g.line);
-		expect(Math.min(...lines)).toBeLessThan(6);
-		expect(Math.max(...lines)).toBeGreaterThanOrEqual(18);
+	test('palavras de conteúdo vêm antes das funcionais, espalhadas pela música', () => {
+		const gaps = chooseGaps(song(), opts('iniciante'));
+		expect(gaps.every((g) => isGapCandidate(g.key, 'en'))).toBe(true);
+		const lines = gaps.map((g) => g.line);
+		expect(Math.min(...lines)).toBeLessThan(3);
+		expect(Math.max(...lines)).toBeGreaterThanOrEqual(21);
 	});
 
-	test('palavras que já estão no banco têm prioridade, mesmo no fim da música', () => {
-		const gaps = chooseGaps(song(), opts('facil', ['engine', 'castle']));
-		const answers = gaps.map((g) => g.key);
-		expect(answers).toContain('engine');
-		expect(answers).toContain('castle');
-		expect(gaps.find((g) => g.key === 'engine')?.inBank).toBe(true);
-		expect(gaps.filter((g) => !g.inBank)).toHaveLength(2);
+	test('palavras do banco têm prioridade, mesmo no fim da música', () => {
+		const gaps = chooseGaps(song(), opts('iniciante', ['engine', 'castle']));
+		const keys = gaps.map((g) => g.key);
+		expect(keys).toContain('engine');
+		expect(keys).toContain('castle');
+		expect(gaps.filter((g) => g.inBank)).toHaveLength(2);
 	});
 
 	test('com mais palavras do banco que lacunas, escolhe só n delas, espalhadas', () => {
-		const gaps = chooseGaps(song(), opts('facil', CONTENT));
-		expect(gaps).toHaveLength(4);
+		const gaps = chooseGaps(song(), opts('iniciante', CONTENT));
+		expect(gaps).toHaveLength(18);
 		expect(gaps.every((g) => g.inBank)).toBe(true);
-		expect(Math.max(...gaps.map((g) => g.line))).toBeGreaterThanOrEqual(18);
+		expect(Math.max(...gaps.map((g) => g.line))).toBeGreaterThanOrEqual(21);
 	});
 
-	test('numa linha com palavra do banco, a lacuna é essa palavra', () => {
-		const lines = [line(0, 'Quiet lantern near the harbor'), ...song().slice(1)];
-		const gaps = chooseGaps(lines, opts('facil', ['harbor']));
-		expect(gaps.find((g) => g.line === 0)?.key).toBe('harbor');
-	});
-
-	test('linhas sem palavra elegível nunca viram lacuna', () => {
-		const lines = [line(0, 'I am so in it'), line(1, 'Oh oh oh'), ...song().slice(2)];
-		const gaps = chooseGaps(lines, opts('dificil'));
-		expect(gaps.map((g) => g.line)).not.toContain(0);
-		expect(gaps.map((g) => g.line)).not.toContain(1);
-	});
-
-	test('com poucas linhas elegíveis, devolve só as que existem', () => {
-		const gaps = chooseGaps(song().slice(0, 3), opts('dificil'));
-		expect(gaps).toHaveLength(3);
-	});
-
-	test('evita repetir a mesma resposta quando há alternativa', () => {
-		const lines = CONTENT.slice(0, 6).map((w, i) => line(i, `Heart ${w} heart`));
-		const keys = chooseGaps(lines, opts('medio')).map((g) => g.key);
-		expect(new Set(keys).size).toBe(keys.length);
+	test('acabando as de conteúdo, completa com as funcionais', () => {
+		// 3 de conteúdo (keep, lantern, close) e 2 funcionais por linha: 72 + 48.
+		const gaps = chooseGaps(song(), { ...opts('especialista'), difficulty: 'especialista' });
+		const content = chooseGaps(song(), opts('avancado'));
+		expect(content.every((g) => isGapCandidate(g.key, 'en'))).toBe(true);
+		expect(gaps.filter((g) => !isGapCandidate(g.key, 'en'))).toHaveLength(48);
+		const few = song().slice(0, 2);
+		// 10 palavras, 6 de conteúdo: Avançado dá 5 lacunas (metade), todas de conteúdo;
+		// numa linha só com funcionais, as funcionais completam.
+		expect(chooseGaps(few, opts('avancado')).every((g) => isGapCandidate(g.key, 'en'))).toBe(true);
+		const plain = [line(0, 'I am in it'), line(1, 'We keep the lantern close')];
+		const mixed = chooseGaps(plain, opts('especialista'));
+		expect(mixed.filter((g) => g.line === 0)).toHaveLength(4);
 	});
 
 	test('música vazia não quebra', () => {
-		expect(chooseGaps([], opts('medio'))).toEqual([]);
+		expect(chooseGaps([], opts('intermediario'))).toEqual([]);
 	});
 });

@@ -24,25 +24,22 @@ export function checkStep(step: Step, session: Session): string[] {
 		fail('sincronia-mexeu-no-video', JSON.stringify(videoEffects));
 
 	// I2: lacuna aberta nunca aparece em texto visível.
-	const gapByLine = new Map(session.gaps.map((g) => [g.line, g]));
+	const answered = new Set(v.results.map((r) => r.gap));
+	const openTokens = (line: number) =>
+		new Set(session.gaps.filter((g, i) => g.line === line && !answered.has(i)).map((g) => g.token));
 	for (const line of v.lines) {
-		const gaps = line.parts.filter((p) => p.kind === 'gap').length;
-		const open = line.hasGap && !line.result;
-		if (open && gaps !== 1) fail('lacuna-aberta-a-mostra', `linha ${line.index}`);
-		if (!open && gaps > 0) fail('lacuna-fantasma', `linha ${line.index}`);
-		const gap = gapByLine.get(line.index);
-		if (open && gap && line.parts.some((p) => p.kind === 'word' && p.token === gap.token))
-			fail('lacuna-aberta-a-mostra', `linha ${line.index}`);
+		const open = new Set(line.gaps.filter((g) => !g.result).map((g) => g.token));
+		const shown = new Set(line.parts.flatMap((p) => (p.kind === 'gap' ? [p.token] : [])));
+		for (const t of shown) if (!open.has(t)) fail('lacuna-fantasma', `linha ${line.index}`);
+		for (const t of open) if (!shown.has(t)) fail('lacuna-aberta-a-mostra', `linha ${line.index}`);
 	}
 	if (v.card) {
-		const line = v.lines[v.card.line];
-		const gap = gapByLine.get(v.card.line);
-		if (line?.hasGap && !line.result && gap && v.card.tokens[gap.token]?.key !== null)
-			fail('cartao-mostra-lacuna', `linha ${v.card.line}`);
+		for (const t of openTokens(v.card.line))
+			if (v.card.tokens[t]?.key !== null) fail('cartao-mostra-lacuna', `linha ${v.card.line}`);
 	}
 	if (v.gameOver && !v.gameOver.revealed) {
-		const gap = gapByLine.get(v.gameOver.line);
-		if (gap && v.gameOver.parts.some((p) => p.kind === 'word' && p.token === gap.token))
+		const open = openTokens(v.gameOver.line);
+		if (v.gameOver.parts.some((p) => p.kind === 'word' && open.has(p.token)))
 			fail('fim-de-jogo-mostra-lacuna');
 	}
 
@@ -88,9 +85,9 @@ export function checkStep(step: Step, session: Session): string[] {
 		if (!event || !allowed.includes(event.type)) fail('video-mexeu-sozinho-na-sincronia');
 	}
 
-	// I10: uma resposta por linha.
-	const lines = v.results.map((r) => r.line);
-	if (new Set(lines).size !== lines.length) fail('resposta-repetida');
+	// I10: uma resposta por lacuna.
+	const gaps = v.results.map((r) => r.gap);
+	if (new Set(gaps).size !== gaps.length) fail('resposta-repetida');
 
 	// I11: pontos só sobem (fora recomeçar).
 	const restart =

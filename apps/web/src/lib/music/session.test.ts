@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { LyricLine } from './lrc.ts';
 import { mulberry32 } from './rng.ts';
-import { buildSession } from './session.ts';
+import { buildSession, difficultyCounts } from './session.ts';
 
 // Versos inventados. Nenhuma letra real.
 const VERSES = [
@@ -29,16 +29,16 @@ const build = (over: Partial<Parameters<typeof buildSession>[0]> = {}) =>
 	buildSession({
 		lyrics,
 		lang: 'en',
-		difficulty: 'medio',
+		difficulty: 'intermediario',
 		bank: new Map(),
 		rng: mulberry32(21),
 		...over
 	});
 
 describe('buildSession', () => {
-	test('cria uma lacuna por linha escolhida, com 4 opções únicas contendo a resposta', () => {
-		const s = build();
-		expect(s.gaps).toHaveLength(6);
+	test('cada lacuna tem 4 opções únicas contendo a resposta, até em Especialista', () => {
+		const s = build({ difficulty: 'especialista' });
+		expect(s.gaps.length).toBe(difficultyCounts(lyrics, 'en').words);
 		for (const g of s.gaps) {
 			expect(g.options).toHaveLength(4);
 			expect(new Set(g.options.map((o) => o.toLowerCase())).size).toBe(4);
@@ -48,7 +48,7 @@ describe('buildSession', () => {
 
 	test('nenhuma opção errada é palavra da própria linha', () => {
 		for (let seed = 1; seed <= 20; seed++) {
-			const s = build({ rng: mulberry32(seed), difficulty: 'dificil' });
+			const s = build({ rng: mulberry32(seed), difficulty: 'especialista' });
 			for (const g of s.gaps) {
 				const inLine = new Set(
 					s.lines[g.line].tokens.map((t) => t.key).filter((k): k is string => k !== null)
@@ -69,7 +69,7 @@ describe('buildSession', () => {
 
 	test('palavras do banco viram lacuna e trazem a tradução', () => {
 		const s = build({
-			difficulty: 'facil',
+			difficulty: 'iniciante',
 			bank: new Map([
 				['harbor', 'porto'],
 				['valley', 'vale']
@@ -81,9 +81,12 @@ describe('buildSession', () => {
 		expect(s.gaps.find((g) => g.key === 'valley')?.inBank).toBe(true);
 	});
 
-	test('conta quantas lacunas vêm do banco (para a tela de início)', () => {
-		const s = build({ difficulty: 'facil', bank: new Map([['harbor', 'porto']]) });
-		expect(s.fromBank).toBe(1);
+	test('conta as lacunas de cada dificuldade (para a tela de início)', () => {
+		// 12 versos, 63 palavras: 9, 19, 32, 63.
+		expect(difficultyCounts(lyrics, 'en')).toEqual({
+			words: 63,
+			gaps: { iniciante: 9, intermediario: 19, avancado: 32, especialista: 63 }
+		});
 	});
 
 	test('sem letra suficiente devolve sessão vazia, sem quebrar', () => {

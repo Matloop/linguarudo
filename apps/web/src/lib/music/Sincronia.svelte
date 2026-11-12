@@ -67,8 +67,9 @@
 					{#each selected.parts as p, i (i)}{#if p.kind === 'gap'}<span
 								class="gap"
 								role="img"
-								aria-label="lacuna"
-							></span>{:else}{p.text}{/if}{/each}
+								aria-label="lacuna começando com {p.initial}"
+								>{p.initial}<i style:width="{p.rest * 0.55}em"></i></span
+							>{:else}{p.text}{/if}{/each}
 				{/if}
 			</p>
 			<button class="marcar" type="button" onclick={() => onsend({ type: 'mark' })}>
@@ -262,13 +263,16 @@
 		font: 600 18.5px/1.3 var(--f-head);
 	}
 
+	/* lacuna: só a inicial e o tamanho */
 	.gap {
 		display: inline-block;
-		width: 3.6em;
-		height: 1em;
-		border-bottom: 2px solid currentColor;
-		vertical-align: -3px;
-		opacity: 0.6;
+		border-bottom: 2px dashed currentColor;
+		line-height: 1.05;
+		opacity: 0.75;
+	}
+
+	.gap i {
+		display: inline-block;
 	}
 
 	.marcar {

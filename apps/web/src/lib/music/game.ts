@@ -1,8 +1,9 @@
 // Máquina de estados do jogo de música (modo Escolha).
 //
 // O vídeo toca sem parar. As lacunas da linha atual podem ser respondidas
-// enquanto ela toca. Se a linha acaba sem resposta, o vídeo pausa e começa um
-// contador de 10 s; sem resposta nesse tempo, é fim de jogo.
+// enquanto ela toca, da esquerda para a direita. Se a linha acaba com lacuna aberta,
+// o vídeo pausa e começa um contador de 10 s (que recomeça a cada resposta, quando a
+// linha tem mais de uma); sem resposta nesse tempo, é fim de jogo.
 //
 // A classe não conhece o player nem o relógio: recebe o tempo do vídeo (já filtrado
 // pelo Playhead) e o "agora" a cada chamada e devolve comandos para o player executar.
@@ -29,6 +30,8 @@ export interface GameLineTiming {
 export interface GameGapConfig {
 	/** Índice da linha em `lines`. */
 	line: number;
+	/** Posição da palavra nos tokens da linha. As lacunas vêm em ordem de linha e token. */
+	token: number;
 	answer: string;
 	options: readonly string[];
 }
@@ -38,7 +41,14 @@ export interface GameConfig {
 	gaps: readonly GameGapConfig[];
 }
 
+/** Lacuna com a posição dela em `gaps`. */
+export interface OpenGap extends GameGapConfig {
+	index: number;
+}
+
 export interface GapResult {
+	/** Índice da lacuna em `gaps`. */
+	gap: number;
 	line: number;
 	answer: string;
 	chosen: string;
@@ -77,6 +87,8 @@ export class Game {
 	#resumeTo: 'playing' | 'waiting' = 'playing';
 	#overLine = -1;
 	#suspended = false;
+	/** Índices das lacunas que já têm resultado. */
+	#done = new Set<number>();
 
 	constructor(config: GameConfig) {
 		this.#config = config;
@@ -103,13 +115,22 @@ export class Game {
 	}
 
 	/** A lacuna que dá para responder agora, ou null. */
-	get answerable(): GameGapConfig | null {
+	get answerable(): OpenGap | null {
 		let line: number;
 		if (this.phase === 'playing') line = this.activeLine;
 		else if (this.phase === 'waiting' && this.waitLine !== null) line = this.waitLine;
 		else return null;
 		if (this.#suspended) return null;
 		return this.#openGap(line);
+	}
+
+	/** Lacunas desta linha que ainda não têm resultado, em ordem. */
+	openGaps(line: number): OpenGap[] {
+		const out: OpenGap[] = [];
+		this.gaps.forEach((g, index) => {
+			if (g.line === line && !this.#done.has(index)) out.push({ ...g, index });
+		});
+		return out;
 	}
 
 	/** Linha cuja lacuna ficou sem resposta no fim de jogo (-1 se não houve). */
@@ -174,7 +195,7 @@ export class Game {
 		return [];
 	}
 
-	answer(option: string): Command[] {
+	answer(option: string, now: number): Command[] {
 		if (this.#suspended) return [];
 		const gap = this.answerable;
 		if (!gap || !gap.options.includes(option)) return [];
@@ -190,9 +211,21 @@ export class Game {
 		} else {
 			this.combo = 1;
 		}
-		this.results.push({ line: gap.line, answer: gap.answer, chosen: option, ok, points });
+		this.#record({
+			gap: gap.index,
+			line: gap.line,
+			answer: gap.answer,
+			chosen: option,
+			ok,
+			points
+		});
 
 		if (this.phase === 'waiting') {
+			// A linha ainda tem lacuna: continua parado, com o contador de novo.
+			if (this.#openGap(gap.line)) {
+				this.#deadline = now + WAIT_MS;
+				return [];
+			}
 			this.phase = 'playing';
 			this.waitLine = null;
 			return [{ type: 'play' }];
@@ -293,6 +326,7 @@ export class Game {
 		this.maxCombo = 1;
 		this.timeouts = 0;
 		this.results = [];
+		this.#done.clear();
 		this.waitLine = null;
 		this.#overLine = -1;
 		this.#suspended = false;
@@ -311,9 +345,7 @@ export class Game {
 
 	/** Lacunas que contam: as de linhas presentes, mais as já respondidas. */
 	get total(): number {
-		return this.gaps.filter(
-			(g) => this.#present(g.line) || this.results.some((r) => r.line === g.line)
-		).length;
+		return this.gaps.filter((g, i) => this.#present(g.line) || this.#done.has(i)).length;
 	}
 
 	summary(): Summary {
@@ -328,6 +360,11 @@ export class Game {
 	}
 
 	// ---------- internos ----------
+
+	#record(result: GapResult) {
+		this.results.push(result);
+		this.#done.add(result.gap);
+	}
 
 	#changed() {
 		this.revision++;
@@ -355,9 +392,10 @@ export class Game {
 	/** Lacunas abertas em linhas de `from` até antes de `line` ficam puladas. */
 	#skipBefore(line: number, from: number) {
 		for (let i = from; i < line; i++) {
-			const gap = this.#openGap(i);
-			if (gap)
-				this.results.push({
+			if (!this.#present(i)) continue;
+			for (const gap of this.openGaps(i))
+				this.#record({
+					gap: gap.index,
 					line: i,
 					answer: gap.answer,
 					chosen: '',
@@ -368,10 +406,10 @@ export class Game {
 		}
 	}
 
-	#openGap(line: number): GameGapConfig | null {
+	/** A próxima lacuna aberta da linha (a mais à esquerda). */
+	#openGap(line: number): OpenGap | null {
 		if (line < 0 || !this.#present(line)) return null;
-		const gap = this.gaps.find((g) => g.line === line);
-		if (!gap || this.results.some((r) => r.line === line)) return null;
-		return gap;
+		const index = this.gaps.findIndex((g, i) => g.line === line && !this.#done.has(i));
+		return index < 0 ? null : { ...this.gaps[index], index };
 	}
 }

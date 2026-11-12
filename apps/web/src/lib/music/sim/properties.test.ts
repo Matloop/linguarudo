@@ -99,4 +99,4 @@ test('as regras valem em qualquer sequência de ações e manias do player', () 
 		{ numRuns: 300, seed: Number(process.env.FC_SEED ?? 20261111) }
 	);
 	expect(true).toBe(true);
-});
+}, 30_000);

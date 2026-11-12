@@ -71,7 +71,7 @@ export class Simulator {
 			buildSession({
 				lyrics,
 				lang: 'en',
-				difficulty: 'dificil',
+				difficulty: 'especialista',
 				bank: new Map(),
 				rng: mulberry32(3)
 			});

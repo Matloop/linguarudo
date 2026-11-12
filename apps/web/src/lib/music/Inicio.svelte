@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { DIFFICULTIES, DIFFICULTY_LABELS, type Difficulty } from './gaps.ts';
+	import type { DifficultyCounts } from './session.ts';
 	import type { LyricVersion } from './Sincronia.svelte';
 	import { formatOffset } from './timeline.ts';
 	import type { MusicLanguage } from './wordlists.ts';
@@ -9,12 +10,12 @@
 		title: string;
 		artist: string;
 		lang: MusicLanguage;
+		/** A última escolhida; recebe o foco quando a tela abre. */
 		difficulty: Difficulty;
-		/** Quantas lacunas cada dificuldade tem nesta letra, e quantas são palavras do banco. */
-		counts: Record<Difficulty, { gaps: number; fromBank: number }>;
+		counts: DifficultyCounts;
 		status: 'loading' | 'ready' | 'no-lyrics' | 'unavailable' | 'player-error';
 		message: string;
-		onstart: () => void;
+		onstart: (difficulty: Difficulty) => void;
 		onretry: () => void;
 		/** Quanto o vídeo tem a mais que a faixa, se a música nunca foi sincronizada. */
 		hint?: number | null;
@@ -30,7 +31,7 @@
 		title,
 		artist,
 		lang,
-		difficulty = $bindable(),
+		difficulty,
 		counts,
 		status,
 		message,
@@ -54,11 +55,12 @@
 				: `Este vídeo tem ${formatOffset(hint).slice(1)} a menos que a música. Pode ser outra versão.`
 	);
 
-	const current = $derived(counts[difficulty]);
-	let go: HTMLButtonElement | undefined = $state();
+	let rows: Record<string, HTMLButtonElement> = $state({});
 	$effect(() => {
-		if (status === 'ready') go?.focus({ preventScroll: true });
+		if (status === 'ready') rows[difficulty]?.focus({ preventScroll: true });
 	});
+
+	const share = (n: number) => (counts.words > 0 ? (n / counts.words) * 100 : 0);
 </script>
 
 <div class="tela">
@@ -74,30 +76,19 @@
 		</div>
 
 		{#if status === 'ready'}
-			<div class="rot">Dificuldade <small>muda quantas lacunas há</small></div>
-			<div class="difs" role="radiogroup" aria-label="Dificuldade">
+			<div class="difs" role="group" aria-label="Dificuldade">
 				{#each DIFFICULTIES as d (d)}
-					<button
-						type="button"
-						class="dif"
-						role="radio"
-						aria-checked={difficulty === d}
-						onclick={() => (difficulty = d)}
-					>
+					{@const n = counts.gaps[d]}
+					<button type="button" class="dif" bind:this={rows[d]} onclick={() => onstart(d)}>
 						<b>{DIFFICULTY_LABELS[d]}</b>
-						<span>{counts[d].gaps} {counts[d].gaps === 1 ? 'lacuna' : 'lacunas'}</span>
+						<span class="n">{n} de {counts.words} palavras</span>
+						<span class="barra" aria-hidden="true"><i style:width="{share(n)}%"></i></span>
+						<svg class="seta" viewBox="0 0 24 24" aria-hidden="true"
+							><path d="M5 12h14M13 6l6 6-6 6" /></svg
+						>
 					</button>
 				{/each}
 			</div>
-			<p class="prior">
-				<i aria-hidden="true"></i>
-				<span>
-					<b>{current.fromBank} de {current.gaps}</b> lacunas são palavras que já estão no seu
-					banco. Elas vêm primeiro{current.fromBank < current.gaps
-						? '; o resto completa a letra'
-						: ''}.
-				</span>
-			</p>
 			{#if hint !== null}
 				<div class="dica" data-testid="dica-sincronia">
 					<p>
@@ -136,13 +127,6 @@
 					{/if}
 				</div>
 			{/if}
-			<button class="ir" type="button" bind:this={go} onclick={onstart}>
-				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z" /></svg>
-				Começar
-			</button>
-			<p class="nota">
-				O vídeo toca sem parar. Se a linha acabar sem resposta, ele espera 10 segundos por você.
-			</p>
 		{:else if status === 'loading'}
 			<p class="estado" role="status">Abrindo o vídeo e buscando a letra…</p>
 		{:else}
@@ -249,86 +233,81 @@
 		color: var(--ink-2);
 	}
 
-	.rot {
-		font-size: 15px;
-		font-weight: 500;
-		color: var(--ink);
-		margin: 22px 0 8px;
-		display: flex;
-		justify-content: space-between;
-		align-items: baseline;
-		gap: 8px;
-	}
-
-	.rot small {
-		color: var(--ink-3);
-		font-size: 14px;
-		font-weight: 400;
-	}
-
 	.difs {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 8px;
+		margin-top: 18px;
+		display: flex;
+		flex-direction: column;
+		border-radius: var(--r-l);
+		box-shadow: inset 0 0 0 1px var(--line);
+		overflow: hidden;
 	}
 
 	.dif {
+		display: flex;
+		align-items: center;
+		gap: 14px;
 		border: 0;
-		background: var(--tile);
-		box-shadow: inset 0 0 0 1px var(--line);
-		border-radius: var(--r-l);
-		padding: 12px 14px;
+		border-top: 1px solid var(--line);
+		background: none;
+		padding: 15px 16px;
 		text-align: left;
 		color: var(--ink);
-		transition:
-			background-color 0.15s,
-			box-shadow 0.15s;
+		font: inherit;
+		transition: background-color 0.15s;
 	}
 
-	.dif:hover {
+	.dif:first-child {
+		border-top: 0;
+	}
+
+	.dif:hover,
+	.dif:focus-visible {
 		background: var(--hover);
 	}
 
+	.dif:focus-visible {
+		outline: 2px solid var(--ink);
+		outline-offset: -2px;
+	}
+
 	.dif b {
-		display: block;
-		font: 600 18px/1.3 var(--f-head);
+		flex: 1;
+		font: 500 16.5px/1.3 var(--f-head);
 	}
 
-	.dif span {
-		display: block;
-		font-size: 14px;
+	.dif .n {
+		font-size: 14.5px;
 		color: var(--ink-2);
+		font-variant-numeric: tabular-nums;
 	}
 
-	.dif[aria-checked='true'] {
-		background: var(--sel);
-		box-shadow: inset 0 0 0 1.5px var(--ink);
-	}
-
-	.prior {
-		display: flex;
-		gap: 10px;
-		align-items: flex-start;
-		background: var(--gold-soft);
-		border-radius: var(--r-m);
-		padding: 11px 13px;
-		margin: 10px 0 0;
-		font-size: 15px;
-		color: var(--ink-2);
-	}
-
-	.prior :global(b) {
-		color: var(--ink);
-		font-weight: 600;
-	}
-
-	.prior i {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		background: var(--gold-ink);
+	.barra {
+		width: 46px;
+		height: 4px;
+		border-radius: 2px;
+		background: var(--line-2);
+		overflow: hidden;
 		flex: none;
-		margin-top: 8px;
+	}
+
+	.barra i {
+		display: block;
+		height: 100%;
+		border-radius: 2px;
+		background: var(--gold-ink);
+	}
+
+	.dif .seta {
+		color: var(--ink-3);
+		transition:
+			transform 0.15s var(--ease),
+			color 0.15s;
+	}
+
+	.dif:hover .seta,
+	.dif:focus-visible .seta {
+		color: var(--ink);
+		transform: translateX(2px);
 	}
 
 	.ir {
@@ -414,14 +393,6 @@
 		color: var(--ink-2);
 	}
 
-	.nota {
-		text-align: center;
-		font-size: 14px;
-		color: var(--ink-3);
-		margin: 12px 0 0;
-		text-wrap: pretty;
-	}
-
 	.estado {
 		margin: 22px 0 6px;
 		text-align: center;
@@ -452,12 +423,9 @@
 			padding: 20px 18px;
 		}
 
-		.difs {
-			gap: 6px;
-		}
-
 		.dif {
-			padding: 10px;
+			padding: 14px;
+			gap: 10px;
 		}
 	}
 </style>
