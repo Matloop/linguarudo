@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { parseSongInput, songFromWork, songWork } from './song.ts';
+import { EMPTY_SYNC, type StoredSync } from './timeline.ts';
 
 const base = {
 	url: 'https://youtu.be/AbC123_-xyZ',
@@ -79,13 +80,28 @@ describe('songFromWork', () => {
 			artist: 'Banda Inventada',
 			language: 'it',
 			playedAt: '2026-11-11T10:00:00Z',
-			sync: { offset: null, hintDismissed: false }
+			sync: EMPTY_SYNC
 		});
 	});
 
 	test('traz a sincronia salva nas refs', () => {
-		const song = songFromWork({ ...row, refs: { youtube_id: 'AbC123_-xyZ', lyrics_offset: 12.4 } });
-		expect(song?.sync).toEqual({ offset: 12.4, hintDismissed: false });
+		const sync: StoredSync = {
+			v: 1,
+			rate: 1,
+			anchors: [{ lyric: 1, video: 13.4, hash: '0a1b2c3d', source: 'manual' }],
+			hintDismissed: true,
+			lrclibId: 42
+		};
+		const song = songFromWork({ ...row, refs: { youtube_id: 'AbC123_-xyZ', lyrics_sync: sync } });
+		expect(song?.sync).toEqual(sync);
+	});
+
+	test('sincronia salva malformada vira vazia', () => {
+		const song = songFromWork({
+			...row,
+			refs: { youtube_id: 'AbC123_-xyZ', lyrics_sync: { v: 2, anchors: 'x' } }
+		});
+		expect(song?.sync).toEqual(EMPTY_SYNC);
 	});
 
 	test('sem vídeo ou com idioma fora do jogo, não é música jogável', () => {

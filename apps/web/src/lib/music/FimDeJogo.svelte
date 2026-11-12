@@ -1,9 +1,12 @@
 <script lang="ts">
 	import Mark from '#lib/ui/Mark.svelte';
+	import type { LinePart } from './mask.ts';
 
 	interface Props {
-		/** Texto da linha em que o tempo acabou. */
-		line: string;
+		/** A linha em que o tempo acabou, com a lacuna escondida (até sair). */
+		parts: readonly LinePart[];
+		/** Saindo: a resposta aparece na linha. */
+		revealed: boolean;
 		correct: number;
 		total: number;
 		answered: number;
@@ -13,7 +16,8 @@
 		onleave: () => void;
 	}
 
-	let { line, correct, total, answered, wrong, onretry, oncontinue, onleave }: Props = $props();
+	let { parts, revealed, correct, total, answered, wrong, onretry, oncontinue, onleave }: Props =
+		$props();
 
 	let first: HTMLButtonElement | undefined = $state();
 	$effect(() => first?.focus({ preventScroll: true }));
@@ -25,7 +29,14 @@
 		<h2 id="fim-titulo">Fim de jogo</h2>
 		<p id="fim-sub" class="sub">
 			O tempo acabou sem resposta para a lacuna de
-			<q>{line}</q>
+			<q data-testid="fim-linha"
+				>{#each parts as p, i (i)}{#if p.kind === 'gap'}<span
+							class="gap"
+							role="img"
+							aria-label="lacuna"
+						></span>{:else if p.kind === 'word' && p.mark}<b class="resp">{p.text}</b
+						>{:else}{p.text}{/if}{/each}</q
+			>
 		</p>
 
 		<p class="placar">
@@ -50,11 +61,23 @@
 				Continuar jogando
 			</button>
 		</div>
-		<button class="sair" type="button" onclick={onleave}>Sair</button>
+		<button class="sair" type="button" disabled={revealed} onclick={onleave}>Sair</button>
 	</div>
 </div>
 
 <style>
+	.gap {
+		display: inline-block;
+		width: 3.4em;
+		height: 1em;
+		border-bottom: 2px solid currentColor;
+		vertical-align: -3px;
+	}
+
+	.resp {
+		color: var(--terra-ink);
+	}
+
 	.tela {
 		position: fixed;
 		inset: 0;

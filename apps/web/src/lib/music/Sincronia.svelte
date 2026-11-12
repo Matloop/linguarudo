@@ -1,107 +1,121 @@
 <script lang="ts">
-	import { formatOffset } from './offset.ts';
+	import type { LineView, MusicEvent, SyncView } from './controller.ts';
+	import { formatOffset } from './timeline.ts';
+
+	export interface LyricVersion {
+		id: number;
+		label: string;
+	}
 
 	interface Props {
-		lines: readonly { start: number; end: number; text: string }[];
-		/** Deslocamento atual (s): a letra entra este tanto mais tarde no vídeo. */
-		offset: number;
-		/** Linha que a pessoa vai marcar com "Começou agora" (= lines.length no fim). */
-		target: number;
+		sync: SyncView;
+		lines: readonly LineView[];
 		/** Tempo do vídeo (s). */
 		time: number;
 		duration: number;
-		playing: boolean;
-		feedback: string;
-		onmark: () => void;
-		onnudge: (delta: number) => void;
-		onzero: () => void;
-		onrestart: () => void;
-		onback: () => void;
-		ontoggle: () => void;
-		oncancel: () => void;
-		onconclude: () => void;
+		/** null = o navegador não sabe sincronizar sozinho (o botão some). */
+		auto: { running: boolean; message: string } | null;
+		versions: readonly LyricVersion[];
+		version: number | null;
+		onsend: (event: MusicEvent) => void;
+		onauto: () => void;
+		onversion: (id: number) => void;
 	}
 
-	let {
-		lines,
-		offset,
-		target,
-		time,
-		duration,
-		playing,
-		feedback,
-		onmark,
-		onnudge,
-		onzero,
-		onrestart,
-		onback,
-		ontoggle,
-		oncancel,
-		onconclude
-	}: Props = $props();
+	let { sync, lines, time, duration, auto, versions, version, onsend, onauto, onversion }: Props =
+		$props();
 
-	const targetLine = $derived(lines[target] ?? null);
+	const selected = $derived(lines[sync.selected] ?? null);
 	const explain = $derived(
-		Math.abs(offset) < 0.05
-			? 'letra no tempo da faixa original'
-			: offset > 0
-				? 'a letra entra mais tarde no vídeo'
-				: 'a letra entra mais cedo no vídeo'
+		sync.anchors.length === 0
+			? 'Toque numa linha da letra quando ela começar a ser cantada.'
+			: Math.abs(sync.offset) < 0.05
+				? 'neste trecho a letra está no tempo da faixa original'
+				: sync.offset > 0
+					? 'neste trecho a letra entra mais tarde no vídeo'
+					: 'neste trecho a letra entra mais cedo no vídeo'
 	);
 
-	// Faixa: o vídeo inteiro, com a letra (bloco e uma marca por linha) por cima.
-	const span = $derived(Math.max(duration, (lines.at(-1)?.end ?? 0) + offset, 1));
+	// Faixa: o vídeo inteiro, com cada linha (onde ela cai no vídeo) por cima.
+	const span = $derived(Math.max(duration, (lines.at(-1)?.end ?? 0) + 1, 1));
 	const pct = (s: number) => `${Math.max(0, Math.min(100, (s / span) * 100))}%`;
-	const block = $derived.by(() => {
-		if (lines.length === 0) return null;
-		const a = Math.max(0, lines[0].start + offset);
-		const b = Math.max(a, lines[lines.length - 1].end + offset);
-		return { left: pct(a), width: `${Math.min(100, ((b - a) / span) * 100)}%` };
-	});
+	const width = (a: number, b: number) =>
+		`${Math.max(0.4, Math.min(100, ((b - a) / span) * 100))}%`;
 	const clock = (s: number) => {
 		const v = Math.max(0, s);
 		return `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
 	};
+	const rateText = (r: number) => r.toFixed(3).replace('.', ',');
+
+	let versionsOpen = $state(false);
 </script>
 
 <section class="sinc" aria-label="Sincronizar a letra">
 	<div class="cab">
 		<h2>Sincronizar letra</h2>
-		<p>O jogo está pausado. Ouça o vídeo e toque quando a linha começar a ser cantada.</p>
+		<p>
+			O jogo está congelado. Toque numa linha quando ela começar; cada toque vale daquela linha em
+			diante.
+		</p>
 	</div>
 
 	<div class="corpo">
 		<div class="alvo">
-			<small>Próxima linha</small>
+			<small>Linha escolhida · {sync.selected + 1}</small>
 			<p class="txt" data-testid="sinc-alvo">
-				{targetLine?.text ?? 'Fim da letra. Toque numa linha acima para marcar outra.'}
+				{#if selected}
+					{#each selected.parts as p, i (i)}{#if p.kind === 'gap'}<span
+								class="gap"
+								role="img"
+								aria-label="lacuna"
+							></span>{:else}{p.text}{/if}{/each}
+				{/if}
 			</p>
-			<button class="marcar" type="button" onclick={onmark} disabled={!targetLine}>
+			<button class="marcar" type="button" onclick={() => onsend({ type: 'mark' })}>
 				Começou agora <kbd>Espaço</kbd>
 			</button>
-			<p class="fb" aria-live="polite">{feedback}</p>
+			{#if sync.rateSuggestion !== null}
+				<p class="vel" data-testid="sinc-vel">
+					O vídeo parece tocar a {rateText(sync.rateSuggestion)}× da letra.
+					<button type="button" class="link" onclick={() => onsend({ type: 'acceptRate' })}
+						>Usar</button
+					>
+				</p>
+			{/if}
 		</div>
 
 		<div class="ajuste">
 			<div class="leitura">
-				<b data-testid="sinc-offset">{formatOffset(offset)}</b>
+				<b data-testid="sinc-offset">{formatOffset(sync.offset)}</b>
 				<span>{explain}</span>
 			</div>
-			<div class="fino" role="group" aria-label="Ajuste fino">
-				<button type="button" onclick={() => onnudge(-1)}>−1 s</button>
-				<button type="button" onclick={() => onnudge(-0.1)} aria-label="Letra 0,1 s mais cedo"
-					>−0,1</button
+			<div class="fino" role="group" aria-label="Ajuste fino do trecho">
+				<button type="button" onclick={() => onsend({ type: 'nudge', delta: -1 })}>−1 s</button>
+				<button
+					type="button"
+					onclick={() => onsend({ type: 'nudge', delta: -0.1 })}
+					aria-label="Trecho 0,1 s mais cedo">−0,1</button
 				>
-				<button type="button" onclick={() => onnudge(0.1)} aria-label="Letra 0,1 s mais tarde"
-					>+0,1</button
+				<button
+					type="button"
+					onclick={() => onsend({ type: 'nudge', delta: 0.1 })}
+					aria-label="Trecho 0,1 s mais tarde">+0,1</button
 				>
-				<button type="button" onclick={() => onnudge(1)}>+1 s</button>
+				<button type="button" onclick={() => onsend({ type: 'nudge', delta: 1 })}>+1 s</button>
 			</div>
 			<div class="faixa" aria-hidden="true">
 				<div class="tr">
-					{#if block}<i class="bloco" style:left={block.left} style:width={block.width}></i>{/if}
-					{#each lines as l, i (i)}
-						<i class="mk" class:on={i === target} style:left={pct(l.start + offset)}></i>
+					{#each lines as l (l.index)}
+						<i
+							class="ln"
+							class:sel={l.index === sync.selected}
+							class:cut={!l.present}
+							style:left={pct(l.start)}
+							style:width={width(l.start, l.end)}
+						></i>
+					{/each}
+					{#each sync.anchors as a (a.line)}
+						<i class="an" class:auto={a.source === 'auto'} style:left={pct(a.video)}></i>
 					{/each}
 					<i class="ph" style:left={pct(time)}></i>
 				</div>
@@ -112,19 +126,91 @@
 		</div>
 	</div>
 
+	<ul class="trechos" data-testid="sinc-trechos">
+		{#each sync.anchors as a, i (a.line)}
+			<li class:cur={i === sync.segment}>
+				<span
+					>Linha {a.line + 1} em diante{#if a.source === 'auto'}<em class="auto">auto</em
+						>{/if}</span
+				>
+				<span class="off">{formatOffset(a.offset)}</span>
+				<button
+					type="button"
+					class="x"
+					aria-label="Apagar a marca da linha {a.line + 1}"
+					onclick={() => onsend({ type: 'deleteAnchor', index: i })}>✕</button
+				>
+			</li>
+		{:else}
+			<li class="vazio">Nenhuma marca ainda.</li>
+		{/each}
+	</ul>
+
 	<div class="pe">
-		<button class="bt" type="button" onclick={onrestart}>Do começo</button>
-		<button class="bt" type="button" onclick={onback}>−5 s</button>
-		<button class="bt" type="button" onclick={ontoggle}>{playing ? 'Pausar' : 'Tocar'}</button>
+		<button class="bt" type="button" onclick={() => onsend({ type: 'syncRestart' })}
+			>Do começo</button
+		>
+		<button class="bt" type="button" onclick={() => onsend({ type: 'syncBack', seconds: 5 })}
+			>−5 s</button
+		>
+		<button class="bt" type="button" onclick={() => onsend({ type: 'syncTogglePlay' })}
+			>{sync.videoPlaying ? 'Pausar' : 'Tocar'}</button
+		>
+		{#if auto}
+			<button class="bt auto" type="button" onclick={onauto} aria-pressed={auto.running}
+				>{auto.running ? '✦ Parar' : '✦ Sincronizar sozinho'}</button
+			>
+		{/if}
 		<span class="esp"></span>
-		<button class="bt fant" type="button" onclick={onzero}>Zerar</button>
-		<button class="bt" type="button" onclick={oncancel}>Cancelar</button>
-		<button class="bt pri" type="button" onclick={onconclude}>Concluir</button>
+		<button
+			class="bt fant"
+			type="button"
+			disabled={!sync.canUndo}
+			onclick={() => onsend({ type: 'undo' })}>Desfazer</button
+		>
+		<button class="bt fant" type="button" onclick={() => onsend({ type: 'zero' })}>Zerar</button>
+		<button class="bt" type="button" onclick={() => onsend({ type: 'closeSync', conclude: false })}
+			>Cancelar</button
+		>
+		<button
+			class="bt pri"
+			type="button"
+			onclick={() => onsend({ type: 'closeSync', conclude: true })}>Concluir</button
+		>
 	</div>
+
+	{#if auto?.message}<p class="auto-msg" aria-live="polite">{auto.message}</p>{/if}
+
+	{#if versions.length > 1}
+		<div class="versoes">
+			<button
+				type="button"
+				class="link"
+				aria-expanded={versionsOpen}
+				onclick={() => (versionsOpen = !versionsOpen)}>Outras versões da letra ▾</button
+			>
+			{#if versionsOpen}
+				<ul>
+					{#each versions as v (v.id)}
+						<li>
+							<button
+								type="button"
+								class="link"
+								class:atual={v.id === version}
+								disabled={v.id === version}
+								onclick={() => onversion(v.id)}>{v.label}</button
+							>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
+	{/if}
+
 	<p class="teclas">
-		<kbd>Espaço</kbd> marca · <kbd>←</kbd><kbd>→</kbd> 0,1 s · <kbd>Shift</kbd>+seta 1 s ·
-		<kbd>↑</kbd><kbd>↓</kbd> troca a linha · <kbd>P</kbd> pausa · <kbd>Enter</kbd> conclui ·
-		<kbd>Esc</kbd> cancela
+		Toque na linha = marca agora · <kbd>↑</kbd><kbd>↓</kbd> escolhe · <kbd>Espaço</kbd> marca a
+		escolhida · <kbd>←</kbd><kbd>→</kbd> 0,1 s · <kbd>Shift</kbd>+seta 1 s · <kbd>P</kbd> pausa ·
+		<kbd>Enter</kbd> conclui · <kbd>Esc</kbd> cancela
 	</p>
 </section>
 
@@ -176,6 +262,15 @@
 		font: 600 18.5px/1.3 var(--f-head);
 	}
 
+	.gap {
+		display: inline-block;
+		width: 3.6em;
+		height: 1em;
+		border-bottom: 2px solid currentColor;
+		vertical-align: -3px;
+		opacity: 0.6;
+	}
+
 	.marcar {
 		width: 100%;
 		height: 48px;
@@ -193,16 +288,12 @@
 			background-color 0.18s;
 	}
 
-	.marcar:hover:not(:disabled) {
+	.marcar:hover {
 		background: var(--primary-hover);
 	}
 
 	.marcar:active {
 		transform: scale(0.98);
-	}
-
-	.marcar:disabled {
-		opacity: 0.4;
 	}
 
 	.marcar kbd {
@@ -211,11 +302,26 @@
 		box-shadow: none;
 	}
 
-	.fb {
-		min-height: 18px;
-		margin: 8px 0 0;
+	.vel {
+		margin: 10px 0 0;
 		font-size: 14px;
-		color: var(--ok-ink);
+		color: var(--ink-2);
+	}
+
+	.link {
+		border: 0;
+		background: none;
+		padding: 0;
+		font: inherit;
+		font-weight: 500;
+		color: var(--gold-ink);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.link:disabled {
+		color: var(--ink-3);
+		text-decoration: none;
 	}
 
 	.ajuste {
@@ -269,13 +375,17 @@
 	}
 
 	.fino button:hover,
-	.bt:hover {
+	.bt:hover:not(:disabled) {
 		background: var(--soft-hover);
+	}
+
+	.bt:disabled {
+		opacity: 0.4;
 	}
 
 	.tr {
 		position: relative;
-		height: 28px;
+		height: 30px;
 		border-radius: var(--r-s);
 		background: var(--sunk);
 		box-shadow: inset 0 0 0 1px var(--line);
@@ -286,25 +396,35 @@
 		position: absolute;
 	}
 
-	.bloco {
-		top: 6px;
-		bottom: 6px;
+	.ln {
+		top: 7px;
+		height: 10px;
 		background: var(--ok-soft);
-		border-radius: 3px;
-		transition: left 0.25s;
+		border-radius: 2px;
+		transition:
+			left 0.25s,
+			width 0.25s;
 	}
 
-	.mk {
-		top: 4px;
-		bottom: 4px;
+	.ln.sel {
+		background: var(--gold-ink);
+	}
+
+	.ln.cut {
+		background: none;
+		box-shadow: inset 0 0 0 1px var(--ink-3);
+		opacity: 0.6;
+	}
+
+	.an {
+		top: 19px;
 		width: 2px;
+		height: 8px;
 		margin-left: -1px;
 		background: var(--ok-ink);
-		transition: left 0.25s;
 	}
 
-	.mk.on {
-		width: 3px;
+	.an.auto {
 		background: var(--gold-ink);
 	}
 
@@ -324,6 +444,64 @@
 		color: var(--ink-3);
 	}
 
+	.trechos {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.trechos li {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 6px 4px 10px;
+		border-radius: var(--r-m);
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
+		font-size: 14px;
+	}
+
+	.trechos li.cur {
+		box-shadow: inset 0 0 0 2px var(--gold-ink);
+	}
+
+	.trechos li.vazio {
+		background: none;
+		box-shadow: none;
+		color: var(--ink-3);
+		padding-left: 0;
+	}
+
+	.trechos .off {
+		font-variant-numeric: tabular-nums;
+		font-weight: 600;
+	}
+
+	.trechos em.auto {
+		margin-left: 6px;
+		font-style: normal;
+		font-size: 12px;
+		color: var(--gold-ink);
+	}
+
+	.x {
+		border: 0;
+		background: none;
+		color: var(--ink-3);
+		font-size: 13px;
+		width: 24px;
+		height: 24px;
+		border-radius: var(--r-s);
+	}
+
+	.x:hover {
+		background: var(--hover);
+		color: var(--ink);
+	}
+
 	.pe {
 		display: flex;
 		flex-wrap: wrap;
@@ -341,9 +519,13 @@
 		color: var(--ink-2);
 	}
 
-	.bt.fant:hover {
+	.bt.fant:hover:not(:disabled) {
 		background: var(--hover);
 		color: var(--ink);
+	}
+
+	.bt.auto[aria-pressed='true'] {
+		box-shadow: inset 0 0 0 2px var(--gold-ink);
 	}
 
 	.bt.pri {
@@ -354,6 +536,22 @@
 
 	.bt.pri:hover {
 		background: var(--primary-hover);
+	}
+
+	.auto-msg {
+		margin: 0;
+		font-size: 14px;
+		color: var(--ink-2);
+	}
+
+	.versoes ul {
+		list-style: none;
+		margin: 6px 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-size: 14px;
 	}
 
 	.teclas {
@@ -368,6 +566,8 @@
 			margin: 0 -12px;
 			border-radius: var(--r-l) var(--r-l) 0 0;
 			padding: 12px 12px calc(14px + env(safe-area-inset-bottom));
+			max-height: 62vh;
+			overflow-y: auto;
 		}
 
 		.cab p,
@@ -387,8 +587,7 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.bloco,
-		.mk {
+		.ln {
 			transition: none;
 		}
 	}

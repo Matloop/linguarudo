@@ -620,7 +620,7 @@ export type Database = {
         }[]
       }
       set_lyrics_sync: {
-        Args: { p_hint_dismissed?: boolean; p_offset?: number; p_work: string }
+        Args: { p_sync: Json; p_work: string }
         Returns: undefined
       }
       sync_claim: {

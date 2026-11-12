@@ -28,7 +28,11 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 			? rawDuration
 			: null;
 
-	const found = await findSyncedLyrics(LRCLIB_URL, { title, artist, duration });
+	// Uma versão escolhida no menu "Outras versões da letra".
+	const rawId = Number(url.searchParams.get('id'));
+	const id = Number.isSafeInteger(rawId) && rawId > 0 ? rawId : null;
+
+	const found = await findSyncedLyrics(LRCLIB_URL, { title, artist, duration }, fetch, id);
 	if (found.status === 'unavailable') {
 		return json({ error: 'indisponivel' }, { status: 502, headers: NO_STORE });
 	}
@@ -38,5 +42,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	}
 	// A duração da faixa serve para o palpite de sincronia (clipe com intro).
 	const trackDuration = found.status === 'ok' ? found.duration : null;
-	return json({ lines, duration: trackDuration }, { headers: NO_STORE });
+	const lrclibId = found.status === 'ok' ? found.id : null;
+	const versions = found.status === 'ok' ? found.versions : [];
+	return json({ lines, duration: trackDuration, lrclibId, versions }, { headers: NO_STORE });
 };

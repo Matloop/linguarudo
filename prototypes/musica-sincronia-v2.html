@@ -1,0 +1,2086 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Linguetta · nova sincronia (protótipo)</title>
+<style>
+:root{--bg:#f6f1e7;--card:#fffdf8;--ink:#2b2622;--mute:#8a8178;--line:#e6ddcf;--acc:#b5532f;--ok:#3f7d4e;--err:#b23a3a;--sel:#2f5d8a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,sans-serif}
+header{display:flex;gap:16px;align-items:center;padding:12px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:15px;margin:0;font-weight:600}
+header .sp{flex:1}
+header label{color:var(--mute);font-size:13px}
+main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;padding:20px;max-width:1200px;margin:auto}
+.video{background:#1f1b18;color:#f3ead9;border-radius:14px;padding:16px 18px;margin-bottom:14px}
+.video .row{display:flex;justify-content:space-between;font-size:13px;opacity:.85}
+.bar{height:4px;background:#ffffff22;border-radius:2px;margin-top:10px}
+#fill{height:100%;background:#e8b48a;border-radius:2px;width:0}
+#sung{font-size:16px;margin-top:6px}
+.lyrics{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 8px}
+.lin{margin:0;padding:6px 12px;border-radius:10px;color:var(--mute);font-size:17px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;transition:color .2s,background .2s}
+.lin.on{color:var(--ink);background:#f3e6d6;font-weight:600}
+.lin.sel{outline:2px solid var(--sel);outline-offset:-2px}
+.lin.cut{opacity:.45}
+.lin small{font-size:12px;font-style:italic}
+.pick{all:unset;cursor:pointer;flex:1}
+.w{all:unset;cursor:pointer;border-radius:4px}
+.w:hover{background:#0000000d}
+.ok{color:var(--ok)}.err{color:var(--err);text-decoration:line-through}
+.gap{display:inline-block;width:4.2em;border-bottom:2px solid currentColor;height:1em;vertical-align:-2px}
+.anc{font-size:12px;font-weight:500;padding:1px 7px;border-radius:999px;background:#2f5d8a1a;color:var(--sel)}
+.anc.auto{background:#b5532f1a;color:var(--acc)}
+aside{display:flex;flex-direction:column;gap:12px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.box h2{font-size:13px;margin:0 0 8px;color:var(--mute);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:6px 10px}
+button:hover:not(:disabled){border-color:var(--ink)}
+button:disabled{opacity:.4;cursor:default}
+button.pri{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+#ops{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.op.ok{border-color:var(--ok);color:var(--ok)}.op.err{border-color:var(--err);color:var(--err)}.op.dim{opacity:.4}
+kbd{font:11px ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--mute)}
+#notice{min-height:1.5em;color:var(--acc);font-size:14px}
+#status{font-weight:600}
+#score{color:var(--mute);font-size:13px}
+#panel{border-color:var(--sel)}
+#mark{width:100%;text-align:left;padding:10px;margin:6px 0}
+#segs{list-style:none;margin:8px 0;padding:0;font-size:14px}
+#segs li{display:flex;justify-content:space-between;align-items:center;padding:4px 6px;border-radius:8px}
+#segs li.cur{background:#2f5d8a12}
+#segs .vazio{color:var(--mute);font-style:italic}
+.x{padding:0 6px;border:none;color:var(--mute)}
+#strip{position:relative;height:34px;background:#f0e8db;border-radius:8px;margin:10px 0;overflow:hidden}
+#strip i{position:absolute;top:6px;height:12px;background:#2b262255;border-radius:3px}
+#strip i.sel{background:var(--sel)}
+#strip i.cut{background:none;border:1px dashed var(--mute)}
+#strip b{position:absolute;top:20px;width:2px;height:10px;background:var(--acc)}
+#strip em{position:absolute;top:0;bottom:0;width:2px;background:var(--ink)}
+.legend{font-size:12px;color:var(--mute)}
+#rate{background:#b5532f12;border-radius:10px;padding:8px;font-size:14px;margin:8px 0}
+#log{font:12px ui-monospace,monospace;color:var(--mute);padding-left:16px;margin:0}
+#over,#card{border-color:var(--acc)}
+body[data-mode=sync] #game-box{opacity:.5}
+.hint{font-size:13px;color:var(--mute)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Nova sincronia · protótipo sobre o cérebro real</h1>
+  <span class="hint">clipe com intro 10 s maior e pausa de 8 s antes da linha 5</span>
+  <span class="sp"></span>
+  <label><input type="checkbox" id="quirks" checked /> player com manias (seek lento, keyframe 2 s, buffering)</label>
+  <button id="reset">Recomeçar tudo</button>
+</header>
+<main>
+  <section>
+    <div class="video">
+      <div class="row"><span>▶ vídeo (falso)</span><span id="clock"></span></div>
+      <div id="sung"></div>
+      <div class="bar"><div id="fill"></div></div>
+    </div>
+    <div class="lyrics" id="lyrics"></div>
+  </section>
+  <aside>
+    <div class="box" id="game-box">
+      <div class="row" style="justify-content:space-between"><span id="status"></span><span id="wait"></span></div>
+      <div id="score"></div>
+      <div id="ops"></div>
+      <div id="notice"></div>
+      <div class="row">
+        <button id="pause"></button><button id="repeat">Repetir linha</button><button id="speed">0,75×</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="hint">Sincronia</span><button id="minus">−</button><b id="offset"></b><button id="plus">+</button>
+        <button id="open" class="pri">Sincronizar <kbd>S</kbd></button>
+      </div>
+    </div>
+    <div class="box" id="panel" hidden>
+      <h2>Sincronizar</h2>
+      <p class="hint" style="margin:0">Toque numa linha quando ela começar a ser cantada. <kbd>↑</kbd><kbd>↓</kbd> escolhem, <kbd>Espaço</kbd> marca de novo.</p>
+      <button id="mark"></button>
+      <div class="row">
+        <span class="hint">Trecho atual</span>
+        <button id="n-1">−1 s</button><button id="n-01">−0,1</button><b id="seg-offset"></b><button id="n+01">+0,1</button><button id="n+1">+1 s</button>
+      </div>
+      <div id="rate" hidden><span id="rate-text"></span> <button id="accept">Usar</button></div>
+      <ul id="segs"></ul>
+      <div id="strip"></div>
+      <div class="legend">barras = linhas no vídeo (azul = escolhida, tracejada = cortada) · laranja = onde é cantada de verdade</div>
+      <div class="row" style="margin-top:8px">
+        <button id="play"></button><button id="back">−5 s</button><button id="restart">Do início</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="auto"></button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="undo">Desfazer</button><button id="zero">Zerar</button><span class="sp" style="flex:1"></span>
+        <button id="cancel">Cancelar</button><button id="conclude" class="pri">Concluir</button>
+      </div>
+    </div>
+    <div class="box" id="over" hidden>
+      <h2>Fim de jogo</h2>
+      <p id="over-line"></p>
+      <div class="row"><button id="continue" class="pri">Continuar</button><button id="retry">Tentar de novo</button><button id="leave">Sair</button></div>
+    </div>
+    <div class="box" id="card" hidden>
+      <h2>Cartão da palavra</h2>
+      <p id="card-text"></p>
+      <button id="close-card">Fechar</button>
+    </div>
+    <div class="box"><h2>O que o jogo mandou o player fazer</h2><ol id="log"></ol></div>
+  </aside>
+</main>
+<script>
+(() => {
+  // apps/web/src/lib/music/game.ts
+  var WAIT_MS = 1e4;
+  var OUTRO_S = 1.5;
+  var MAX_COMBO = 4;
+  var BASE_POINTS = 100;
+
+  class Game {
+    phase = "ready";
+    activeLine = -1;
+    score = 0;
+    combo = 1;
+    maxCombo = 1;
+    timeouts = 0;
+    results = [];
+    waitLine = null;
+    revision = 0;
+    #config;
+    #deadline = 0;
+    #frozenRemaining = 0;
+    #resumeTo = "playing";
+    #overLine = -1;
+    #suspended = false;
+    constructor(config) {
+      this.#config = config;
+    }
+    setTiming(lines) {
+      if (lines.length !== this.#config.lines.length)
+        return;
+      this.#config = { ...this.#config, lines };
+      this.#changed();
+    }
+    get suspended() {
+      return this.#suspended;
+    }
+    get lines() {
+      return this.#config.lines;
+    }
+    get gaps() {
+      return this.#config.gaps;
+    }
+    get answerable() {
+      let line;
+      if (this.phase === "playing")
+        line = this.activeLine;
+      else if (this.phase === "waiting" && this.waitLine !== null)
+        line = this.waitLine;
+      else
+        return null;
+      if (this.#suspended)
+        return null;
+      return this.#openGap(line);
+    }
+    get gameOverLine() {
+      return this.#overLine;
+    }
+    waitRemainingMs(now) {
+      if (this.phase === "waiting" && this.#suspended)
+        return this.#frozenRemaining;
+      if (this.phase === "waiting")
+        return Math.max(0, this.#deadline - now);
+      if (this.phase === "paused" && this.#resumeTo === "waiting")
+        return this.#frozenRemaining;
+      return null;
+    }
+    start() {
+      if (this.phase !== "ready")
+        return [];
+      this.#changed();
+      this.phase = "playing";
+      return [{ type: "seek", to: 0 }, { type: "play" }];
+    }
+    tick(time, now) {
+      if (this.phase !== "playing" && this.phase !== "waiting")
+        return [];
+      if (this.#suspended)
+        return [];
+      if (this.phase === "waiting") {
+        if (now >= this.#deadline) {
+          this.#changed();
+          this.timeouts++;
+          this.combo = 1;
+          this.#overLine = this.waitLine ?? this.activeLine;
+          this.waitLine = null;
+          this.phase = "gameover";
+        }
+        return [];
+      }
+      const prev = this.activeLine;
+      if (prev >= 0 && this.#openGap(prev) && time >= this.lines[prev].end) {
+        this.#changed();
+        this.phase = "waiting";
+        this.waitLine = prev;
+        this.#deadline = now + WAIT_MS;
+        return [{ type: "pause" }];
+      }
+      const line = this.#lineAt(time);
+      if (line !== this.activeLine) {
+        this.#changed();
+        this.#skipBefore(line, prev + 1);
+        this.activeLine = line;
+      }
+      const last = this.lines[this.lines.length - 1];
+      if (last && time >= last.end + OUTRO_S) {
+        this.#changed();
+        this.phase = "finished";
+        return [{ type: "pause" }];
+      }
+      return [];
+    }
+    answer(option) {
+      if (this.#suspended)
+        return [];
+      const gap = this.answerable;
+      if (!gap || !gap.options.includes(option))
+        return [];
+      this.#changed();
+      const ok = option === gap.answer;
+      let points = 0;
+      if (ok) {
+        points = BASE_POINTS * this.combo;
+        this.score += points;
+        this.combo = Math.min(MAX_COMBO, this.combo + 1);
+        this.maxCombo = Math.max(this.maxCombo, this.combo);
+      } else {
+        this.combo = 1;
+      }
+      this.results.push({ line: gap.line, answer: gap.answer, chosen: option, ok, points });
+      if (this.phase === "waiting") {
+        this.phase = "playing";
+        this.waitLine = null;
+        return [{ type: "play" }];
+      }
+      return [];
+    }
+    pause(now) {
+      if (this.#suspended)
+        return [];
+      if (this.phase === "playing") {
+        this.#changed();
+        this.phase = "paused";
+        this.#resumeTo = "playing";
+        return [{ type: "pause" }];
+      }
+      if (this.phase === "waiting") {
+        this.#changed();
+        this.#frozenRemaining = Math.max(0, this.#deadline - now);
+        this.phase = "paused";
+        this.#resumeTo = "waiting";
+        return [];
+      }
+      return [];
+    }
+    resume(now) {
+      if (this.phase !== "paused" || this.#suspended)
+        return [];
+      this.#changed();
+      if (this.#resumeTo === "waiting") {
+        this.phase = "waiting";
+        this.#deadline = now + this.#frozenRemaining;
+        return [];
+      }
+      this.phase = "playing";
+      return [{ type: "play" }];
+    }
+    repeatLine() {
+      if (this.#suspended)
+        return [];
+      if (this.phase !== "playing" && this.phase !== "waiting" && this.phase !== "paused")
+        return [];
+      const index = this.waitLine ?? this.activeLine;
+      if (index < 0)
+        return [];
+      const wasPlaying = this.phase === "playing";
+      this.#changed();
+      this.phase = "playing";
+      this.waitLine = null;
+      this.activeLine = index;
+      return this.#seek(this.lines[index].start, !wasPlaying);
+    }
+    suspend(now) {
+      if (this.#suspended)
+        return;
+      if (this.phase === "ready" || this.phase === "gameover" || this.phase === "finished")
+        return;
+      this.#changed();
+      if (this.phase === "waiting")
+        this.#frozenRemaining = Math.max(0, this.#deadline - now);
+      this.#suspended = true;
+    }
+    relocate(time, playing) {
+      if (!this.#suspended)
+        return;
+      this.#suspended = false;
+      this.#changed();
+      const line = this.#lineAt(time);
+      this.#skipBefore(line, 0);
+      this.activeLine = line;
+      this.waitLine = null;
+      this.#resumeTo = "playing";
+      this.phase = playing ? "playing" : "paused";
+    }
+    continueAfterGameOver() {
+      if (this.phase !== "gameover")
+        return [];
+      this.#changed();
+      const line = Math.max(0, this.#overLine);
+      this.phase = "playing";
+      this.activeLine = line;
+      return this.#seek(this.lines[line].start, true);
+    }
+    retry() {
+      if (this.phase !== "gameover" && this.phase !== "finished")
+        return [];
+      this.#changed();
+      this.phase = "playing";
+      this.activeLine = -1;
+      this.score = 0;
+      this.combo = 1;
+      this.maxCombo = 1;
+      this.timeouts = 0;
+      this.results = [];
+      this.waitLine = null;
+      this.#overLine = -1;
+      this.#suspended = false;
+      return this.#seek(0, true);
+    }
+    finishNow() {
+      if (this.phase === "ready" || this.phase === "finished")
+        return [];
+      this.#changed();
+      this.phase = "finished";
+      this.waitLine = null;
+      this.#suspended = false;
+      return [{ type: "pause" }];
+    }
+    get total() {
+      return this.gaps.filter((g) => this.#present(g.line) || this.results.some((r) => r.line === g.line)).length;
+    }
+    summary() {
+      return {
+        total: this.total,
+        correct: this.results.filter((r) => r.ok).length,
+        wrong: this.results.filter((r) => !r.ok && !r.skipped),
+        score: this.score,
+        maxCombo: this.maxCombo,
+        timeouts: this.timeouts
+      };
+    }
+    #changed() {
+      this.revision++;
+    }
+    #seek(to, play) {
+      const at = Math.max(0, to);
+      return play ? [{ type: "seek", to: at }, { type: "play" }] : [{ type: "seek", to: at }];
+    }
+    #present(line) {
+      return this.lines[line]?.present !== false;
+    }
+    #lineAt(time) {
+      let found = -1;
+      for (let i = 0;i < this.lines.length; i++) {
+        if (!this.#present(i))
+          continue;
+        if (this.lines[i].start <= time)
+          found = i;
+        else
+          break;
+      }
+      return found;
+    }
+    #skipBefore(line, from) {
+      for (let i = from;i < line; i++) {
+        const gap = this.#openGap(i);
+        if (gap)
+          this.results.push({ line: i, answer: gap.answer, chosen: "", ok: false, points: 0, skipped: true });
+      }
+    }
+    #openGap(line) {
+      if (line < 0 || !this.#present(line))
+        return null;
+      const gap = this.gaps.find((g) => g.line === line);
+      if (!gap || this.results.some((r) => r.line === line))
+        return null;
+      return gap;
+    }
+  }
+
+  // apps/web/src/lib/music/mask.ts
+  var GAP_TEXT = "＿＿＿";
+  function lineParts(tokens, gap, result) {
+    return tokens.map((t, i) => {
+      if (t.key === null)
+        return { kind: "sep", text: t.text };
+      const isGap = gap?.token === i;
+      if (isGap && !result)
+        return { kind: "gap", token: i };
+      return {
+        kind: "word",
+        text: t.text,
+        key: t.key,
+        token: i,
+        mark: isGap && result ? result.ok ? "ok" : "err" : null
+      };
+    });
+  }
+  function maskTokens(tokens, gap, result) {
+    return tokens.map((t, i) => gap?.token === i && !result ? { text: GAP_TEXT, key: null } : t);
+  }
+
+  // apps/web/src/lib/music/playhead.ts
+  var SEEK_GRACE_MS = 3000;
+  var ARRIVE_S = 1;
+  var JITTER_S = 0.3;
+
+  class Playhead {
+    #pending = null;
+    #floor = null;
+    #last = 0;
+    seek(to, now) {
+      const target = Math.max(0, to);
+      this.#pending = { to: target, until: now + SEEK_GRACE_MS };
+      this.#floor = null;
+      this.#last = target;
+    }
+    get seeking() {
+      return this.#pending !== null;
+    }
+    read(raw, now) {
+      if (!Number.isFinite(raw))
+        return this.#last;
+      if (this.#pending) {
+        const { to, until } = this.#pending;
+        if (Math.abs(raw - to) > ARRIVE_S && now < until)
+          return this.#keep(to);
+        this.#pending = null;
+        if (raw < to && to - raw <= ARRIVE_S) {
+          this.#floor = to;
+          return this.#keep(to);
+        }
+        return this.#keep(raw);
+      }
+      if (this.#floor !== null) {
+        const floor = this.#floor;
+        if (raw >= floor || floor - raw > ARRIVE_S)
+          this.#floor = null;
+        else
+          return this.#keep(floor);
+      }
+      if (raw < this.#last && this.#last - raw < JITTER_S)
+        return this.#last;
+      return this.#keep(raw);
+    }
+    #keep(t) {
+      this.#last = t;
+      return t;
+    }
+  }
+
+  // apps/web/src/lib/music/timeline.ts
+  var EMPTY_TIMELINE = { anchors: [], rate: 1 };
+  var MAX_ANCHORS = 64;
+  var OFFSET_LIMIT_S = 300;
+  var RATE_MIN = 0.9;
+  var RATE_MAX = 1.1;
+  var MAX_SECONDS = 3600;
+  var MIN_GAP_S = 0.05;
+  var round2 = (v) => Math.round(v * 100) / 100;
+  function segmentOf(tl, line) {
+    if (tl.anchors.length === 0)
+      return -1;
+    let k = 0;
+    for (let i = 0;i < tl.anchors.length; i++) {
+      if (tl.anchors[i].line <= line)
+        k = i;
+      else
+        break;
+    }
+    return k;
+  }
+  function offsetAt(tl, lines, line) {
+    const k = segmentOf(tl, line);
+    if (k < 0)
+      return 0;
+    const a = tl.anchors[k];
+    return round2(a.video - (lines[a.line]?.start ?? 0));
+  }
+  function lineTimings(tl, lines) {
+    const r = tl.rate;
+    return lines.map((l, i) => {
+      const k = segmentOf(tl, i);
+      if (k < 0)
+        return { start: l.start * r, end: l.end * r, present: true };
+      const a = tl.anchors[k];
+      const base = lines[a.line].start;
+      const start = a.video + (l.start - base) * r;
+      let end = a.video + (l.end - base) * r;
+      const next = tl.anchors[k + 1];
+      if (next && i < next.line) {
+        if (start >= next.video)
+          return { start, end, present: false };
+        end = Math.min(end, next.video);
+      }
+      return { start, end, present: true };
+    });
+  }
+  function lineAt(timings, t) {
+    let found = -1;
+    for (let i = 0;i < timings.length; i++) {
+      if (!timings[i].present)
+        continue;
+      if (timings[i].start <= t)
+        found = i;
+      else
+        break;
+    }
+    return found;
+  }
+  function inOrder(a, b) {
+    if (a.line < b.line)
+      return a.video + MIN_GAP_S <= b.video;
+    if (a.line > b.line)
+      return a.video >= b.video + MIN_GAP_S;
+    return false;
+  }
+  function withAnchor(tl, lines, anchor) {
+    if (!Number.isInteger(anchor.line) || anchor.line < 0 || anchor.line >= lines.length)
+      return tl;
+    if (!Number.isFinite(anchor.video))
+      return tl;
+    const video = round2(Math.max(0, Math.min(MAX_SECONDS, anchor.video)));
+    if (Math.abs(video - lines[anchor.line].start) > OFFSET_LIMIT_S)
+      return tl;
+    const next = { line: anchor.line, video, source: anchor.source };
+    const others = tl.anchors.filter((a) => a.line !== next.line);
+    const same = tl.anchors.find((a) => a.line === next.line);
+    if (next.source === "auto" && same?.source === "manual")
+      return tl;
+    const clashes = others.filter((a) => !inOrder(a, next));
+    if (next.source === "auto" && clashes.some((a) => a.source === "manual"))
+      return tl;
+    const kept = others.filter((a) => inOrder(a, next));
+    if (kept.length >= MAX_ANCHORS)
+      return tl;
+    const anchors = [...kept, next].sort((a, b) => a.line - b.line);
+    return { ...tl, anchors };
+  }
+  function withoutAnchor(tl, index) {
+    if (index < 0 || index >= tl.anchors.length)
+      return tl;
+    return { ...tl, anchors: tl.anchors.filter((_, i) => i !== index) };
+  }
+  function nudgeSegment(tl, lines, line, delta) {
+    if (lines.length === 0 || !Number.isFinite(delta) || delta === 0)
+      return tl;
+    const k = segmentOf(tl, line);
+    if (k < 0) {
+      const at = Math.max(0, Math.min(lines.length - 1, line));
+      return withAnchor(tl, lines, {
+        line: at,
+        video: lines[at].start * tl.rate + delta,
+        source: "manual"
+      });
+    }
+    const a = tl.anchors[k];
+    const prev = tl.anchors[k - 1];
+    const next = tl.anchors[k + 1];
+    let video = a.video + delta;
+    if (prev)
+      video = Math.max(video, prev.video + MIN_GAP_S);
+    if (next)
+      video = Math.min(video, next.video - MIN_GAP_S);
+    video = round2(Math.max(0, video));
+    if (Math.abs(video - lines[a.line].start) > OFFSET_LIMIT_S)
+      return tl;
+    const anchors = tl.anchors.map((x, i) => i === k ? { ...x, video, source: "manual" } : x);
+    return { ...tl, anchors };
+  }
+  function withRate(tl, rate) {
+    if (!Number.isFinite(rate))
+      return tl;
+    return { ...tl, rate: Math.round(Math.max(RATE_MIN, Math.min(RATE_MAX, rate)) * 1e4) / 1e4 };
+  }
+  var RATE_MIN_ANCHORS = 3;
+  var RATE_MIN_DIFF = 0.005;
+  var RATE_MAX_RESIDUAL_S = 0.3;
+  function suggestRate(tl, lines) {
+    const pts = tl.anchors.map((a) => ({ x: lines[a.line]?.start ?? 0, y: a.video }));
+    if (pts.length < RATE_MIN_ANCHORS)
+      return null;
+    const slopes = [];
+    for (let i = 0;i < pts.length; i++)
+      for (let j = i + 1;j < pts.length; j++) {
+        const dx = pts[j].x - pts[i].x;
+        if (dx > 0)
+          slopes.push((pts[j].y - pts[i].y) / dx);
+      }
+    if (slopes.length === 0)
+      return null;
+    const slope = median(slopes);
+    if (slope < RATE_MIN || slope > RATE_MAX)
+      return null;
+    if (Math.abs(slope - tl.rate) < RATE_MIN_DIFF)
+      return null;
+    const intercept = median(pts.map((p) => p.y - slope * p.x));
+    const residuals = pts.map((p) => Math.abs(p.y - (intercept + slope * p.x)));
+    if (Math.max(...residuals) >= RATE_MAX_RESIDUAL_S)
+      return null;
+    let stepError = 0;
+    for (let i = 1;i < pts.length; i++) {
+      stepError += Math.abs(pts[i].y - (pts[i - 1].y + (pts[i].x - pts[i - 1].x) * tl.rate));
+    }
+    stepError /= pts.length - 1;
+    const lineError = residuals.reduce((s, v) => s + v, 0) / residuals.length;
+    if (stepError < RATE_MAX_RESIDUAL_S || stepError < 2 * lineError)
+      return null;
+    return Math.round(slope * 1e4) / 1e4;
+  }
+  function median(values) {
+    const s = [...values].sort((a, b) => a - b);
+    const m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+  function formatOffset(seconds) {
+    const v = Math.round((Number.isFinite(seconds) ? seconds : 0) * 10) / 10 || 0;
+    return `${v < 0 ? "−" : "+"}${Math.abs(v).toFixed(1).replace(".", ",")} s`;
+  }
+  var EMPTY_SYNC = {
+    v: 1,
+    rate: 1,
+    anchors: [],
+    hintDismissed: false,
+    lrclibId: null
+  };
+  function normalizeLine(text) {
+    return text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  }
+  function lineHash(text) {
+    let h = 2166136261;
+    for (const ch of normalizeLine(text)) {
+      const code = ch.codePointAt(0) ?? 0;
+      h ^= code;
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+  }
+  function serializeSync(tl, lines, extra) {
+    return {
+      v: 1,
+      rate: tl.rate,
+      anchors: tl.anchors.map((a) => ({
+        lyric: round2(lines[a.line].start),
+        video: round2(a.video),
+        hash: lineHash(lines[a.line].text),
+        source: a.source
+      })),
+      ...extra
+    };
+  }
+  var NEAR_S = 0.5;
+  var FAR_S = 5;
+  function resolveSync(stored, lines) {
+    let tl = { anchors: [], rate: stored.rate };
+    let dropped = 0;
+    const hashes = lines.map((l) => lineHash(l.text));
+    for (const s of stored.anchors) {
+      let best = -1;
+      let bestDist = Infinity;
+      for (let i = 0;i < lines.length; i++) {
+        if (hashes[i] !== s.hash)
+          continue;
+        const d = Math.abs(lines[i].start - s.lyric);
+        if (d <= FAR_S && d < bestDist) {
+          best = i;
+          bestDist = d;
+        }
+      }
+      if (best < 0) {
+        dropped++;
+        continue;
+      }
+      const video = bestDist <= NEAR_S ? s.video : s.video + (lines[best].start - s.lyric);
+      const before = tl.anchors.length;
+      tl = withAnchor(tl, lines, { line: best, video, source: s.source });
+      if (tl.anchors.length <= before)
+        dropped++;
+    }
+    return { timeline: tl, dropped };
+  }
+
+  // apps/web/src/lib/music/controller.ts
+  var NOTICE_MS = 3200;
+  var FEEDBACK_MS = 1400;
+  var SAVE_DEBOUNCE_MS = 900;
+  var OWN_ECHO_MS = 1000;
+  var PRAISE = ["Isso!", "Na mosca!", "Certinho!"];
+
+  class MusicController {
+    #lines;
+    #timeline;
+    #timings;
+    #hintDismissed;
+    #lrclibId;
+    #dropped;
+    #mode = "idle";
+    #session = null;
+    #game = null;
+    #playhead = new Playhead;
+    #time = 0;
+    #videoPlaying = false;
+    #ownUntil = -Infinity;
+    #slow = false;
+    #card = null;
+    #pausedByCard = false;
+    #selected = 0;
+    #before = EMPTY_TIMELINE;
+    #history = [];
+    #revealed = false;
+    #notice = { text: "", tone: "", until: 0 };
+    #feedback = null;
+    #streak = 0;
+    #saveAt = null;
+    #rev = 0;
+    #shown = -1;
+    #cache = null;
+    constructor(init) {
+      this.#lines = init.lines;
+      const { timeline, dropped } = resolveSync(init.stored, init.lines);
+      this.#timeline = timeline;
+      this.#dropped = dropped;
+      this.#timings = lineTimings(timeline, init.lines);
+      this.#hintDismissed = init.stored.hintDismissed;
+      this.#lrclibId = init.stored.lrclibId;
+    }
+    get timeline() {
+      return this.#timeline;
+    }
+    get mode() {
+      return this.#mode;
+    }
+    get time() {
+      return this.#time;
+    }
+    get videoPlaying() {
+      return this.#videoPlaying;
+    }
+    get game() {
+      return this.#game;
+    }
+    get revision() {
+      return `${this.#rev}:${this.#game?.revision ?? -1}`;
+    }
+    lineStart(line) {
+      return Math.max(0, this.#timings[line]?.start ?? 0);
+    }
+    waitMs(now) {
+      return this.#game?.waitRemainingMs(now) ?? null;
+    }
+    stored() {
+      return serializeSync(this.#timeline, this.#lines, {
+        hintDismissed: this.#hintDismissed,
+        lrclibId: this.#lrclibId
+      });
+    }
+    frame(raw, now) {
+      const out = [];
+      this.#time = this.#playhead.read(raw, now);
+      if (this.#notice.text && now >= this.#notice.until) {
+        this.#notice = { text: "", tone: "", until: 0 };
+        this.#changed();
+      }
+      if (this.#feedback && now >= this.#feedback.until) {
+        this.#feedback = null;
+        this.#changed();
+      }
+      if (this.#saveAt !== null && now >= this.#saveAt && this.#mode !== "sync") {
+        this.#saveAt = null;
+        out.push(this.#save());
+      }
+      if (this.#mode === "game" && this.#game) {
+        out.push(...this.#run(this.#game.tick(this.#time, now), now));
+      }
+      this.#updateShown();
+      return out;
+    }
+    send(event, now) {
+      switch (event.type) {
+        case "start":
+          return this.#start(event.session, now);
+        case "backToStart":
+          return this.#backToStart(now);
+        case "answer":
+          return this.#answer(event.option, now);
+        case "togglePause":
+          return this.#togglePause(now);
+        case "repeat":
+          return this.#gameOnly(() => this.#run(this.#game.repeatLine(), now));
+        case "toggleSpeed":
+          if (this.#mode !== "game")
+            return [];
+          this.#slow = !this.#slow;
+          this.#changed();
+          return [{ type: "rate", rate: this.#slow ? 0.75 : 1 }];
+        case "retry":
+          return this.#retry(now);
+        case "continue":
+          if (!this.#game || this.#game.phase !== "gameover")
+            return [];
+          return this.#run(this.#game.continueAfterGameOver(), now);
+        case "leave":
+          if (this.#game?.phase === "gameover") {
+            this.#revealed = true;
+            this.#changed();
+          }
+          return [];
+        case "openCard":
+          return this.#openCard(event.line, event.token, now);
+        case "closeCard":
+          return this.#closeCard(now);
+        case "openSync":
+          return this.#openSync(now);
+        case "closeSync":
+          return this.#closeSync(event.conclude, now);
+        case "selectLine":
+          if (this.#mode !== "sync")
+            return [];
+          this.#select(event.line);
+          this.#edit(withAnchor(this.#timeline, this.#lines, this.#anchorNow(this.#selected)));
+          return [];
+        case "moveSelection":
+          if (this.#mode !== "sync")
+            return [];
+          this.#select(this.#selected + event.delta);
+          return [];
+        case "mark":
+          if (this.#mode !== "sync")
+            return [];
+          this.#edit(withAnchor(this.#timeline, this.#lines, this.#anchorNow(this.#selected)));
+          return [];
+        case "nudge":
+          return this.#nudge(event.delta, now);
+        case "zero":
+          if (this.#mode !== "sync")
+            return [];
+          this.#edit({ ...EMPTY_TIMELINE });
+          return [];
+        case "undo":
+          return this.#undo();
+        case "deleteAnchor":
+          if (this.#mode !== "sync")
+            return [];
+          this.#edit(withoutAnchor(this.#timeline, event.index));
+          return [];
+        case "acceptRate": {
+          if (this.#mode !== "sync")
+            return [];
+          const rate = suggestRate(this.#timeline, this.#lines);
+          if (rate !== null)
+            this.#edit(withRate(this.#timeline, rate));
+          return [];
+        }
+        case "autoAnchor": {
+          if (this.#mode !== "sync")
+            return [];
+          const next = withAnchor(this.#timeline, this.#lines, {
+            line: event.line,
+            video: event.video,
+            source: "auto"
+          });
+          if (next !== this.#timeline)
+            this.#setTimeline(next);
+          return [];
+        }
+        case "syncTogglePlay":
+          if (this.#mode !== "sync")
+            return [];
+          return this.#own([{ type: this.#videoPlaying ? "pause" : "play" }], now);
+        case "syncBack":
+          if (this.#mode !== "sync")
+            return [];
+          return this.#own([{ type: "seek", to: Math.max(0, this.#time - event.seconds) }], now);
+        case "syncRestart":
+          if (this.#mode !== "sync")
+            return [];
+          return this.#own([{ type: "seek", to: 0 }, { type: "play" }], now);
+        case "hidden":
+          return this.#hidden(now);
+        case "playerState":
+          return this.#playerState(event.state, now);
+        case "autoplayBlocked":
+          this.#videoPlaying = false;
+          if (this.#game?.phase === "playing" && this.#mode === "game") {
+            this.#say("O navegador não deixou tocar sozinho. Toque em Continuar.", now);
+            return this.#run(this.#game.pause(now), now);
+          }
+          return [];
+        case "ended":
+          this.#videoPlaying = false;
+          if (this.#mode !== "game" || !this.#game)
+            return [];
+          this.#card = null;
+          return this.#run(this.#game.finishNow(), now);
+        case "saved":
+          if (!event.ok)
+            this.#say("Não deu para salvar a sincronia agora.", now, "err");
+          return [];
+        case "dismissHint":
+          this.#hintDismissed = true;
+          this.#changed();
+          return [this.#save()];
+      }
+    }
+    view() {
+      const key = this.revision;
+      if (this.#cache?.key === key)
+        return this.#cache.view;
+      const view = this.#buildView();
+      this.#cache = { key, view };
+      return view;
+    }
+    #buildView() {
+      const game = this.#game;
+      const session = this.#session;
+      const results = game ? [...game.results] : [];
+      const resultByLine = new Map(results.map((r) => [r.line, r]));
+      const gapByLine = new Map((session?.gaps ?? []).map((g) => [g.line, g]));
+      const lines = session ? session.lines.map((l, i) => {
+        const timing = this.#timings[i];
+        const result = resultByLine.get(i) ?? null;
+        const gap = gapByLine.get(i);
+        const counts = gap !== undefined && (timing.present || result !== null);
+        return {
+          index: i,
+          present: timing.present,
+          start: timing.start,
+          end: timing.end,
+          parts: lineParts(l.tokens, counts ? gap : null, result),
+          hasGap: counts,
+          result
+        };
+      }) : [];
+      const answerable = game?.answerable ?? null;
+      const counted = (session?.gaps ?? []).filter((g) => lines[g.line]?.hasGap);
+      const open = answerable ? counted.findIndex((g) => g.line === answerable.line) + 1 : 0;
+      let card = null;
+      if (this.#card && session) {
+        const { line, token } = this.#card;
+        const gap = lines[line]?.hasGap ? gapByLine.get(line) : null;
+        card = { line, token, tokens: maskTokens(session.lines[line].tokens, gap, resultByLine.get(line)) };
+      }
+      let gameOver = null;
+      if (game?.phase === "gameover" && session) {
+        const line = game.gameOverLine;
+        const tokens = session.lines[line]?.tokens ?? [];
+        const gap = gapByLine.get(line);
+        gameOver = {
+          line,
+          revealed: this.#revealed,
+          parts: lineParts(tokens, gap, this.#revealed ? { ok: false } : resultByLine.get(line))
+        };
+      }
+      let sync = null;
+      if (this.#mode === "sync") {
+        const segment = segmentOf(this.#timeline, this.#selected);
+        sync = {
+          selected: this.#selected,
+          anchors: this.#timeline.anchors.map((a) => ({
+            line: a.line,
+            video: a.video,
+            offset: offsetAt(this.#timeline, this.#lines, a.line),
+            source: a.source
+          })),
+          segment,
+          offset: offsetAt(this.#timeline, this.#lines, this.#selected),
+          rate: this.#timeline.rate,
+          rateSuggestion: suggestRate(this.#timeline, this.#lines),
+          canUndo: this.#history.length > 0,
+          videoPlaying: this.#videoPlaying
+        };
+      }
+      return {
+        mode: this.#mode,
+        phase: game?.phase ?? "ready",
+        shownLine: this.#shown,
+        score: game?.score ?? 0,
+        combo: game?.combo ?? 1,
+        maxCombo: game?.maxCombo ?? 1,
+        results,
+        wrong: results.filter((r) => !r.ok && !r.skipped),
+        answerable,
+        totalGaps: game?.total ?? 0,
+        gapNumber: open || results.length,
+        lines,
+        feedback: this.#feedback ? {
+          options: this.#feedback.options,
+          chosen: this.#feedback.chosen,
+          answer: this.#feedback.answer
+        } : null,
+        notice: { text: this.#notice.text, tone: this.#notice.tone },
+        offset: offsetAt(this.#timeline, this.#lines, Math.max(0, this.#shown)),
+        slow: this.#slow,
+        sync,
+        card,
+        gameOver,
+        droppedAnchors: this.#dropped,
+        hintDismissed: this.#hintDismissed,
+        hasSync: this.#timeline.anchors.length > 0
+      };
+    }
+    #start(session, now) {
+      if (this.#mode !== "idle" || session.lines.length !== this.#lines.length)
+        return [];
+      this.#session = session;
+      this.#game = new Game(session.config);
+      this.#game.setTiming(this.#timings);
+      this.#mode = "game";
+      this.#card = null;
+      this.#revealed = false;
+      this.#feedback = null;
+      this.#shown = -1;
+      this.#changed();
+      if (this.#dropped > 0)
+        this.#say("A letra mudou desde a sua sincronia. Confira.", now);
+      else
+        this.#notice = { text: "", tone: "", until: 0 };
+      return this.#run(this.#game.start(), now);
+    }
+    #backToStart(now) {
+      if (this.#mode !== "game")
+        return [];
+      this.#mode = "idle";
+      this.#game = null;
+      this.#session = null;
+      this.#card = null;
+      this.#feedback = null;
+      this.#shown = -1;
+      this.#changed();
+      return this.#own([{ type: "pause" }, { type: "seek", to: 0 }], now);
+    }
+    #gameOnly(fn) {
+      if (this.#mode !== "game" || !this.#game || this.#card)
+        return [];
+      return fn();
+    }
+    #answer(option, now) {
+      const game = this.#game;
+      if (this.#mode !== "game" || !game)
+        return [];
+      const gap = game.answerable;
+      if (!gap)
+        return [];
+      const effects = this.#run(game.answer(option), now);
+      const result = game.results.find((r) => r.line === gap.line);
+      if (!result)
+        return effects;
+      this.#feedback = { options: gap.options, chosen: option, answer: gap.answer, until: now + FEEDBACK_MS };
+      if (result.ok)
+        this.#say(`${PRAISE[this.#streak++ % PRAISE.length]} +${result.points}`, now, "ok");
+      else
+        this.#say(`Era “${gap.answer}”. Foi para revisar.`, now, "err");
+      return effects;
+    }
+    #togglePause(now) {
+      return this.#gameOnly(() => {
+        const game = this.#game;
+        if (game.phase === "paused")
+          return this.#run(game.resume(now), now);
+        if (game.phase === "playing" || game.phase === "waiting")
+          return this.#run(game.pause(now), now);
+        return [];
+      });
+    }
+    #retry(now) {
+      const game = this.#game;
+      if (!game || game.phase !== "gameover" && game.phase !== "finished")
+        return [];
+      if (game.phase === "gameover") {
+        const gap = this.#session?.gaps.find((g) => g.line === game.gameOverLine);
+        if (gap)
+          this.#say(`Era “${gap.answer}”.`, now, "err");
+      }
+      this.#revealed = false;
+      this.#feedback = null;
+      this.#changed();
+      return this.#run(game.retry(), now);
+    }
+    #openCard(line, token, now) {
+      const session = this.#session;
+      const game = this.#game;
+      if (this.#mode !== "game" || !session || !game)
+        return [];
+      const t = session.lines[line]?.tokens[token];
+      if (!t || t.key === null)
+        return [];
+      const gap = session.gaps.find((g) => g.line === line);
+      if (gap && gap.token === token && !game.results.some((r) => r.line === line))
+        return [];
+      this.#card = { line, token };
+      this.#changed();
+      if (game.phase === "playing" || game.phase === "waiting") {
+        this.#pausedByCard = true;
+        return this.#run(game.pause(now), now);
+      }
+      return [];
+    }
+    #closeCard(now) {
+      if (!this.#card)
+        return [];
+      this.#card = null;
+      this.#changed();
+      if (this.#pausedByCard) {
+        this.#pausedByCard = false;
+        if (this.#game?.phase === "paused")
+          return this.#run(this.#game.resume(now), now);
+      }
+      return [];
+    }
+    #hidden(now) {
+      if (this.#mode === "sync") {
+        return this.#videoPlaying ? this.#own([{ type: "pause" }], now) : [];
+      }
+      const game = this.#game;
+      if (this.#mode === "game" && game && (game.phase === "playing" || game.phase === "waiting")) {
+        return this.#run(game.pause(now), now);
+      }
+      return [];
+    }
+    #playerState(state, now) {
+      if (state === "playing")
+        this.#videoPlaying = true;
+      else if (state !== "buffering")
+        this.#videoPlaying = false;
+      this.#changed();
+      const game = this.#game;
+      if (this.#mode !== "game" || !game || now < this.#ownUntil)
+        return [];
+      if (state === "paused" && game.phase === "playing")
+        return this.#run(game.pause(now), now);
+      if (state === "playing" && game.phase === "paused" && !this.#card) {
+        return this.#run(game.resume(now), now);
+      }
+      if (state === "playing" && game.phase === "waiting")
+        return this.#own([{ type: "pause" }], now);
+      return [];
+    }
+    #openSync(now) {
+      const game = this.#game;
+      if (this.#mode !== "game" || !game)
+        return [];
+      if (game.phase !== "playing" && game.phase !== "waiting" && game.phase !== "paused")
+        return [];
+      this.#card = null;
+      this.#pausedByCard = false;
+      this.#saveAt = null;
+      game.suspend(now);
+      this.#mode = "sync";
+      this.#before = this.#timeline;
+      this.#history = [];
+      const lit = lineAt(this.#timings, this.#time);
+      this.#selected = lit >= 0 ? lit : 0;
+      this.#updateShown();
+      this.#changed();
+      return [];
+    }
+    #closeSync(conclude, now) {
+      const game = this.#game;
+      if (this.#mode !== "sync" || !game)
+        return [];
+      const changed = this.#timeline !== this.#before;
+      if (!conclude)
+        this.#setTimeline(this.#before);
+      this.#mode = "game";
+      this.#history = [];
+      game.relocate(this.#time, this.#videoPlaying);
+      this.#updateShown();
+      this.#changed();
+      if (!conclude) {
+        this.#say("Ajuste cancelado.", now);
+        return [];
+      }
+      if (!changed)
+        return [];
+      this.#say("Sincronia salva.", now, "ok");
+      return [this.#save()];
+    }
+    #select(line) {
+      const next = Math.max(0, Math.min(this.#lines.length - 1, line));
+      if (next === this.#selected)
+        return;
+      this.#selected = next;
+      this.#changed();
+    }
+    #anchorNow(line) {
+      return { line, video: this.#time, source: "manual" };
+    }
+    #nudge(delta, now) {
+      if (this.#mode === "sync") {
+        this.#edit(nudgeSegment(this.#timeline, this.#lines, this.#selected, delta));
+        return [];
+      }
+      if (this.#mode !== "game")
+        return [];
+      const line = Math.max(0, this.#game?.activeLine ?? 0);
+      const next = nudgeSegment(this.#timeline, this.#lines, line, delta);
+      if (next === this.#timeline)
+        return [];
+      this.#setTimeline(next);
+      this.#saveAt = now + SAVE_DEBOUNCE_MS;
+      return [];
+    }
+    #edit(next) {
+      if (next === this.#timeline)
+        return;
+      this.#history.push(this.#timeline);
+      this.#setTimeline(next);
+    }
+    #undo() {
+      if (this.#mode !== "sync")
+        return [];
+      const prev = this.#history.pop();
+      if (!prev)
+        return [];
+      let tl = prev;
+      for (const a of this.#timeline.anchors) {
+        if (a.source === "auto" && !prev.anchors.some((p) => p.line === a.line)) {
+          tl = withAnchor(tl, this.#lines, a);
+        }
+      }
+      this.#setTimeline(tl);
+      return [];
+    }
+    #setTimeline(tl) {
+      this.#timeline = tl;
+      this.#timings = lineTimings(tl, this.#lines);
+      this.#game?.setTiming(this.#timings);
+      this.#updateShown();
+      this.#changed();
+    }
+    #save() {
+      return { type: "save", sync: this.stored() };
+    }
+    #updateShown() {
+      let shown = -1;
+      if (this.#mode === "sync")
+        shown = lineAt(this.#timings, this.#time);
+      else if (this.#game)
+        shown = this.#game.activeLine;
+      if (shown !== this.#shown) {
+        this.#shown = shown;
+        this.#changed();
+      }
+    }
+    #run(commands, now) {
+      return this.#own(commands, now);
+    }
+    #own(effects, now) {
+      for (const e of effects) {
+        if (e.type === "seek")
+          this.#playhead.seek(e.to, now);
+        if (e.type === "play")
+          this.#videoPlaying = true;
+        if (e.type === "pause")
+          this.#videoPlaying = false;
+      }
+      if (effects.length > 0) {
+        this.#ownUntil = now + OWN_ECHO_MS;
+        this.#changed();
+      }
+      return effects;
+    }
+    #say(text, now, tone = "") {
+      this.#notice = { text, tone, until: now + NOTICE_MS };
+      this.#changed();
+    }
+    #changed() {
+      this.#rev++;
+    }
+  }
+
+  // apps/web/src/lib/music/rng.ts
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = a + 1831565813 >>> 0;
+      let t = a;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // apps/web/src/lib/music/distractors.ts
+  function editDistance(a, b) {
+    const x = [...a];
+    const y = [...b];
+    let prev = Array.from({ length: y.length + 1 }, (_, j) => j);
+    for (let i = 1;i <= x.length; i++) {
+      const row = [i];
+      for (let j = 1;j <= y.length; j++) {
+        row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+      }
+      prev = row;
+    }
+    return prev[y.length];
+  }
+  function commonPrefix(a, b) {
+    let n = 0;
+    while (n < a.length && n < b.length && a[n] === b[n])
+      n++;
+    return n;
+  }
+  function commonSuffix(a, b) {
+    let n = 0;
+    while (n < a.length && n < b.length && a[a.length - 1 - n] === b[b.length - 1 - n])
+      n++;
+    return n;
+  }
+  function similarity(a, b) {
+    if (a === b)
+      return 1;
+    const longest = Math.max([...a].length, [...b].length);
+    if (longest === 0)
+      return 1;
+    const edit = 1 - editDistance(a, b) / longest;
+    const shape = (commonPrefix(a, b) + commonSuffix(a, b)) / longest;
+    return Math.max(0, Math.min(0.99, edit * 0.7 + Math.min(1, shape) * 0.3));
+  }
+  function shuffle(items, rng) {
+    const out = [...items];
+    for (let i = out.length - 1;i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+  function isCapitalized(word) {
+    const first = [...word][0] ?? "";
+    return first !== first.toLowerCase() && first === first.toUpperCase();
+  }
+  function capitalize(word) {
+    const [first = "", ...rest] = [...word];
+    return first.toUpperCase() + rest.join("");
+  }
+  function isNear(answer, candidate) {
+    const limit = Math.max(2, Math.floor(Math.min([...answer].length, [...candidate].length) / 2));
+    return editDistance(answer, candidate) <= Math.min(limit, 3) || sharesEdge(answer, candidate);
+  }
+  function sharesEdge(a, b) {
+    const shortest = Math.min([...a].length, [...b].length);
+    return shortest >= 4 && (commonPrefix(a, b) >= 4 || commonSuffix(a, b) >= 4);
+  }
+  function makeOptions(answer, sources) {
+    const { rng, count = 4 } = sources;
+    const answerKey = answer.toLowerCase();
+    const exclude = sources.exclude ?? new Set;
+    const capitalized = isCapitalized(answer);
+    const seen = new Set([answerKey]);
+    const candidates = [];
+    for (const raw of [...sources.pool, ...sources.common]) {
+      const key = raw.toLowerCase();
+      if (key === "" || seen.has(key) || exclude.has(key))
+        continue;
+      seen.add(key);
+      candidates.push(key);
+    }
+    const ranked = candidates.map((c) => ({ c, score: similarity(answerKey, c), near: isNear(answerKey, c) })).sort((p, q) => q.score - p.score);
+    const need = count - 1;
+    const near = shuffle(ranked.filter((r) => r.near), rng);
+    const picked = near.slice(0, need);
+    if (picked.length < need) {
+      const rest = ranked.filter((r) => !r.near).slice(0, need * 4);
+      picked.push(...shuffle(rest, rng).slice(0, need - picked.length));
+    }
+    const distractors = picked.map((p) => capitalized ? capitalize(p.c) : p.c);
+    return shuffle([answer, ...distractors], rng);
+  }
+
+  // apps/web/src/lib/music/wordlists.ts
+  var words = (s) => [...new Set(s.trim().split(/\s+/))];
+  var COMMON_WORDS = {
+    en: words(`
+		time year people way day man thing woman life child world school state family student group
+		country problem hand part place case week company system program question work government number
+		night point home water room mother area money story fact month lot right study book eye job
+		word business issue side kind head house service friend father power hour game line end member
+		law car city community name president team minute idea kid body information back parent face
+		others level office door health person art war history party result change morning reason research
+		girl guy moment air teacher force education foot boy age policy music market sense nation plan
+		college interest death experience effect use class control care field development role effort rate
+		heart drug show leader light voice wife police mind price report decision son view relationship
+		town road arm difference value building action model season society tax director position player
+		record paper space ground form event official matter center couple site project activity star
+		table need court oil situation cost industry figure street image phone data picture practice
+		piece land product doctor wall patient worker news test movie north love support technology step
+		baby computer type attention film tree source organization hair window culture chance brother
+		energy period course summer plant garden bridge flower window river mountain forest ocean island
+		valley shadow silver golden winter spring autumn breeze thunder lightning cloud sunrise sunset
+		dream wonder journey memory promise secret whisper silence harbor lantern meadow candle blanket
+		ribbon pillow mirror feather pocket saddle ticket kettle basket puzzle tunnel anchor bottle castle
+		engine bright quiet gentle broken golden hollow lonely simple wander travel gather follow listen
+		remember forget believe imagine whisper borrow carry bring leave return waiting running falling
+		walking talking singing dancing shining burning turning holding calling
+	`),
+    it: words(`
+		tempo anno giorno uomo donna vita mondo cosa mano parte luogo caso settimana sistema programma
+		domanda lavoro governo numero notte punto casa acqua stanza madre area denaro storia fatto mese
+		libro occhio parola affare problema lato tipo testa servizio amico padre potere ora gioco linea
+		fine membro legge macchina citta comunita nome squadra minuto idea bambino corpo informazione
+		schiena genitore faccia livello ufficio porta salute persona arte guerra storia partito risultato
+		cambio mattina ragione ricerca ragazza ragazzo momento aria maestro forza educazione piede eta
+		politica musica mercato senso nazione piano interesse morte esperienza effetto uso classe cura
+		campo sviluppo ruolo sforzo tasso cuore voce luce mente prezzo rapporto figlio vista relazione
+		differenza valore edificio azione modello stagione societa tassa direttore posizione giocatore
+		spazio terra forma evento ufficiale centro coppia sito progetto attivita stella tavolo bisogno
+		corte olio situazione costo industria figura strada immagine telefono dato quadro pratica pezzo
+		dottore muro paziente lavoratore notizia prova film nord amore sostegno tecnologia passo albero
+		fonte organizzazione capelli finestra cultura occasione fratello energia periodo corso estate
+		pianta giardino ponte fiore fiume montagna foresta oceano isola valle ombra argento inverno
+		primavera autunno brezza tuono fulmine nuvola alba tramonto sogno meraviglia viaggio memoria
+		promessa segreto sussurro silenzio porto lanterna prato candela coperta nastro cuscino specchio
+		piuma tasca sella biglietto bollitore cestino enigma tunnel ancora bottiglia castello motore
+		luminoso tranquillo gentile rotto dorato vuoto solitario semplice vagare viaggiare raccogliere
+		seguire ascoltare ricordare dimenticare credere immaginare prestare portare lasciare tornare
+		aspettare correre cadere camminare parlare cantare ballare brillare bruciare girare tenere
+		chiamare tardo piano fretta pioggia strada tazza gente caldo freddo sveglia rallenta fermata
+	`)
+  };
+  var STOPWORDS = {
+    en: new Set(words(`
+		the and but for with that this these those from into onto upon over under about after before
+		while where when what which who whom whose whether because since until than then there here
+		their them they theirs your yours mine ours his her hers its our you she him himself herself
+		myself yourself itself ourselves themselves have has had having been being were was are will
+		would could should shall must might may can cannot does did doing done just only also even
+		still very much many some any more most such each every other another both either neither
+		not nor now all one two three out off down too own same like well yet ever never always
+		don't doesn't didn't won't wouldn't can't couldn't shouldn't isn't aren't wasn't weren't
+		i'm i'll i've i'd you're you'll you've you'd he's she's it's we're we'll we've we'd they're
+		they'll they've they'd that's there's here's what's let's who's
+	`)),
+    it: new Set(words(`
+		il lo la le gli uno una dei degli delle del dello della dell nel nello nella nell sul sullo
+		sulla sull dal dallo dalla dall con per tra fra che chi cui non come ma anche poi ancora gia
+		sempre mai molto tanto troppo poco piu meno tutto tutti tutte ogni altro altra altri altre
+		questo questa questi queste quello quella quelli quelle quel quest quell mio mia miei mie
+		tuo tua tuoi tue suo sua suoi sue nostro nostra nostri nostre vostro vostra vostri vostre
+		loro sono sei siamo siete essere stato stata stati state era ero eri erano ho hai hanno
+		abbiamo avete avere ebbe sia fosse sara saro faro fai fanno fatto fare dove quando perche
+		cosi quindi dunque allora ecco ciao
+	`))
+  };
+
+  // apps/web/src/lib/music/gaps.ts
+  var GAP_COUNTS = { facil: 4, medio: 6, dificil: 10 };
+  var MIN_LETTERS = 4;
+  function isGapCandidate(key, lang) {
+    return [...key].length >= MIN_LETTERS && /^[\p{L}\p{M}'-]+$/u.test(key) && !STOPWORDS[lang].has(key);
+  }
+  function spread(items, k) {
+    if (k <= 0)
+      return [];
+    if (k >= items.length)
+      return [...items];
+    return Array.from({ length: k }, (_, i) => items[Math.floor((i + 0.5) * items.length / k)]);
+  }
+  function pick(items, rng) {
+    return items[Math.floor(rng() * items.length)];
+  }
+  function chooseGaps(lines, options) {
+    const { difficulty, lang, bank, rng } = options;
+    const eligible = lines.map((line) => {
+      const words2 = line.tokens.map((t, token) => ({ token, key: t.key, text: t.text })).filter((w) => w.key !== null && isGapCandidate(w.key, lang));
+      return { line: line.index, words: words2 };
+    }).filter((l) => l.words.length > 0);
+    const total = Math.min(GAP_COUNTS[difficulty], eligible.length);
+    const withBank = eligible.filter((l) => l.words.some((w) => bank.has(w.key)));
+    const withoutBank = eligible.filter((l) => !l.words.some((w) => bank.has(w.key)));
+    const fromBank = spread(withBank, total);
+    const chosen = new Set(fromBank.map((l) => l.line));
+    for (const l of spread(withoutBank, total - fromBank.length))
+      chosen.add(l.line);
+    const used = new Set;
+    const plans = [];
+    for (const l of eligible) {
+      if (!chosen.has(l.line))
+        continue;
+      const inBank = l.words.filter((w) => bank.has(w.key));
+      const pool = inBank.length > 0 ? inBank : l.words;
+      const fresh = pool.filter((w) => !used.has(w.key));
+      const word = pick(fresh.length > 0 ? fresh : pool, rng);
+      used.add(word.key);
+      plans.push({
+        line: l.line,
+        token: word.token,
+        answer: word.text,
+        key: word.key,
+        inBank: bank.has(word.key)
+      });
+    }
+    return plans;
+  }
+
+  // apps/web/src/lib/music/tokenize.ts
+  var WORD = {
+    en: "[\\p{L}\\p{M}]+(?:['’][\\p{L}\\p{M}]+)*",
+    it: "[\\p{L}\\p{M}]+"
+  };
+  var PATTERNS = {
+    en: new RegExp(`(${WORD.en})|(\\p{N}+)|([^\\p{L}\\p{M}\\p{N}]+)`, "gu"),
+    it: new RegExp(`(${WORD.it})|(\\p{N}+)|([^\\p{L}\\p{M}\\p{N}]+)`, "gu")
+  };
+  function wordKey(raw) {
+    return raw.normalize("NFC").toLowerCase().replace(/’/g, "'").replace(/^['-]+|['-]+$/g, "");
+  }
+  function tokenize(text, lang) {
+    return [...text.matchAll(PATTERNS[lang])].map((m) => ({
+      text: m[0],
+      key: m[1] !== undefined ? wordKey(m[1]) : null
+    }));
+  }
+
+  // apps/web/src/lib/music/session.ts
+  function buildSession(input) {
+    const { lyrics, lang, difficulty, bank, rng } = input;
+    const lines = lyrics.map((l) => ({ ...l, tokens: tokenize(l.text, lang) }));
+    const pool = [
+      ...new Set(lines.flatMap((l) => l.tokens.map((t) => t.key).filter((k) => k !== null && [...k].length >= 3)))
+    ];
+    const plans = chooseGaps(lines, { difficulty, lang, bank: new Set(bank.keys()), rng });
+    const gaps = plans.map((p) => {
+      const inLine = new Set(lines[p.line].tokens.map((t) => t.key).filter((k) => k !== null));
+      return {
+        ...p,
+        sense: bank.get(p.key) ?? "",
+        options: makeOptions(p.answer, { pool, common: COMMON_WORDS[lang], exclude: inLine, rng })
+      };
+    });
+    return {
+      lines,
+      gaps,
+      fromBank: gaps.filter((g) => g.inBank).length,
+      config: {
+        lines: lines.map((l) => ({ start: l.start, end: l.end })),
+        gaps: gaps.map((g) => ({ line: g.line, answer: g.answer, options: g.options }))
+      }
+    };
+  }
+
+  // apps/web/src/lib/music/sim/fake-player.ts
+  class FakePlayer {
+    now = 0;
+    state = "unstarted";
+    log = [];
+    rate = 1;
+    #o;
+    #time = 0;
+    #seek = null;
+    #bufferUntil = 0;
+    #queue = [];
+    #gesture = false;
+    #playingWhenBuffered = false;
+    constructor(options) {
+      this.#o = {
+        seekLagMs: 0,
+        keyframeS: 0,
+        seekPlays: true,
+        bufferMs: 0,
+        stateLagMs: 0,
+        autoplayBlocked: false,
+        metadataDelayMs: 0,
+        jitterS: 0,
+        random: Math.random,
+        ...options
+      };
+    }
+    get trueTime() {
+      return this.#time;
+    }
+    get playing() {
+      return this.state === "playing" || this.state === "buffering" && this.#playingWhenBuffered;
+    }
+    userGesture() {
+      this.#gesture = true;
+    }
+    play() {
+      this.log.push("play");
+      if (this.state === "ended")
+        this.#time = 0;
+      if (this.#o.autoplayBlocked && !this.#gesture) {
+        this.#emit({ type: "autoplayBlocked" });
+        return;
+      }
+      this.#startPlaying();
+    }
+    pause() {
+      this.log.push("pause");
+      this.#playingWhenBuffered = false;
+      this.#setState("paused");
+    }
+    seekTo(seconds) {
+      this.log.push(`seek:${round(seconds)}`);
+      const kf = this.#o.keyframeS;
+      const to = Math.max(0, Math.min(this.#o.duration, kf > 0 ? Math.floor(seconds / kf) * kf : seconds));
+      this.#seek = { to, at: this.now + this.#o.seekLagMs };
+      if (this.#o.seekLagMs === 0)
+        this.#landSeek();
+      const plays = this.state === "playing" || this.state === "buffering" || this.#o.seekPlays && this.state !== "paused";
+      if (plays) {
+        if (this.#o.autoplayBlocked && !this.#gesture && this.state !== "playing") {
+          this.#emit({ type: "autoplayBlocked" });
+          return;
+        }
+        this.#startPlaying();
+      }
+    }
+    currentTime() {
+      const shown = this.#time;
+      const j = this.#o.jitterS;
+      if (j > 0 && this.#o.random() < 0.2)
+        return Math.max(0, shown - this.#o.random() * j);
+      return shown;
+    }
+    duration() {
+      return this.now >= this.#o.metadataDelayMs ? this.#o.duration : 0;
+    }
+    setRate(rate) {
+      this.log.push(`rate:${rate}`);
+      this.rate = rate;
+    }
+    destroy() {}
+    advance(ms) {
+      const end = this.now + ms;
+      if (this.#seek && end >= this.#seek.at)
+        this.#landSeek();
+      if (this.state === "buffering" && end >= this.#bufferUntil && this.#playingWhenBuffered) {
+        this.#setState("playing");
+      }
+      if (this.state === "playing") {
+        const from = Math.max(this.now, this.#bufferUntil);
+        const dt = Math.max(0, end - from) / 1000;
+        this.#time = Math.min(this.#o.duration, this.#time + dt * this.rate);
+        if (this.#time >= this.#o.duration) {
+          this.#playingWhenBuffered = false;
+          this.#setState("ended");
+          this.#emit({ type: "ended" });
+        }
+      }
+      this.now = end;
+      const due = this.#queue.filter((q) => q.at <= end).map((q) => q.signal);
+      this.#queue = this.#queue.filter((q) => q.at > end);
+      return due;
+    }
+    #landSeek() {
+      if (!this.#seek)
+        return;
+      this.#time = this.#seek.to;
+      this.#seek = null;
+    }
+    #startPlaying() {
+      this.#playingWhenBuffered = true;
+      if (this.#o.bufferMs > 0) {
+        this.#bufferUntil = this.now + this.#o.bufferMs;
+        this.#setState("buffering");
+      } else {
+        this.#setState("playing");
+      }
+    }
+    #setState(state) {
+      if (state === this.state)
+        return;
+      this.state = state;
+      this.#emit({ type: "state", state });
+    }
+    #emit(signal) {
+      this.#queue.push({ at: this.now + this.#o.stateLagMs, signal });
+    }
+  }
+  var round = (v) => Math.round(v * 100) / 100;
+
+  // apps/web/src/lib/music/sim/simulator.ts
+  var SIM_VERSES = [
+    "Lantern light on the quiet meadow",
+    "Paper boats on the silver harbor",
+    "Counting stars above the orchard",
+    "Whispers travel through the tunnel",
+    "Gentle thunder over the compass",
+    "Pocket full of ribbon and feathers",
+    "Blanket folded by the window",
+    "Kettle singing in the morning"
+  ];
+  var SIM_LYRICS = SIM_VERSES.map((text, i) => ({
+    index: i,
+    start: 1 + 3 * i,
+    end: 4 + 3 * i,
+    text
+  }));
+
+  class Simulator {
+    player;
+    ctl;
+    session;
+    steps = [];
+    saves = [];
+    now = 0;
+    #frameMs;
+    constructor(options = {}) {
+      const lyrics = options.lyrics ?? SIM_LYRICS;
+      this.player = new FakePlayer({ duration: 40, random: mulberry32(7), ...options.player });
+      this.ctl = new MusicController({ lines: lyrics, stored: options.stored ?? EMPTY_SYNC });
+      this.session = options.session ?? buildSession({
+        lyrics,
+        lang: "en",
+        difficulty: "dificil",
+        bank: new Map,
+        rng: mulberry32(3)
+      });
+      this.#frameMs = options.frameMs ?? 16;
+    }
+    get view() {
+      return this.ctl.view();
+    }
+    snapshot() {
+      return {
+        view: this.ctl.view(),
+        timeline: this.ctl.timeline,
+        time: this.ctl.time,
+        videoPlaying: this.ctl.videoPlaying
+      };
+    }
+    send(event) {
+      this.player.userGesture();
+      return this.#dispatch(event);
+    }
+    start() {
+      return this.send({ type: "start", session: this.session });
+    }
+    run(ms) {
+      const end = this.now + ms;
+      while (this.now < end) {
+        const dt = Math.min(this.#frameMs, end - this.now);
+        const signals = this.player.advance(dt);
+        this.now += dt;
+        for (const s of signals)
+          this.#signal(s);
+        const before = this.snapshot();
+        const effects = this.ctl.frame(this.player.currentTime(), this.now);
+        this.#apply(effects);
+        this.steps.push({ at: this.now, event: null, effects, before, after: this.snapshot() });
+      }
+    }
+    runUntilVideo(t, maxMs = 120000) {
+      const limit = this.now + maxMs;
+      while (this.player.trueTime < t && this.now < limit)
+        this.run(this.#frameMs);
+    }
+    #signal(s) {
+      if (s.type === "state")
+        this.#dispatch({ type: "playerState", state: s.state });
+      else if (s.type === "ended")
+        this.#dispatch({ type: "ended" });
+      else
+        this.#dispatch({ type: "autoplayBlocked" });
+    }
+    #dispatch(event) {
+      const before = this.snapshot();
+      const effects = this.ctl.send(event, this.now);
+      this.#apply(effects);
+      this.steps.push({ at: this.now, event, effects, before, after: this.snapshot() });
+      return effects;
+    }
+    #apply(effects) {
+      for (const e of effects) {
+        if (e.type === "play")
+          this.player.play();
+        else if (e.type === "pause")
+          this.player.pause();
+        else if (e.type === "seek")
+          this.player.seekTo(e.to);
+        else if (e.type === "rate")
+          this.player.setRate(e.rate);
+        else {
+          this.saves.push(e.sync);
+          this.#dispatch({ type: "saved", ok: true });
+        }
+      }
+    }
+  }
+
+  // prototypes/musica-sincronia-v2.ts
+  var INTRO = 10;
+  var BREAK_AT = 4;
+  var BREAK = 8;
+  var truth = (i) => SIM_LYRICS[i].start + INTRO + (i >= BREAK_AT ? BREAK : 0);
+  var truthEnd = (i) => SIM_LYRICS[i].end + INTRO + (i >= BREAK_AT ? BREAK : 0);
+  var DURATION = truthEnd(SIM_LYRICS.length - 1) + 4;
+  var $ = (sel) => document.querySelector(sel);
+  var esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  var player;
+  var ctl;
+  var session = buildSession({
+    lyrics: SIM_LYRICS,
+    lang: "en",
+    difficulty: "medio",
+    bank: new Map,
+    rng: mulberry32(5)
+  });
+  var log = [];
+  var autoOn = false;
+  var autoNext = 0;
+  var rnd = mulberry32(11);
+  function quirks() {
+    const q = $("#quirks").checked;
+    return q ? { seekLagMs: 450, keyframeS: 2, bufferMs: 300, stateLagMs: 80, jitterS: 0.12 } : {};
+  }
+  function reset() {
+    player = new FakePlayer({ duration: DURATION, random: mulberry32(7), ...quirks() });
+    ctl = new MusicController({
+      lines: SIM_LYRICS,
+      stored: { v: 1, rate: 1, anchors: [], hintDismissed: false, lrclibId: null }
+    });
+    session = buildSession({
+      lyrics: SIM_LYRICS,
+      lang: "en",
+      difficulty: "medio",
+      bank: new Map,
+      rng: mulberry32(5)
+    });
+    log.length = 0;
+    autoOn = false;
+    lastRev = "";
+    send({ type: "start", session });
+  }
+  function apply(effects, origin) {
+    for (const e of effects) {
+      if (e.type === "play")
+        player.play();
+      else if (e.type === "pause")
+        player.pause();
+      else if (e.type === "seek")
+        player.seekTo(e.to);
+      else if (e.type === "rate")
+        player.setRate(e.rate);
+      else {
+        log.unshift(`salvo: ${e.sync.anchors.length} âncora(s)`);
+        ctl.send({ type: "saved", ok: true }, performance.now());
+        continue;
+      }
+      log.unshift(`${origin} → ${e.type}${e.type === "seek" ? ` ${e.to.toFixed(1)}` : ""}`);
+    }
+    if (log.length > 8)
+      log.length = 8;
+  }
+  function send(event) {
+    player.userGesture();
+    apply(ctl.send(event, performance.now()), event.type);
+    render();
+  }
+  var last = performance.now();
+  function frame(now) {
+    const dt = Math.min(100, now - last);
+    last = now;
+    for (const s of player.advance(dt)) {
+      const ev = s.type === "state" ? { type: "playerState", state: s.state } : s.type === "ended" ? { type: "ended" } : { type: "autoplayBlocked" };
+      apply(ctl.send(ev, now), "player");
+    }
+    apply(ctl.frame(player.currentTime(), now), "jogo");
+    if (autoOn && ctl.mode === "sync" && now >= autoNext) {
+      autoNext = now + 2500;
+      const t = player.trueTime;
+      const sung = SIM_LYRICS.findIndex((_, i) => truth(i) <= t && t < truthEnd(i));
+      if (sung >= 0) {
+        const video = truth(sung) + (rnd() - 0.5) * 0.3;
+        apply(ctl.send({ type: "autoAnchor", line: sung, video }, now), "auto");
+      }
+    }
+    render();
+    requestAnimationFrame(frame);
+  }
+  var lastRev = "";
+  function partsHtml(parts, line, sync) {
+    return parts.map((p) => {
+      if (p.kind === "sep")
+        return esc(p.text);
+      if (p.kind === "gap")
+        return '<span class="gap" aria-label="lacuna"></span>';
+      const cls = p.mark ? ` class="${p.mark}"` : "";
+      return sync ? `<span${cls}>${esc(p.text)}</span>` : `<button class="w${p.mark ? ` ${p.mark}` : ""}" data-card="${line}:${p.token}">${esc(p.text)}</button>`;
+    }).join("");
+  }
+  function render() {
+    const now = performance.now();
+    const t = player.trueTime;
+    const sung = SIM_LYRICS.findIndex((_, i) => truth(i) <= t && t < truthEnd(i));
+    $("#clock").textContent = `${t.toFixed(1)} s · ${player.state}${player.rate !== 1 ? " · 0,75×" : ""}`;
+    $("#sung").textContent = sung >= 0 ? `♪ cantando agora: linha ${sung + 1}` : "♪ (instrumental)";
+    $("#fill").style.width = `${t / DURATION * 100}%`;
+    const wait = ctl.waitMs(now);
+    $("#wait").textContent = wait === null ? "" : `${Math.ceil(wait / 1000)} s`;
+    $("#log").innerHTML = log.map((l) => `<li>${esc(l)}</li>`).join("");
+    const rev = ctl.revision;
+    if (rev === lastRev)
+      return;
+    lastRev = rev;
+    const v = ctl.view();
+    const sync = v.sync;
+    document.body.dataset.mode = v.mode;
+    $("#lyrics").innerHTML = v.lines.map((l) => {
+      const cls = [
+        "lin",
+        l.index === v.shownLine ? "on" : "",
+        sync && l.index === sync.selected ? "sel" : "",
+        !l.present ? "cut" : ""
+      ].join(" ");
+      const anchor = sync?.anchors.find((a) => a.line === l.index);
+      const chip = anchor ? `<span class="anc ${anchor.source}">${anchor.source === "auto" ? "auto · " : ""}${formatOffset(anchor.offset)}</span>` : "";
+      const cut = !l.present ? "<small>não está no vídeo</small>" : "";
+      const inner = partsHtml(l.parts, l.index, !!sync);
+      return sync ? `<p class="${cls}"><button class="pick" data-line="${l.index}">${inner}</button>${chip}${cut}</p>` : `<p class="${cls}">${inner}${cut}</p>`;
+    }).join("");
+    $("#score").textContent = `${v.score} pts ×${v.combo} · lacuna ${Math.max(1, v.gapNumber)} de ${v.totalGaps}`;
+    $("#status").textContent = v.mode === "sync" ? "Ajustando a sincronia (o jogo está congelado)" : v.phase === "waiting" ? "A música espera você" : v.phase === "paused" ? "Pausado" : v.phase === "gameover" ? "Fim de jogo" : v.phase === "finished" ? "Fim da música" : v.answerable ? "Escolha a palavra que falta" : "Tocando";
+    $("#notice").textContent = v.notice.text;
+    $("#offset").textContent = formatOffset(v.offset);
+    $("#pause").textContent = v.phase === "paused" ? "Continuar" : "Pausar";
+    const options = v.answerable?.options ?? v.feedback?.options ?? [];
+    $("#ops").innerHTML = options.map((o, i) => {
+      const st = v.answerable ? "" : o === v.feedback?.answer ? "ok" : o === v.feedback?.chosen ? "err" : "dim";
+      return `<button class="op ${st}" data-op="${esc(o)}" ${v.answerable ? "" : "disabled"}><kbd>${i + 1}</kbd> ${esc(o)}</button>`;
+    }).join("");
+    const over = v.gameOver;
+    $("#over").hidden = !over;
+    if (over)
+      $("#over-line").innerHTML = partsHtml(over.parts, over.line, true);
+    $("#card").hidden = !v.card;
+    if (v.card)
+      $("#card-text").textContent = v.card.tokens.map((t2) => t2.text).join("");
+    $("#panel").hidden = !sync;
+    if (sync) {
+      const sel = session.lines[sync.selected];
+      const selParts = v.lines[sync.selected]?.parts ?? [];
+      $("#mark").innerHTML = `Começou agora · ${sel ? partsHtml(selParts, sync.selected, true) : ""} <kbd>Espaço</kbd>`;
+      $("#seg-offset").textContent = formatOffset(sync.offset);
+      $("#undo").toggleAttribute("disabled", !sync.canUndo);
+      $("#auto").textContent = autoOn ? "✦ Ouvindo… (parar)" : "✦ Sincronizar sozinho";
+      $("#play").textContent = sync.videoPlaying ? "Pausar vídeo" : "Tocar vídeo";
+      $("#rate").hidden = sync.rateSuggestion === null;
+      if (sync.rateSuggestion !== null)
+        $("#rate-text").textContent = `O vídeo parece tocar a ${sync.rateSuggestion.toFixed(3).replace(".", ",")}× da letra.`;
+      $("#segs").innerHTML = sync.anchors.length === 0 ? '<li class="vazio">Nenhuma âncora ainda: toque numa linha quando ela começar.</li>' : sync.anchors.map((a, i) => `<li class="${i === sync.segment ? "cur" : ""}"><span>Linha ${a.line + 1} → em diante ${a.source === "auto" ? '<span class="anc auto">auto</span>' : ""}</span><span>${formatOffset(a.offset)} <button class="x" data-del="${i}" aria-label="Apagar âncora">✕</button></span></li>`).join("");
+      $("#strip").innerHTML = v.lines.map((l) => `<i class="${l.present ? "" : "cut"} ${l.index === sync.selected ? "sel" : ""}" style="left:${Math.max(0, l.start) / DURATION * 100}%;width:${Math.max(0.2, l.end - l.start) / DURATION * 100}%"></i>`).join("") + SIM_LYRICS.map((_, i) => `<b style="left:${truth(i) / DURATION * 100}%" title="onde a linha ${i + 1} é cantada de verdade"></b>`).join("") + `<em style="left:${ctl.time / DURATION * 100}%"></em>`;
+    }
+  }
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest("button");
+    if (!el)
+      return;
+    const d = el.dataset;
+    if (d.line !== undefined)
+      return send({ type: "selectLine", line: Number(d.line) });
+    if (d.del !== undefined)
+      return send({ type: "deleteAnchor", index: Number(d.del) });
+    if (d.op !== undefined)
+      return send({ type: "answer", option: d.op });
+    if (d.card !== undefined) {
+      const [line, token] = d.card.split(":").map(Number);
+      return send({ type: "openCard", line, token });
+    }
+    const map = {
+      pause: { type: "togglePause" },
+      repeat: { type: "repeat" },
+      speed: { type: "toggleSpeed" },
+      minus: { type: "nudge", delta: -0.1 },
+      plus: { type: "nudge", delta: 0.1 },
+      open: { type: "openSync" },
+      mark: { type: "mark" },
+      undo: { type: "undo" },
+      zero: { type: "zero" },
+      cancel: { type: "closeSync", conclude: false },
+      conclude: { type: "closeSync", conclude: true },
+      "n-1": { type: "nudge", delta: -1 },
+      "n-01": { type: "nudge", delta: -0.1 },
+      "n+01": { type: "nudge", delta: 0.1 },
+      "n+1": { type: "nudge", delta: 1 },
+      play: { type: "syncTogglePlay" },
+      back: { type: "syncBack", seconds: 5 },
+      restart: { type: "syncRestart" },
+      accept: { type: "acceptRate" },
+      retry: { type: "retry" },
+      continue: { type: "continue" },
+      leave: { type: "leave" },
+      "close-card": { type: "closeCard" }
+    };
+    if (el.id === "auto") {
+      autoOn = !autoOn;
+      autoNext = 0;
+      lastRev = "";
+      render();
+      return;
+    }
+    if (el.id === "reset")
+      return reset();
+    const ev = map[el.id];
+    if (ev)
+      send(ev);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey)
+      return;
+    const step = e.shiftKey ? 1 : 0.1;
+    const k = e.key;
+    if (ctl.mode === "sync") {
+      const keys = {
+        " ": { type: "mark" },
+        ArrowUp: { type: "moveSelection", delta: -1 },
+        ArrowDown: { type: "moveSelection", delta: 1 },
+        ArrowLeft: { type: "nudge", delta: -step },
+        ArrowRight: { type: "nudge", delta: step },
+        Enter: { type: "closeSync", conclude: true },
+        Escape: { type: "closeSync", conclude: false },
+        p: { type: "syncTogglePlay" }
+      };
+      if (keys[k]) {
+        e.preventDefault();
+        send(keys[k]);
+      }
+      return;
+    }
+    const v = ctl.view();
+    if (k >= "1" && k <= "4" && v.answerable) {
+      const o = v.answerable.options[Number(k) - 1];
+      if (o)
+        send({ type: "answer", option: o });
+    } else if (k === " ") {
+      e.preventDefault();
+      send({ type: "togglePause" });
+    } else if (k === "s")
+      send({ type: "openSync" });
+    else if (k === "r")
+      send({ type: "repeat" });
+    else if (k === "Escape")
+      send({ type: "closeCard" });
+  });
+  $("#quirks").addEventListener("change", reset);
+  reset();
+  requestAnimationFrame(frame);
+})();
+
+</script>
+</body>
+</html>
