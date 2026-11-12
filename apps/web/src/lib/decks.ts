@@ -45,9 +45,9 @@ export interface DeckCounts {
 	newAvailable: number;
 	/** Novas que entram hoje: min(disponíveis, teto restante, orçamento restante). */
 	newToday: number;
-	/** Aprendendo/reaprendendo que vencem até o fim do dia de estudo. */
+	/** Aprendendo/reaprendendo já vencidas (o mesmo corte da sessão). */
 	learning: number;
-	/** Em revisão que vencem até o fim do dia de estudo (um por item). */
+	/** Em revisão já vencidas (um por item). */
 	review: number;
 	newDoneToday: number;
 	items: number;

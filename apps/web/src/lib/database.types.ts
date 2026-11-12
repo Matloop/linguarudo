@@ -825,7 +825,7 @@ export type Database = {
         Args: {
           p_day_start: string
           p_language: string
-          p_next_day_start: string
+          p_now: string
         }
         Returns: {
           deck_id: string

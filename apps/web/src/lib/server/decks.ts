@@ -20,7 +20,7 @@ import {
 	type NewOrder
 } from '#lib/decks.ts';
 import type { Language } from '#lib/languages.ts';
-import { dayStart, nextDayStart, DEFAULT_CLOCK, type DayClock } from '#lib/review.ts';
+import { dayStart, DEFAULT_CLOCK, type DayClock } from '#lib/review.ts';
 import { parseQueueState, type QueueState } from './queue.ts';
 
 type Client = SupabaseClient<Database>;
@@ -95,7 +95,7 @@ export async function loadDeckSummaries(
 		listDecks(supabase, language),
 		supabase.rpc('deck_summaries', {
 			p_day_start: start.toISOString(),
-			p_next_day_start: nextDayStart(now, clock).toISOString(),
+			p_now: now.toISOString(),
 			p_language: language
 		}),
 		supabase
