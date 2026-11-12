@@ -45,6 +45,10 @@ export const variables = defineEnvVars({
 		schema: optionalUrl('YOUTUBE_OEMBED_URL', 'https://www.youtube.com/oembed'),
 		description: 'oEmbed do YouTube (título e canal do vídeo). Padrão: o endpoint oficial'
 	},
+	YOUTUBE_PLAYLIST_URL: {
+		schema: optionalUrl('YOUTUBE_PLAYLIST_URL', 'https://www.youtube.com/playlist'),
+		description: 'Página de playlist do YouTube (faixas do álbum). Padrão: a página pública'
+	},
 	SUPERTONIC_DIR: {
 		schema: (value: string | undefined): string => value ?? '',
 		description:

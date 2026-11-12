@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { login, saveWord } from '../../e2e/auth.ts';
 import { installFakeYoutube } from '../../e2e/fake-youtube.ts';
-import { VERSES, VIDEOS } from '../../e2e/fixtures.ts';
+import { PLAYLIST, VERSES, VIDEOS } from '../../e2e/fixtures.ts';
 
 // O app roda de verdade; só o YouTube (script da IFrame API) e o LRCLIB/oEmbed (servidor falso
 // em src/e2e/mock-sources.ts) são falsos. Os versos são inventados.
@@ -38,8 +38,9 @@ async function pickSong(
 	lang = 'Inglês'
 ) {
 	await page.goto('/musica');
+	await page.getByRole('button', { name: 'Criar', exact: true }).click();
 	await page.getByLabel('Link do YouTube').fill(`https://www.youtube.com/watch?v=${video.id}`);
-	// O título e o artista vêm do oEmbed (falso) e não pisam no que já foi escrito.
+	// O título e o artista vêm do oEmbed (falso).
 	await expect(page.getByLabel('Título da música')).toHaveValue(video.title);
 	await expect(page.getByLabel('Artista')).toHaveValue(video.artist);
 	await page.getByRole('radio', { name: lang === 'Inglês' ? /^(Inglês|English)$/ : lang }).check();
@@ -103,15 +104,14 @@ test('escolher a música: oEmbed preenche título e artista, e a música vira "t
 	await expect(page).toHaveURL(/\/musica$/);
 	await expect(page.getByText('Nenhuma música ainda.')).toBeVisible();
 
-	// Link inválido: erro em português, sem sair da tela.
+	// Link inválido: erro em português, sem sair do painel.
+	await page.getByRole('button', { name: 'Criar', exact: true }).click();
 	await page.getByLabel('Link do YouTube').fill('isso não é um link');
-	await page.getByLabel('Título da música').fill('Qualquer');
-	await page.getByLabel('Artista').fill('Qualquer');
 	await page.getByRole('button', { name: 'Jogar' }).click();
-	await expect(page.getByText('Cole um link de vídeo do YouTube.')).toBeVisible();
+	await expect(
+		page.getByText('Cole o link de um vídeo ou de uma playlist do YouTube.')
+	).toBeVisible();
 
-	await page.getByLabel('Título da música').fill('');
-	await page.getByLabel('Artista').fill('');
 	await pickSong(page, VIDEOS.ok);
 	await expect(page.getByRole('dialog', { name: VIDEOS.ok.title })).toBeVisible();
 
@@ -119,6 +119,37 @@ test('escolher a música: oEmbed preenche título e artista, e a música vira "t
 	const recent = page.getByRole('region', { name: 'Tocadas recentemente' });
 	await expect(recent.getByRole('link', { name: new RegExp(VIDEOS.ok.title) })).toBeVisible();
 	await expect(recent).toContainText('EN');
+});
+
+test('álbum: playlist vira álbum, faixa sem letra fica de fora e a estante mostra o progresso', async ({
+	page
+}) => {
+	await installFakeYoutube(page);
+	await login(page);
+	await page.goto('/musica');
+	await page.getByRole('button', { name: 'Criar', exact: true }).click();
+	await page
+		.getByLabel('Link do YouTube')
+		.fill(`https://www.youtube.com/playlist?list=${PLAYLIST.id}`);
+
+	await expect(page.getByLabel('Nome do álbum')).toHaveValue(PLAYLIST.title);
+	await expect(page.getByLabel('Artista')).toHaveValue(VIDEOS.ok.artist);
+	await expect(page.getByLabel(`Incluir ${VIDEOS.ok.title}`)).toBeChecked();
+	const semLetra = page.getByLabel(`Incluir ${VIDEOS.noLyrics.title}`);
+	await expect(semLetra).not.toBeChecked();
+	await expect(semLetra).toBeDisabled();
+	await expect(page.getByText('1 de 2 faixas')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Jogar álbum' }).click();
+	await expect(page).toHaveURL(/\/musica\/[0-9a-f-]{36}\?album=[0-9a-f-]{36}$/);
+
+	await page.goto('/musica');
+	const album = page
+		.getByRole('region', { name: 'Tocadas recentemente' })
+		.getByRole('link', { name: new RegExp(PLAYLIST.title) });
+	await expect(album).toContainText('1/1');
+	// A faixa do álbum não aparece solta na estante.
+	await expect(page.getByRole('link', { name: new RegExp(VIDEOS.ok.title) })).toHaveCount(0);
 });
 
 test('outra pessoa não abre a música de um usuário', async ({ page, browser }) => {
@@ -439,10 +470,19 @@ test('sincronia: não mexe no vídeo, marca trechos, não pula de linha sozinha,
 	await expect(page.getByTestId('estado')).toHaveText('Ajustando a sincronia');
 	await page.waitForTimeout(500);
 	expect(await log()).toEqual(logBefore);
-	expect(await playing(page)).toBe(true);
+	// As lacunas continuam escondidas (só a inicial aparece): a sincronia não entrega as respostas.
 	// As lacunas continuam escondidas: a sincronia não entrega as respostas.
 	await expect(page.locator('.lin .gap')).toHaveCount(gapsBefore);
 	await expect(page.locator('.op')).toHaveCount(0);
+
+	// Atraso grande se digita de uma vez; desfazer volta tudo num passo.
+	const typed = panel.getByLabel('ou digite o deslocamento');
+	await typed.fill('12,5');
+	await typed.press('Enter');
+	await expect(page.getByTestId('sinc-offset')).toHaveText('+12,5 s');
+	await panel.getByRole('button', { name: 'Desfazer' }).click();
+	await expect(page.getByTestId('sinc-offset')).toHaveText('+0,0 s');
+	await typed.blur();
 
 	// Tocar na linha 2 ancora ela agora.
 	await page.locator('.lin[data-line="1"] .lin-alvo').click();

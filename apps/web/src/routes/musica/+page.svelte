@@ -1,58 +1,31 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
-	import { LIMITS } from '#lib/items.ts';
-	import { parseYoutubeId } from '#lib/music/youtube.ts';
 	import { languageLabel } from '#lib/languages.ts';
-	import { MUSIC_LANGUAGES, type MusicLanguage } from '#lib/music/wordlists.ts';
+	import CriarMusica from '#lib/music/CriarMusica.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 
 	const uiLanguage = $derived(data.shell?.uiLanguage ?? 'pt');
-	const errors = $derived(form && 'errors' in form ? form.errors : {});
-	const formError = $derived(errors.form);
+	const errors = $derived<Record<string, string>>(form && 'errors' in form ? form.errors : {});
 
-	// Sem JS o servidor devolve os valores digitados; com JS o estado local manda.
-	const initial = untrack(() => form?.values);
-	let url = $state(initial?.url ?? '');
-	let title = $state(initial?.title ?? '');
-	let artist = $state(initial?.artist ?? '');
-	let language = $state<MusicLanguage>((initial?.language as MusicLanguage | undefined) ?? 'en');
-	let lookup = $state<'idle' | 'loading' | 'failed'>('idle');
-	let submitting = $state(false);
+	// Erro do servidor reabre o painel para a pessoa corrigir.
+	let creating = $state(untrack(() => Object.keys(errors).length > 0));
+	let filter = $state<'tudo' | 'album' | 'musica'>('tudo');
 
-	const videoId = $derived(parseYoutubeId(url));
-
-	async function fillFromVideo() {
-		const id = parseYoutubeId(url);
-		if (!id) return;
-		lookup = 'loading';
-		try {
-			const res = await fetch(`/musica/info?v=${encodeURIComponent(id)}`);
-			if (!res.ok) throw new Error(String(res.status));
-			const info = (await res.json()) as { title: string; artist: string };
-			// Não pisa no que a pessoa já escreveu.
-			if (title.trim() === '') title = info.title;
-			if (artist.trim() === '') artist = info.artist;
-			lookup = 'idle';
-		} catch {
-			lookup = 'failed';
-		}
-	}
-
-	function onUrlInput() {
-		lookup = 'idle';
-		if (videoId && title.trim() === '' && artist.trim() === '') void fillFromVideo();
-	}
-
-	function playedAt(iso: string) {
-		return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(
-			new Date(iso)
-		);
-	}
+	const hasBoth = $derived(
+		data.shelf.some((w) => w.kind === 'album') && data.shelf.some((w) => w.kind === 'musica')
+	);
+	const shown = $derived(
+		filter === 'tudo' || !hasBoth ? data.shelf : data.shelf.filter((w) => w.kind === filter)
+	);
+	const FILTERS = [
+		['tudo', 'Tudo'],
+		['album', 'Álbuns'],
+		['musica', 'Músicas']
+	] as const;
 </script>
 
 <svelte:head>
@@ -62,356 +35,238 @@
 <div class="ph">
 	<div>
 		<h1>Música</h1>
-		<p>Complete a letra de uma música que você gosta, escolhendo a palavra certa.</p>
+		<p>Complete a letra de uma música ou de um álbum inteiro, escolhendo a palavra certa.</p>
 	</div>
+	<button class="btn btn-primary" type="button" onclick={() => (creating = true)}>
+		<Icon name="plus" size="sm" />Criar
+	</button>
 </div>
 
-<form
-	class="tile lift nova"
-	method="POST"
-	action="?/play"
-	aria-labelledby="nova-titulo"
-	use:enhance={() => {
-		submitting = true;
-		return async ({ update }) => {
-			await update({ reset: false });
-			submitting = false;
-		};
-	}}
->
-	<h2 id="nova-titulo"><Icon name="music" size="sm" />Escolher música</h2>
-
-	<div class="campo">
-		<label for="url">Link do YouTube</label>
-		<input
-			id="url"
-			name="url"
-			type="text"
-			inputmode="url"
-			autocomplete="off"
-			autocapitalize="off"
-			spellcheck="false"
-			placeholder="https://www.youtube.com/watch?v=…"
-			bind:value={url}
-			oninput={onUrlInput}
-			onblur={() => videoId && title.trim() === '' && artist.trim() === '' && fillFromVideo()}
-			aria-invalid={errors.url ? 'true' : undefined}
-			aria-describedby="url-ajuda"
-		/>
-		{#if errors.url}<p class="erro" role="alert">{errors.url}</p>{/if}
-		<p id="url-ajuda" class="ajuda" role="status">
-			{#if lookup === 'loading'}
-				Buscando título e artista…
-			{:else if lookup === 'failed'}
-				Não deu para ler o vídeo. Escreva o título e o artista abaixo.
-			{:else}
-				Cole o link e o título e o artista aparecem sozinhos. Confira, porque a letra é buscada por
-				eles.
-			{/if}
-		</p>
+<section class="estante" aria-labelledby="recentes-titulo">
+	<div class="topo">
+		<h2 class="eyebrow" id="recentes-titulo">Tocadas recentemente</h2>
+		{#if hasBoth}
+			<div class="filtro" role="group" aria-label="Mostrar">
+				{#each FILTERS as [value, label] (value)}
+					<button type="button" aria-pressed={filter === value} onclick={() => (filter = value)}
+						>{label}</button
+					>
+				{/each}
+			</div>
+		{/if}
 	</div>
 
-	<div class="linha">
-		<div class="campo cresce">
-			<label for="title">Título da música</label>
-			<input
-				id="title"
-				name="title"
-				maxlength={LIMITS.title}
-				autocomplete="off"
-				bind:value={title}
-				aria-invalid={errors.title ? 'true' : undefined}
-			/>
-			{#if errors.title}<p class="erro" role="alert">{errors.title}</p>{/if}
+	{#if data.shelf.length === 0}
+		<div class="vazio tile">
+			<Icon name="music" />
+			<p>Nenhuma música ainda.</p>
+			<span>Cole o link de um vídeo ou de uma playlist de álbum do YouTube.</span>
+			<button class="btn btn-soft" type="button" onclick={() => (creating = true)}>
+				<Icon name="plus" size="sm" />Criar a primeira
+			</button>
 		</div>
-		<div class="campo cresce">
-			<label for="artist">Artista</label>
-			<input
-				id="artist"
-				name="artist"
-				maxlength={LIMITS.title}
-				autocomplete="off"
-				bind:value={artist}
-				aria-invalid={errors.artist ? 'true' : undefined}
-			/>
-			{#if errors.artist}<p class="erro" role="alert">{errors.artist}</p>{/if}
-		</div>
-	</div>
-
-	<fieldset class="idioma">
-		<legend>Língua da música</legend>
-		<div class="segmentos">
-			{#each MUSIC_LANGUAGES as l (l)}
-				<label>
-					<input type="radio" name="language" value={l} bind:group={language} />
-					<span>{languageLabel(l, uiLanguage)}</span>
-				</label>
-			{/each}
-		</div>
-		{#if errors.language}<p class="erro" role="alert">{errors.language}</p>{/if}
-	</fieldset>
-
-	{#if formError}<p class="erro" role="alert">{formError}</p>{/if}
-
-	<div class="acoes">
-		<p class="nota">A letra vem do LRCLIB na hora de jogar. Nada dela fica guardado.</p>
-		<button class="btn btn-primary btn-lg" type="submit" disabled={submitting}>
-			<Icon name="play" size="sm" />{submitting ? 'Abrindo…' : 'Jogar'}
-		</button>
-	</div>
-</form>
-
-<section class="recentes" aria-labelledby="recentes-titulo">
-	<h2 class="eyebrow" id="recentes-titulo">Tocadas recentemente</h2>
-	{#if data.songs.length === 0}
-		<p class="vazio">Nenhuma música ainda. Cole um link aí em cima para começar.</p>
 	{:else}
-		<ul class="songs">
-			{#each data.songs as song (song.id)}
+		<ul class="capas">
+			{#each shown as w (w.id)}
 				<li>
-					<a class="song" href={resolve('/musica/[id]', { id: song.id })}>
-						<span class="art" aria-hidden="true">
-							<img
-								src={`https://i.ytimg.com/vi/${song.youtubeId}/mqdefault.jpg`}
-								alt=""
-								loading="lazy"
-								width="120"
-								height="68"
-							/>
-						</span>
-						<span class="texto">
-							<b>{song.title}</b>
-							<span>{song.artist}</span>
-						</span>
-						<span class="code" title={languageLabel(song.language, uiLanguage)}
-							>{song.language.toUpperCase()}</span
-						>
-						<span class="data">{song.playedAt ? playedAt(song.playedAt) : ''}</span>
-						<span class="btn btn-soft" aria-hidden="true">Jogar de novo</span>
-					</a>
+					{#if w.kind === 'album'}
+						<a class="card album" href={resolve('/musica/album/[id]', { id: w.id })}>
+							<span class="capa" aria-hidden="true">
+								<img
+									src={`https://i.ytimg.com/vi/${w.cover}/mqdefault.jpg`}
+									alt=""
+									loading="lazy"
+								/>
+								<span class="tag">{w.position + 1}/{w.tracks.length}</span>
+								<span class="barra"
+									><i style:width={`${((w.position + 1) / w.tracks.length) * 100}%`}></i></span
+								>
+							</span>
+							<b>{w.title}</b>
+							<span class="sub">Álbum · {w.artist}</span>
+						</a>
+					{:else}
+						<a class="card" href={resolve('/musica/[id]', { id: w.id })}>
+							<span class="capa" aria-hidden="true">
+								<img
+									src={`https://i.ytimg.com/vi/${w.youtubeId}/mqdefault.jpg`}
+									alt=""
+									loading="lazy"
+								/>
+								<span class="tag" title={languageLabel(w.language, uiLanguage)}
+									>{w.language.toUpperCase()}</span
+								>
+							</span>
+							<b>{w.title}</b>
+							<span class="sub">{w.artist}</span>
+						</a>
+					{/if}
 				</li>
 			{/each}
 		</ul>
 	{/if}
 </section>
 
+<CriarMusica bind:open={creating} {errors} {uiLanguage} />
+
 <style>
-	.nova {
-		padding: 22px;
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-		margin-bottom: 32px;
-	}
-	.nova h2 {
-		margin: 0;
+	.topo {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		font: 600 17.5px var(--f-head);
-		letter-spacing: -0.01em;
+		justify-content: space-between;
+		gap: 12px;
+		margin-bottom: 14px;
+		min-height: 36px;
 	}
-	.campo {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		min-width: 0;
-	}
-	.linha {
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-	}
-	label,
-	legend {
-		font-size: 14px;
-		font-weight: 500;
-		color: var(--ink-3);
-	}
-	input:not([type='radio']) {
-		width: 100%;
-		height: 40px;
-		border: 0;
-		border-radius: var(--r-m);
-		background: var(--sunk);
-		box-shadow: inset 0 0 0 1px var(--line);
-		color: var(--ink);
-		padding: 0 12px;
-		font: inherit;
-		font-size: 16.5px;
-		transition: box-shadow 0.15s;
-	}
-	input:not([type='radio']):focus {
-		outline: none;
-		box-shadow: inset 0 0 0 1.5px var(--ink-3);
-	}
-	[aria-invalid='true'] {
-		box-shadow: inset 0 0 0 1.5px var(--terra-ink) !important;
-	}
-	.ajuda,
-	.nota {
+	.topo .eyebrow {
 		margin: 0;
-		font-size: 14.5px;
-		color: var(--ink-3);
-		text-wrap: pretty;
 	}
-	.idioma {
-		border: 0;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-	.idioma legend {
-		padding: 0;
-		margin-bottom: 6px;
-	}
-	.segmentos {
+	.filtro {
 		display: inline-flex;
-		align-self: flex-start;
 		padding: 3px;
 		gap: 2px;
 		border-radius: var(--r-m);
 		background: var(--sunk);
 		box-shadow: inset 0 0 0 1px var(--line);
 	}
-	.segmentos label {
-		position: relative;
-		cursor: pointer;
-	}
-	.segmentos input {
-		position: absolute;
-		opacity: 0;
-		inset: 0;
-		margin: 0;
-		cursor: pointer;
-	}
-	.segmentos span {
-		display: block;
-		height: 30px;
-		line-height: 30px;
+	.filtro button {
+		height: 28px;
 		padding: 0 12px;
+		border: 0;
 		border-radius: var(--r-s);
-		font-size: 15px;
+		background: none;
+		font-size: 14.5px;
 		font-weight: 500;
 		color: var(--ink-2);
 	}
-	.segmentos input:checked + span {
+	.filtro button[aria-pressed='true'] {
 		background: var(--raise);
 		color: var(--ink);
 		box-shadow: var(--sh-card);
 	}
-	:global(.tema-escuro) .segmentos input:checked + span {
-		background: rgba(247, 241, 230, 0.09);
-		box-shadow: none;
-	}
-	.segmentos input:focus-visible + span {
-		outline: 2px solid var(--ink-3);
-		outline-offset: 1px;
-	}
-	.acoes {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-	}
-	.erro {
-		margin: 0;
-		color: var(--terra-ink);
-		font-size: 15px;
-	}
-
-	.recentes .eyebrow {
-		margin: 0 0 8px;
-	}
 	.vazio {
-		margin: 0;
-		padding: 18px 0;
-		color: var(--ink-3);
-	}
-	.songs {
-		list-style: none;
-		padding: 0;
-		margin: 0 -14px;
 		display: flex;
 		flex-direction: column;
-	}
-	.song {
-		display: grid;
-		grid-template-columns: 84px minmax(0, 1fr) auto auto auto;
-		gap: 18px;
 		align-items: center;
-		padding: 10px 14px;
-		border-radius: var(--r-m);
+		gap: 6px;
+		padding: 40px 20px;
+		text-align: center;
+		color: var(--ink-3);
+	}
+	.vazio p {
+		margin: 6px 0 0;
+		font: 600 17px var(--f-head);
+		color: var(--ink);
+	}
+	.vazio .btn {
+		margin-top: 12px;
+	}
+	.capas {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+		gap: 28px 20px;
+	}
+	.card {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 		color: inherit;
 		text-decoration: none;
-		transition: background-color 0.15s;
 	}
-	.song:hover {
-		background: var(--hover);
-	}
-	.art {
-		width: 84px;
-		aspect-ratio: 16 / 9;
-		border-radius: var(--r-s);
-		overflow: hidden;
+	.capa {
+		position: relative;
+		aspect-ratio: 1;
+		margin-bottom: 10px;
+		border-radius: var(--r-m);
 		background: var(--tile);
+		box-shadow: var(--sh-card);
+		transition: transform 0.2s var(--ease);
 	}
-	.art img {
+	.capa img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
 		display: block;
+		border-radius: inherit;
 	}
-	.texto {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
+	/* Álbum: duas capas atrás, como uma pilha de discos. */
+	.album .capa::before,
+	.album .capa::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		background: var(--ink-3);
+		z-index: -1;
 	}
-	.texto b {
-		font: 600 17px/1.3 var(--f-head);
+	.album .capa::before {
+		transform: translateY(-13px) scale(0.92);
+		opacity: 0.45;
+	}
+	.album .capa::after {
+		transform: translateY(-24px) scale(0.84);
+		opacity: 0.22;
+	}
+	.capas li {
+		padding-top: 12px;
+	}
+	.album {
+		isolation: isolate;
+	}
+	.card:hover .capa {
+		transform: translateY(-3px);
+	}
+	.tag {
+		position: absolute;
+		top: 8px;
+		left: 8px;
+		padding: 2px 7px;
+		border-radius: var(--r-s);
+		font: 600 12px/1.4 var(--f-head);
+		letter-spacing: 0.03em;
+		color: #fff;
+		background: rgba(20, 16, 12, 0.66);
+		font-variant-numeric: tabular-nums;
+	}
+	.barra {
+		position: absolute;
+		left: 8px;
+		right: 8px;
+		bottom: 8px;
+		height: 4px;
+		border-radius: 2px;
+		background: rgba(255, 255, 255, 0.35);
+		overflow: hidden;
+	}
+	.barra i {
+		display: block;
+		height: 100%;
+		background: #fff;
+	}
+	.card b {
+		font: 600 16px/1.3 var(--f-head);
 		letter-spacing: -0.01em;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.texto span {
-		font-size: 14.5px;
+	.sub {
+		font-size: 14px;
 		color: var(--ink-3);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.data {
-		font-size: 14px;
-		color: var(--ink-3);
-		font-variant-numeric: tabular-nums;
-	}
-
-	@media (min-width: 640px) {
-		.linha {
-			flex-direction: row;
+	@media (max-width: 520px) {
+		.capas {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 22px 14px;
 		}
-		.cresce {
-			flex: 1;
-		}
-	}
-	@media (max-width: 768px) {
-		.song {
-			grid-template-columns: 72px minmax(0, 1fr) auto;
-			gap: 12px;
-		}
-		.art {
-			width: 72px;
-		}
-		.song .data,
-		.song .btn {
-			display: none;
-		}
-		.acoes {
-			flex-direction: column;
-			align-items: stretch;
+		.topo {
+			flex-wrap: wrap;
 		}
 	}
 </style>

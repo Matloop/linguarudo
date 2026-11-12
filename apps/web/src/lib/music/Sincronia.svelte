@@ -13,68 +13,259 @@
 		/** Tempo do vídeo (s). */
 		time: number;
 		duration: number;
-		/** null = o navegador não sabe sincronizar sozinho (o botão some). */
-		auto: { running: boolean; message: string } | null;
 		versions: readonly LyricVersion[];
 		version: number | null;
+		/** Onde "Ouvir a linha" começa (um pouco antes da linha escolhida). */
+		listenFrom: () => number;
 		onsend: (event: MusicEvent) => void;
-		onauto: () => void;
 		onversion: (id: number) => void;
 	}
 
-	let { sync, lines, time, duration, auto, versions, version, onsend, onauto, onversion }: Props =
+	let { sync, lines, time, duration, versions, version, listenFrom, onsend, onversion }: Props =
 		$props();
 
 	const selected = $derived(lines[sync.selected] ?? null);
-	const explain = $derived(
-		sync.anchors.length === 0
-			? 'Toque numa linha da letra quando ela começar a ser cantada.'
-			: Math.abs(sync.offset) < 0.05
-				? 'neste trecho a letra está no tempo da faixa original'
-				: sync.offset > 0
-					? 'neste trecho a letra entra mais tarde no vídeo'
-					: 'neste trecho a letra entra mais cedo no vídeo'
-	);
+	const explain = $derived.by(() => {
+		if (sync.anchors.length === 0) return 'sem marcas, a letra segue o tempo original';
+		const o = sync.offset;
+		if (Math.abs(o) < 0.05) return 'neste trecho a letra está no tempo original';
+		const amount = formatOffset(Math.abs(o)).slice(1);
+		return o > 0
+			? `neste trecho a letra entra ${amount} mais tarde`
+			: `neste trecho a letra entra ${amount} mais cedo`;
+	});
 
-	// Faixa: o vídeo inteiro, com cada linha (onde ela cai no vídeo) por cima.
-	const span = $derived(Math.max(duration, (lines.at(-1)?.end ?? 0) + 1, 1));
-	const pct = (s: number) => `${Math.max(0, Math.min(100, (s / span) * 100))}%`;
-	const width = (a: number, b: number) =>
-		`${Math.max(0.4, Math.min(100, ((b - a) / span) * 100))}%`;
 	const clock = (s: number) => {
 		const v = Math.max(0, s);
 		return `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
 	};
 	const rateText = (r: number) => r.toFixed(3).replace('.', ',');
 
-	let versionsOpen = $state(false);
+	// ---------- mover a letra: botões (segurar repete, acelerando) ----------
+	const STEPS = [-5, -1, -0.1, 0.1, 1, 5] as const;
+	const stepLabel = (d: number) =>
+		`${d < 0 ? '−' : '+'}${Math.abs(d) >= 1 ? `${Math.abs(d)} s` : '0,1'}`;
+	const REPEAT_FIRST_MS = 420;
+	let repeat: ReturnType<typeof setTimeout> | null = null;
+
+	function holdStart(e: PointerEvent, delta: number) {
+		if (e.button !== 0) return;
+		e.preventDefault();
+		let n = 0;
+		const go = () => {
+			onsend({ type: 'nudge', delta, merge: n > 0 });
+			n++;
+			repeat = setTimeout(go, n === 1 ? REPEAT_FIRST_MS : Math.max(50, 180 - n * 12));
+		};
+		go();
+	}
+
+	function holdEnd() {
+		if (repeat) clearTimeout(repeat);
+		repeat = null;
+	}
+
+	// ---------- valor digitado ----------
+	let typed = $state('');
+	let typedBad = $state(false);
+
+	function submitTyped(e: SubmitEvent) {
+		e.preventDefault();
+		const v = Number(typed.trim().replace(',', '.').replace('−', '-').replace(/\s*s$/, ''));
+		if (typed.trim() === '' || !Number.isFinite(v)) {
+			typedBad = true;
+			return;
+		}
+		typedBad = false;
+		onsend({ type: 'setOffset', offset: v });
+		typed = '';
+	}
+
+	// ---------- linha do tempo ----------
+	const NEAR_S = 30;
+	let zoom = $state<'all' | 'near'>('all');
+	let trackW = $state(0);
+
+	const total = $derived(Math.max(duration, (lines.at(-1)?.end ?? 0) + 1, 1));
+	const win = $derived.by<[number, number]>(() => {
+		if (zoom === 'all' || total <= NEAR_S) return [0, total];
+		const c = Math.max(NEAR_S / 2, Math.min(total - NEAR_S / 2, time));
+		return [c - NEAR_S / 2, c + NEAR_S / 2];
+	});
+	const span = $derived(win[1] - win[0]);
+	const pct = (s: number) => ((s - win[0]) / span) * 100;
+	const ticks = $derived.by(() => {
+		const step = zoom === 'near' ? 5 : ([10, 20, 30, 60, 120].find((s) => span / s <= 8) ?? 300);
+		const out: number[] = [];
+		for (let s = Math.ceil(win[0] / step) * step; s <= win[1]; s += step) out.push(s);
+		return out;
+	});
+
+	/** Deslocamento do trecho que contém a linha (o mesmo que o controlador usa). */
+	function offsetOf(line: number): number {
+		if (sync.anchors.length === 0) return 0;
+		let k = 0;
+		sync.anchors.forEach((a, i) => {
+			if (a.line <= line) k = i;
+		});
+		return sync.anchors[k].offset;
+	}
+	const segmentOfLine = (line: number) => {
+		if (sync.anchors.length === 0) return -1;
+		let k = 0;
+		sync.anchors.forEach((a, i) => {
+			if (a.line <= line) k = i;
+		});
+		return k;
+	};
+
+	interface Drag {
+		x: number;
+		off0: number;
+		moved: boolean;
+		line: number;
+	}
+	let drag = $state<Drag | null>(null);
+	// O trecho não passa das marcas vizinhas: mostra onde ele ficou de verdade.
+	const dragText = $derived(drag?.moved ? `trecho em ${formatOffset(sync.offset)}` : '');
+
+	function dragStart(e: PointerEvent) {
+		if (e.button !== 0) return;
+		const blk = (e.target as HTMLElement).closest<HTMLElement>('[data-line]');
+		const line = blk ? Number(blk.dataset.line) : sync.selected;
+		if (line !== sync.selected) onsend({ type: 'moveSelection', delta: line - sync.selected });
+		drag = { x: e.clientX, off0: offsetOf(line), moved: false, line };
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+	}
+
+	function dragMove(e: PointerEvent) {
+		if (!drag || trackW === 0) return;
+		const dx = e.clientX - drag.x;
+		if (!drag.moved && Math.abs(dx) < 3) return;
+		const offset = Math.round((drag.off0 + (dx / trackW) * span) * 10) / 10;
+		onsend({ type: 'setOffset', offset, merge: drag.moved });
+		drag.moved = true;
+	}
+
+	function dragEnd() {
+		drag = null;
+	}
+
+	function seekRuler(e: PointerEvent) {
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		onsend({ type: 'syncSeek', to: win[0] + ((e.clientX - r.left) / r.width) * span });
+	}
+
+	let moreOpen = $state(false);
 </script>
 
 <section class="sinc" aria-label="Sincronizar a letra">
 	<div class="cab">
-		<h2>Sincronizar letra</h2>
-		<p>
-			O jogo está congelado. Toque numa linha quando ela começar; cada toque vale daquela linha em
-			diante.
-		</p>
+		<div>
+			<h2>Sincronizar letra</h2>
+			<p>O jogo está pausado. Quando ouvir uma linha começar, toque nela na letra.</p>
+		</div>
+		<span class="esp"></span>
+		<button
+			class="bt fant"
+			type="button"
+			onclick={() => onsend({ type: 'closeSync', conclude: false })}>Cancelar</button
+		>
+		<button
+			class="bt pri"
+			type="button"
+			onclick={() => onsend({ type: 'closeSync', conclude: true })}>Concluir</button
+		>
 	</div>
 
 	<div class="corpo">
-		<div class="alvo">
-			<small>Linha escolhida · {sync.selected + 1}</small>
-			<p class="txt" data-testid="sinc-alvo">
-				{#if selected}
-					{#each selected.parts as p, i (i)}{#if p.kind === 'gap'}<span
-								class="gap"
-								role="img"
-								aria-label="lacuna começando com {p.initial}"
-								>{p.initial}<i style:width="{p.rest * 0.55}em"></i></span
-							>{:else}{p.text}{/if}{/each}
-				{/if}
-			</p>
+		<div class="esq">
+			<div class="video" role="group" aria-label="Vídeo">
+				<button
+					class="play"
+					type="button"
+					aria-label={sync.videoPlaying ? 'Pausar' : 'Tocar'}
+					onclick={() => onsend({ type: 'syncTogglePlay' })}
+					>{#if sync.videoPlaying}<svg viewBox="0 0 24 24" aria-hidden="true"
+							><path d="M7 5h3v14H7zM14 5h3v14h-3z" /></svg
+						>{:else}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z" /></svg
+						>{/if}</button
+				>
+				<span class="relogio">{clock(time)}</span>
+				<span class="esp"></span>
+				<button
+					class="mini"
+					type="button"
+					onclick={() => onsend({ type: 'syncSeek', to: time - 10 })}>−10 s</button
+				>
+				<button
+					class="mini"
+					type="button"
+					onclick={() => onsend({ type: 'syncSeek', to: time + 10 })}>+10 s</button
+				>
+				<button
+					class="mini"
+					type="button"
+					title="Volta um pouco antes da linha escolhida e toca"
+					onclick={() => onsend({ type: 'syncSeek', to: listenFrom(), play: true })}
+					>Ouvir a linha</button
+				>
+			</div>
+
 			<button class="marcar" type="button" onclick={() => onsend({ type: 'mark' })}>
-				Começou agora <kbd>Espaço</kbd>
+				<span class="mc">
+					<span>Começou agora</span>
+					<small data-testid="sinc-alvo"
+						>Linha {sync.selected + 1}{#if selected}
+							· {#each selected.parts as p, i (i)}{#if p.kind === 'gap'}<span
+										class="gap"
+										role="img"
+										aria-label="lacuna começando com {p.initial}"
+										>{p.initial}<i style:width="{p.rest * 0.55}em"></i></span
+									>{:else}{p.text}{/if}{/each}{/if}</small
+					>
+				</span>
+				<kbd>Espaço</kbd>
 			</button>
+		</div>
+
+		<div class="dir">
+			<div class="leitura">
+				<b data-testid="sinc-offset">{formatOffset(sync.offset)}</b>
+				<span>{explain}</span>
+			</div>
+			<div class="passos" role="group" aria-label="Mover o trecho da linha escolhida">
+				{#each STEPS as d (d)}
+					<button
+						type="button"
+						class:grande={Math.abs(d) === 5}
+						aria-label="Trecho {stepLabel(d).replace('−', 'menos ')} {d < 0
+							? 'mais cedo'
+							: 'mais tarde'}"
+						onpointerdown={(e) => holdStart(e, d)}
+						onpointerup={holdEnd}
+						onpointerleave={holdEnd}
+						onpointercancel={holdEnd}
+						onclick={(e) => {
+							// Teclado (Enter/Espaço no botão): um passo só.
+							if (e.detail === 0) onsend({ type: 'nudge', delta: d });
+						}}>{stepLabel(d)}</button
+					>
+				{/each}
+			</div>
+			<form class="digitar" onsubmit={submitTyped}>
+				<label for="sinc-digitar">ou digite o deslocamento</label>
+				<input
+					id="sinc-digitar"
+					inputmode="decimal"
+					autocomplete="off"
+					placeholder="+23,5"
+					class:ruim={typedBad}
+					aria-invalid={typedBad}
+					bind:value={typed}
+				/>
+				<span>s</span>
+			</form>
 			{#if sync.rateSuggestion !== null}
 				<p class="vel" data-testid="sinc-vel">
 					O vídeo parece tocar a {rateText(sync.rateSuggestion)}× da letra.
@@ -84,84 +275,73 @@
 				</p>
 			{/if}
 		</div>
+	</div>
 
-		<div class="ajuste">
-			<div class="leitura">
-				<b data-testid="sinc-offset">{formatOffset(sync.offset)}</b>
-				<span>{explain}</span>
-			</div>
-			<div class="fino" role="group" aria-label="Ajuste fino do trecho">
-				<button type="button" onclick={() => onsend({ type: 'nudge', delta: -1 })}>−1 s</button>
-				<button
-					type="button"
-					onclick={() => onsend({ type: 'nudge', delta: -0.1 })}
-					aria-label="Trecho 0,1 s mais cedo">−0,1</button
+	<div class="tempo">
+		<div class="tcab">
+			<strong>Arraste a letra</strong>
+			<span class="dica">até ela cair onde a voz entra. Move o trecho da linha escolhida.</span>
+			<span class="esp"></span>
+			<div class="zoom" role="group" aria-label="Zoom da linha do tempo">
+				<button type="button" class:on={zoom === 'all'} onclick={() => (zoom = 'all')}>Tudo</button>
+				<button type="button" class:on={zoom === 'near'} onclick={() => (zoom = 'near')}
+					>{NEAR_S} s</button
 				>
-				<button
-					type="button"
-					onclick={() => onsend({ type: 'nudge', delta: 0.1 })}
-					aria-label="Trecho 0,1 s mais tarde">+0,1</button
-				>
-				<button type="button" onclick={() => onsend({ type: 'nudge', delta: 1 })}>+1 s</button>
 			</div>
-			<div class="faixa" aria-hidden="true">
-				<div class="tr">
-					{#each lines as l (l.index)}
-						<i
-							class="ln"
-							class:sel={l.index === sync.selected}
-							class:cut={!l.present}
-							style:left={pct(l.start)}
-							style:width={width(l.start, l.end)}
-						></i>
-					{/each}
-					{#each sync.anchors as a (a.line)}
-						<i class="an" class:auto={a.source === 'auto'} style:left={pct(a.video)}></i>
-					{/each}
-					<i class="ph" style:left={pct(time)}></i>
-				</div>
-				<div class="leg">
-					<span>0:00</span><span>a letra sobre o vídeo</span><span>{clock(span)}</span>
-				</div>
+		</div>
+		<div class="pista" bind:clientWidth={trackW}>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="regua" onpointerdown={seekRuler} title="Ir para este ponto do vídeo">
+				{#each ticks as s (s)}
+					<span class="tick" style:left="{pct(s)}%">{clock(s)}</span>
+				{/each}
 			</div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="letras"
+				class:arrastando={drag?.moved}
+				onpointerdown={dragStart}
+				onpointermove={dragMove}
+				onpointerup={dragEnd}
+				onpointercancel={dragEnd}
+			>
+				{#each lines as l (l.index)}
+					{@const seg = segmentOfLine(l.index)}
+					<i
+						class="blk"
+						data-line={l.index}
+						class:trecho={seg === sync.segment}
+						class:sel={l.index === sync.selected}
+						class:cut={!l.present}
+						class:lit={l.present && time >= l.start && time < l.end}
+						style:left="{pct(l.start)}%"
+						style:width="max(3px, {pct(l.end) - pct(l.start)}%)"
+					></i>
+				{/each}
+				{#each sync.anchors as a (a.line)}
+					<i class="an" style:left="{pct(a.video)}%"></i>
+				{/each}
+			</div>
+			<i class="ph" style:left="{pct(time)}%"></i>
+		</div>
+		<div class="leg">
+			<span>{clock(win[0])}</span><span aria-live="polite">{dragText}</span><span
+				>{clock(win[1])}</span
+			>
 		</div>
 	</div>
 
-	<ul class="trechos" data-testid="sinc-trechos">
-		{#each sync.anchors as a, i (a.line)}
-			<li class:cur={i === sync.segment}>
-				<span
-					>Linha {a.line + 1} em diante{#if a.source === 'auto'}<em class="auto">auto</em
-						>{/if}</span
-				>
-				<span class="off">{formatOffset(a.offset)}</span>
-				<button
-					type="button"
-					class="x"
-					aria-label="Apagar a marca da linha {a.line + 1}"
-					onclick={() => onsend({ type: 'deleteAnchor', index: i })}>✕</button
-				>
-			</li>
-		{:else}
-			<li class="vazio">Nenhuma marca ainda.</li>
-		{/each}
-	</ul>
-
 	<div class="pe">
-		<button class="bt" type="button" onclick={() => onsend({ type: 'syncRestart' })}
-			>Do começo</button
+		<button
+			type="button"
+			class="link"
+			aria-expanded={moreOpen}
+			onclick={() => (moreOpen = !moreOpen)}
+			>Marcas{sync.anchors.length > 0 ? ` (${sync.anchors.length})` : ''}{versions.length > 1
+				? ' e outras versões da letra'
+				: ''}
+			{moreOpen ? '▴' : '▾'}</button
 		>
-		<button class="bt" type="button" onclick={() => onsend({ type: 'syncBack', seconds: 5 })}
-			>−5 s</button
-		>
-		<button class="bt" type="button" onclick={() => onsend({ type: 'syncTogglePlay' })}
-			>{sync.videoPlaying ? 'Pausar' : 'Tocar'}</button
-		>
-		{#if auto}
-			<button class="bt auto" type="button" onclick={onauto} aria-pressed={auto.running}
-				>{auto.running ? '✦ Parar' : '✦ Sincronizar sozinho'}</button
-			>
-		{/if}
 		<span class="esp"></span>
 		<button
 			class="bt fant"
@@ -169,28 +349,36 @@
 			disabled={!sync.canUndo}
 			onclick={() => onsend({ type: 'undo' })}>Desfazer</button
 		>
-		<button class="bt fant" type="button" onclick={() => onsend({ type: 'zero' })}>Zerar</button>
-		<button class="bt" type="button" onclick={() => onsend({ type: 'closeSync', conclude: false })}
-			>Cancelar</button
-		>
-		<button
-			class="bt pri"
-			type="button"
-			onclick={() => onsend({ type: 'closeSync', conclude: true })}>Concluir</button
-		>
 	</div>
 
-	{#if auto?.message}<p class="auto-msg" aria-live="polite">{auto.message}</p>{/if}
-
-	{#if versions.length > 1}
-		<div class="versoes">
+	<div class="mais" hidden={!moreOpen}>
+		<ul class="trechos" data-testid="sinc-trechos">
+			{#each sync.anchors as a, i (a.line)}
+				<li class:cur={i === sync.segment}>
+					<span>Linha {a.line + 1} em diante</span>
+					<span class="off">{formatOffset(a.offset)}</span>
+					<button
+						type="button"
+						class="x"
+						aria-label="Apagar a marca da linha {a.line + 1}"
+						onclick={() => onsend({ type: 'deleteAnchor', index: i })}>✕</button
+					>
+				</li>
+			{:else}
+				<li class="vazio">Nenhuma marca ainda.</li>
+			{/each}
+		</ul>
+		<div class="acoes">
 			<button
+				class="bt"
 				type="button"
-				class="link"
-				aria-expanded={versionsOpen}
-				onclick={() => (versionsOpen = !versionsOpen)}>Outras versões da letra ▾</button
+				disabled={sync.anchors.length === 0}
+				onclick={() => onsend({ type: 'zero' })}>Apagar todas as marcas</button
 			>
-			{#if versionsOpen}
+		</div>
+		{#if versions.length > 1}
+			<div class="versoes">
+				<p>Outras versões da letra</p>
 				<ul>
 					{#each versions as v (v.id)}
 						<li>
@@ -204,14 +392,15 @@
 						</li>
 					{/each}
 				</ul>
-			{/if}
-		</div>
-	{/if}
+			</div>
+		{/if}
+	</div>
 
 	<p class="teclas">
-		Toque na linha = marca agora · <kbd>↑</kbd><kbd>↓</kbd> escolhe · <kbd>Espaço</kbd> marca a
-		escolhida · <kbd>←</kbd><kbd>→</kbd> 0,1 s · <kbd>Shift</kbd>+seta 1 s · <kbd>P</kbd> pausa ·
-		<kbd>Enter</kbd> conclui · <kbd>Esc</kbd> cancela
+		Toque na linha = começou agora · <kbd>↑</kbd><kbd>↓</kbd> escolhe · <kbd>Espaço</kbd> marca a
+		escolhida · <kbd>←</kbd><kbd>→</kbd> 0,1 s · <kbd>Shift</kbd> 1 s · <kbd>Alt</kbd> 5 s ·
+		<kbd>P</kbd> tocar/pausar · <kbd>O</kbd> ouvir a linha · <kbd>Enter</kbd> conclui ·
+		<kbd>Esc</kbd> cancela
 	</p>
 </section>
 
@@ -223,7 +412,13 @@
 		padding: 16px 18px;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 14px;
+	}
+
+	.cab {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 	}
 
 	.cab h2 {
@@ -237,56 +432,96 @@
 		color: var(--ink-2);
 	}
 
+	.esp {
+		flex: 1;
+	}
+
 	.corpo {
 		display: grid;
-		grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 		gap: 14px;
 	}
 
-	.alvo {
+	.esq,
+	.dir {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		min-width: 0;
+	}
+
+	/* vídeo */
+	.video {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 10px;
+		border-radius: var(--r-l);
 		background: var(--tile);
 		box-shadow: inset 0 0 0 1px var(--line);
-		border-radius: var(--r-l);
-		padding: 12px 14px;
 	}
 
-	.alvo small {
-		font-size: 12.5px;
+	.play {
+		width: 38px;
+		height: 38px;
+		flex: none;
+		border: 0;
+		border-radius: 50%;
+		background: var(--primary);
+		color: var(--on-primary);
+		display: grid;
+		place-items: center;
+	}
+
+	.play:hover {
+		background: var(--primary-hover);
+	}
+
+	.play svg {
+		width: 18px;
+		height: 18px;
+		fill: currentColor;
+	}
+
+	.relogio {
+		font: 600 19px/1 var(--f-head);
+		font-variant-numeric: tabular-nums;
+		margin-left: 4px;
+	}
+
+	.mini {
+		border: 0;
+		border-radius: var(--r-s);
+		background: none;
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--ink-2);
+		font: inherit;
+		font-size: 13.5px;
 		font-weight: 500;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: var(--gold-ink);
+		height: 32px;
+		padding: 0 10px;
+		white-space: nowrap;
 	}
 
-	.alvo .txt {
-		margin: 4px 0 12px;
-		font: 600 18.5px/1.3 var(--f-head);
+	.mini:hover {
+		background: var(--hover);
+		color: var(--ink);
 	}
 
-	/* lacuna: só a inicial e o tamanho */
-	.gap {
-		display: inline-block;
-		border-bottom: 2px dashed currentColor;
-		line-height: 1.05;
-		opacity: 0.75;
-	}
-
-	.gap i {
-		display: inline-block;
-	}
-
+	/* começou agora */
 	.marcar {
 		width: 100%;
-		height: 48px;
+		min-height: 64px;
 		border: 0;
 		border-radius: var(--r-m);
 		background: var(--primary);
 		color: var(--on-primary);
-		font: 500 16.5px/1 var(--f-body);
+		font: 600 16.5px/1.2 var(--f-body);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 10px;
+		gap: 14px;
+		padding: 10px 14px;
 		transition:
 			transform 0.08s,
 			background-color 0.18s;
@@ -297,7 +532,25 @@
 	}
 
 	.marcar:active {
-		transform: scale(0.98);
+		transform: scale(0.99);
+	}
+
+	.mc {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 3px;
+		min-width: 0;
+	}
+
+	.mc small {
+		font-weight: 400;
+		font-size: 13px;
+		opacity: 0.75;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.marcar kbd {
@@ -306,8 +559,106 @@
 		box-shadow: none;
 	}
 
+	/* lacuna: só a inicial e o tamanho */
+	.gap {
+		display: inline-block;
+		border-bottom: 1.5px dashed currentColor;
+		line-height: 1.05;
+	}
+
+	.gap i {
+		display: inline-block;
+	}
+
+	/* deslocamento */
+	.leitura {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
+	.leitura b {
+		font: 600 30px/1.1 var(--f-head);
+		font-variant-numeric: tabular-nums;
+		letter-spacing: -0.02em;
+		white-space: nowrap;
+	}
+
+	.leitura span {
+		font-size: 14px;
+		color: var(--ink-2);
+	}
+
+	.passos {
+		display: grid;
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+		gap: 6px;
+	}
+
+	.passos button,
+	.bt {
+		border: 0;
+		border-radius: var(--r-m);
+		background: var(--soft-bg);
+		box-shadow: var(--sh-card);
+		color: var(--ink);
+		font: inherit;
+		font-weight: 500;
+		font-size: 14.5px;
+		height: 38px;
+		padding: 0 12px;
+		transition: background-color 0.15s;
+		white-space: nowrap;
+	}
+
+	.passos button {
+		padding: 0;
+		font-variant-numeric: tabular-nums;
+		touch-action: manipulation;
+		user-select: none;
+	}
+
+	.passos button.grande {
+		color: var(--gold-ink);
+	}
+
+	.passos button:hover,
+	.bt:hover:not(:disabled) {
+		background: var(--soft-hover);
+	}
+
+	.bt:disabled {
+		opacity: 0.4;
+	}
+
+	.digitar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13.5px;
+		color: var(--ink-2);
+	}
+
+	.digitar input {
+		width: 96px;
+		height: 32px;
+		border: 0;
+		border-radius: var(--r-s);
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--ink);
+		font: 500 14px/1 var(--f-body);
+		font-variant-numeric: tabular-nums;
+		padding: 0 10px;
+	}
+
+	.digitar input.ruim {
+		box-shadow: inset 0 0 0 2px var(--terra-ink);
+	}
+
 	.vel {
-		margin: 10px 0 0;
+		margin: 0;
 		font-size: 14px;
 		color: var(--ink-2);
 	}
@@ -328,115 +679,145 @@
 		text-decoration: none;
 	}
 
-	.ajuste {
+	/* linha do tempo */
+	.tcab {
 		display: flex;
-		flex-direction: column;
+		align-items: center;
 		gap: 10px;
-		min-width: 0;
+		margin-bottom: 8px;
 	}
 
-	.leitura {
-		display: flex;
-		align-items: baseline;
-		gap: 10px;
-		flex-wrap: wrap;
+	.tcab strong {
+		font-size: 14px;
+		font-weight: 600;
+		white-space: nowrap;
 	}
 
-	.leitura b {
-		font: 600 32px/1.1 var(--f-head);
-		font-variant-numeric: tabular-nums;
-		letter-spacing: -0.02em;
-	}
-
-	.leitura span {
-		font-size: 14.5px;
+	.tcab .dica {
+		font-size: 13.5px;
 		color: var(--ink-2);
 	}
 
-	.fino {
-		display: flex;
-		gap: 6px;
-	}
-
-	.fino button,
-	.bt {
-		border: 0;
-		border-radius: var(--r-m);
-		background: var(--soft-bg);
-		box-shadow: var(--sh-card);
-		color: var(--ink);
-		font: inherit;
-		font-weight: 500;
-		font-size: 14.5px;
-		height: 36px;
-		padding: 0 12px;
-		transition: background-color 0.15s;
-	}
-
-	.fino button {
-		flex: 1;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.fino button:hover,
-	.bt:hover:not(:disabled) {
-		background: var(--soft-hover);
-	}
-
-	.bt:disabled {
-		opacity: 0.4;
-	}
-
-	.tr {
-		position: relative;
-		height: 30px;
+	.zoom {
+		display: inline-flex;
+		flex: none;
 		border-radius: var(--r-s);
-		background: var(--sunk);
 		box-shadow: inset 0 0 0 1px var(--line);
 		overflow: hidden;
 	}
 
-	.tr i {
+	.zoom button {
+		border: 0;
+		background: none;
+		color: var(--ink-2);
+		font: inherit;
+		font-size: 13px;
+		padding: 5px 12px;
+	}
+
+	.zoom button.on {
+		background: var(--soft-bg);
+		color: var(--ink);
+	}
+
+	.pista {
+		position: relative;
+		height: 84px;
+		border-radius: var(--r-m);
+		background: var(--sunk);
+		box-shadow: inset 0 0 0 1px var(--line);
+		overflow: hidden;
+		user-select: none;
+	}
+
+	.regua {
+		position: absolute;
+		inset: 0 0 auto;
+		height: 24px;
+		border-bottom: 1px dashed var(--line);
+		cursor: pointer;
+	}
+
+	.tick {
+		position: absolute;
+		top: 5px;
+		transform: translateX(-50%);
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-3);
+		pointer-events: none;
+	}
+
+	.letras {
+		position: absolute;
+		inset: 24px 0 0;
+		cursor: grab;
+		touch-action: none;
+	}
+
+	.letras.arrastando {
+		cursor: grabbing;
+	}
+
+	.letras i {
 		position: absolute;
 	}
 
-	.ln {
-		top: 7px;
-		height: 10px;
-		background: var(--ok-soft);
-		border-radius: 2px;
-		transition:
-			left 0.25s,
-			width 0.25s;
+	.blk {
+		top: 12px;
+		height: 30px;
+		border-radius: 6px;
+		background: var(--soft-bg);
+		box-shadow: inset 0 0 0 1px var(--line);
 	}
 
-	.ln.sel {
+	.blk.trecho {
+		background: var(--gold-soft);
+		box-shadow: inset 0 0 0 1px var(--gold-ink);
+	}
+
+	.blk.sel {
+		box-shadow: inset 0 0 0 2px var(--gold-ink);
+	}
+
+	.blk.lit {
 		background: var(--gold-ink);
 	}
 
-	.ln.cut {
+	.blk.cut {
 		background: none;
 		box-shadow: inset 0 0 0 1px var(--ink-3);
-		opacity: 0.6;
+		opacity: 0.5;
 	}
 
 	.an {
-		top: 19px;
+		top: 2px;
+		bottom: 0;
 		width: 2px;
-		height: 8px;
 		margin-left: -1px;
-		background: var(--ok-ink);
+		background: var(--gold-ink);
+		pointer-events: none;
 	}
 
-	.an.auto {
+	.an::before {
+		content: '';
+		position: absolute;
+		top: -3px;
+		left: -4px;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
 		background: var(--gold-ink);
 	}
 
 	.ph {
+		position: absolute;
 		top: 0;
 		bottom: 0;
 		width: 2px;
+		margin-left: -1px;
 		background: var(--ink);
+		pointer-events: none;
 	}
 
 	.leg {
@@ -446,6 +827,45 @@
 		font-size: 12.5px;
 		font-variant-numeric: tabular-nums;
 		color: var(--ink-3);
+	}
+
+	/* rodapé */
+	.pe {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 14px;
+	}
+
+	.bt.fant {
+		background: none;
+		box-shadow: none;
+		color: var(--ink-2);
+	}
+
+	.bt.fant:hover:not(:disabled) {
+		background: var(--hover);
+		color: var(--ink);
+	}
+
+	.bt.pri {
+		background: var(--primary);
+		box-shadow: none;
+		color: var(--on-primary);
+	}
+
+	.bt.pri:hover {
+		background: var(--primary-hover);
+	}
+
+	.mais {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.mais[hidden] {
+		display: none;
 	}
 
 	.trechos {
@@ -484,13 +904,6 @@
 		font-weight: 600;
 	}
 
-	.trechos em.auto {
-		margin-left: 6px;
-		font-style: normal;
-		font-size: 12px;
-		color: var(--gold-ink);
-	}
-
 	.x {
 		border: 0;
 		background: none;
@@ -506,45 +919,9 @@
 		color: var(--ink);
 	}
 
-	.pe {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		align-items: center;
-	}
-
-	.esp {
-		flex: 1;
-	}
-
-	.bt.fant {
-		background: none;
-		box-shadow: none;
-		color: var(--ink-2);
-	}
-
-	.bt.fant:hover:not(:disabled) {
-		background: var(--hover);
-		color: var(--ink);
-	}
-
-	.bt.auto[aria-pressed='true'] {
-		box-shadow: inset 0 0 0 2px var(--gold-ink);
-	}
-
-	.bt.pri {
-		background: var(--primary);
-		box-shadow: none;
-		color: var(--on-primary);
-	}
-
-	.bt.pri:hover {
-		background: var(--primary-hover);
-	}
-
-	.auto-msg {
+	.versoes p {
 		margin: 0;
-		font-size: 14px;
+		font-size: 13.5px;
 		color: var(--ink-2);
 	}
 
@@ -576,7 +953,8 @@
 
 		.cab p,
 		.teclas,
-		.leg {
+		.tcab .dica,
+		.digitar label {
 			display: none;
 		}
 
@@ -587,12 +965,6 @@
 
 		.leitura b {
 			font-size: 26px;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.ln {
-			transition: none;
 		}
 	}
 </style>

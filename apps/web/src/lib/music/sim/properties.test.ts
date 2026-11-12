@@ -47,19 +47,22 @@ const action: fc.Arbitrary<Action> = fc.oneof(
 				line.map((l): MusicEvent => ({ type: 'selectLine', line: l })),
 				fc.constantFrom(-1, 1).map((delta): MusicEvent => ({ type: 'moveSelection', delta })),
 				fc.constant<MusicEvent>({ type: 'mark' }),
-				fc.constantFrom(-1, -0.1, 0.1, 1).map((delta): MusicEvent => ({ type: 'nudge', delta })),
+				fc
+					.record({ delta: fc.constantFrom(-5, -1, -0.1, 0.1, 1, 5), merge: fc.boolean() })
+					.map((n): MusicEvent => ({ type: 'nudge', ...n })),
+				fc
+					.record({ offset: fc.double({ min: -40, max: 40, noNaN: true }), merge: fc.boolean() })
+					.map((o): MusicEvent => ({ type: 'setOffset', ...o })),
 				fc.constant<MusicEvent>({ type: 'zero' }),
 				fc.constant<MusicEvent>({ type: 'undo' }),
 				fc
 					.integer({ min: 0, max: 4 })
 					.map((index): MusicEvent => ({ type: 'deleteAnchor', index })),
 				fc.constant<MusicEvent>({ type: 'acceptRate' }),
-				fc
-					.record({ line, video: fc.double({ min: -5, max: 45, noNaN: true }) })
-					.map((a): MusicEvent => ({ type: 'autoAnchor', ...a })),
 				fc.constant<MusicEvent>({ type: 'syncTogglePlay' }),
-				fc.constant<MusicEvent>({ type: 'syncBack', seconds: 5 }),
-				fc.constant<MusicEvent>({ type: 'syncRestart' }),
+				fc
+					.record({ to: fc.double({ min: -5, max: 45, noNaN: true }), play: fc.boolean() })
+					.map((s): MusicEvent => ({ type: 'syncSeek', ...s })),
 				fc.constant<MusicEvent>({ type: 'hidden' })
 			)
 			.map((event) => ({ kind: 'event' as const, event }))

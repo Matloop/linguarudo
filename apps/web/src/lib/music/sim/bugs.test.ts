@@ -123,13 +123,61 @@ describe('bug: a linha escolhida muda sozinha depois de marcar', () => {
 		sim.start();
 		sim.run(12_000);
 		sim.send({ type: 'openSync' });
-		sim.send({ type: 'syncRestart' });
+		sim.send({ type: 'syncSeek', to: 0, play: true });
 		const shown: number[] = [];
 		for (let i = 0; i < 40; i++) {
 			sim.run(16);
 			shown.push(sim.view.shownLine);
 		}
 		expect(shown.every((l) => l === -1)).toBe(true);
+		noViolations(sim);
+	});
+});
+
+describe('mover a letra por mais de 1 s', () => {
+	test('segurar o botão ou arrastar vira um passo só no desfazer', () => {
+		const sim = new Simulator({ player: QUIRKY });
+		sim.start();
+		sim.run(2000);
+		sim.send({ type: 'openSync' });
+		sim.send({ type: 'nudge', delta: 5 });
+		for (let i = 0; i < 6; i++) sim.send({ type: 'nudge', delta: 5, merge: true });
+		expect(sim.view.sync?.offset).toBeCloseTo(35, 5);
+		sim.send({ type: 'setOffset', offset: 12.3 });
+		sim.send({ type: 'setOffset', offset: 18.7, merge: true });
+		expect(sim.view.sync?.offset).toBeCloseTo(18.7, 5);
+		sim.send({ type: 'undo' });
+		expect(sim.view.sync?.offset).toBeCloseTo(35, 5);
+		sim.send({ type: 'undo' });
+		expect(sim.view.sync?.offset).toBe(0);
+		expect(sim.view.sync?.canUndo).toBe(false);
+		noViolations(sim);
+	});
+
+	test('valor digitado põe o trecho da linha escolhida nele', () => {
+		const sim = new Simulator({ player: QUIRKY });
+		sim.start();
+		sim.run(2000);
+		sim.send({ type: 'openSync' });
+		sim.send({ type: 'setOffset', offset: 23.5 });
+		expect(sim.view.sync?.offset).toBeCloseTo(23.5, 5);
+		sim.send({ type: 'setOffset', offset: Number.NaN });
+		expect(sim.view.sync?.offset).toBeCloseTo(23.5, 5);
+		// A linha não pode começar antes do vídeo: o trecho para no 0:00.
+		sim.send({ type: 'setOffset', offset: -40 });
+		expect(sim.ctl.lineStart(sim.view.sync?.selected ?? 0)).toBe(0);
+		noViolations(sim);
+	});
+
+	test('ouvir a linha: vai ao ponto pedido e toca; tempo negativo vira 0', () => {
+		const sim = new Simulator({ player: QUIRKY });
+		sim.start();
+		sim.run(6000);
+		sim.send({ type: 'openSync' });
+		sim.send({ type: 'syncTogglePlay' });
+		sim.run(500);
+		const effects = sim.send({ type: 'syncSeek', to: -3, play: true });
+		expect(effects).toEqual([{ type: 'seek', to: 0 }, { type: 'play' }]);
 		noViolations(sim);
 	});
 });

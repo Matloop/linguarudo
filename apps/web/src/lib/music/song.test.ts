@@ -88,7 +88,7 @@ describe('songFromWork', () => {
 		const sync: StoredSync = {
 			v: 1,
 			rate: 1,
-			anchors: [{ lyric: 1, video: 13.4, hash: '0a1b2c3d', source: 'manual' }],
+			anchors: [{ lyric: 1, video: 13.4, hash: '0a1b2c3d' }],
 			hintDismissed: true,
 			lrclibId: 42
 		};

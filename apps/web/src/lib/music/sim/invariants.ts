@@ -60,15 +60,6 @@ export function checkStep(step: Step, session: Session): string[] {
 			fail('ancoras-fora-de-ordem', JSON.stringify(anchors));
 	}
 
-	// I6: âncora automática nunca derruba manual.
-	if (event?.type === 'autoAnchor') {
-		for (const a of before.timeline.anchors.filter((x) => x.source === 'manual')) {
-			if (!anchors.some((b) => b.line === a.line && b.video === a.video && b.source === 'manual'))
-				fail('auto-derrubou-manual', `linha ${a.line}`);
-		}
-		if (videoEffects.length > 0) fail('auto-mexeu-no-video');
-	}
-
 	// I7: linha cortada não tem lacuna para responder.
 	if (v.answerable && !v.lines[v.answerable.line]?.present) fail('lacuna-em-linha-cortada');
 
@@ -81,7 +72,7 @@ export function checkStep(step: Step, session: Session): string[] {
 
 	// I9: na sincronia, só os controles do painel (e sair da aba) mexem no vídeo.
 	if (before.view.mode === 'sync' && videoEffects.length > 0) {
-		const allowed = ['syncTogglePlay', 'syncBack', 'syncRestart', 'hidden'];
+		const allowed = ['syncTogglePlay', 'syncSeek', 'hidden'];
 		if (!event || !allowed.includes(event.type)) fail('video-mexeu-sozinho-na-sincronia');
 	}
 

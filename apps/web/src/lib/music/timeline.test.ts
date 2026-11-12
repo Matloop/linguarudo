@@ -31,8 +31,7 @@ const LINES = Array.from({ length: 8 }, (_, i) => ({
 }));
 const WORK = '0b7a3c1e-8f7d-4a51-9c3e-2d1f0a9b8c7d';
 
-const tap = (tl: Timeline, line: number, video: number, source: 'manual' | 'auto' = 'manual') =>
-	withAnchor(tl, LINES, { line, video, source });
+const tap = (tl: Timeline, line: number, video: number) => withAnchor(tl, LINES, { line, video });
 
 describe('sem âncoras', () => {
 	test('o vídeo segue a letra', () => {
@@ -100,7 +99,7 @@ describe('marcar', () => {
 	test('marcar a mesma linha de novo troca a âncora', () => {
 		let tl = tap(EMPTY_TIMELINE, 2, 17);
 		tl = tap(tl, 2, 18.25);
-		expect(tl.anchors).toEqual([{ line: 2, video: 18.25, source: 'manual' }]);
+		expect(tl.anchors).toEqual([{ line: 2, video: 18.25 }]);
 	});
 
 	test('âncoras fora de ordem com a nova caem', () => {
@@ -110,20 +109,10 @@ describe('marcar', () => {
 		expect(tl.anchors.map((a) => a.line)).toEqual([1, 3]);
 	});
 
-	test('âncora automática não derruba manual; fica de fora', () => {
+	test('marcar de novo a mesma linha troca a marca', () => {
 		let tl = tap(EMPTY_TIMELINE, 3, 20);
-		const same = tap(tl, 3, 22, 'auto');
-		expect(same).toBe(tl);
-		const clash = tap(tl, 5, 15, 'auto');
-		expect(clash).toBe(tl);
-		tl = tap(tl, 5, 26, 'auto');
-		expect(tl.anchors.map((a) => a.source)).toEqual(['manual', 'auto']);
-	});
-
-	test('manual derruba automática da mesma linha', () => {
-		let tl = tap(EMPTY_TIMELINE, 3, 20, 'auto');
 		tl = tap(tl, 3, 21);
-		expect(tl.anchors).toEqual([{ line: 3, video: 21, source: 'manual' }]);
+		expect(tl.anchors).toEqual([{ line: 3, video: 21 }]);
 	});
 
 	test('linha inexistente, tempo inválido ou longe demais é ignorado', () => {
@@ -135,14 +124,14 @@ describe('marcar', () => {
 	test('apagar uma âncora', () => {
 		let tl = tap(EMPTY_TIMELINE, 0, 5);
 		tl = tap(tl, 4, 20);
-		expect(withoutAnchor(tl, 0).anchors).toEqual([{ line: 4, video: 20, source: 'manual' }]);
+		expect(withoutAnchor(tl, 0).anchors).toEqual([{ line: 4, video: 20 }]);
 	});
 });
 
 describe('ajuste fino', () => {
 	test('sem âncoras cria uma na linha', () => {
 		const tl = nudgeSegment(EMPTY_TIMELINE, LINES, 2, 0.1);
-		expect(tl.anchors).toEqual([{ line: 2, video: 7.1, source: 'manual' }]);
+		expect(tl.anchors).toEqual([{ line: 2, video: 7.1 }]);
 	});
 
 	test('move só o trecho da linha e não passa da vizinha', () => {
@@ -152,11 +141,6 @@ describe('ajuste fino', () => {
 		expect(moved.anchors.map((a) => a.video)).toEqual([6, 20]);
 		const blocked = nudgeSegment(tl, LINES, 5, -30);
 		expect(blocked.anchors[1].video).toBe(5.05);
-	});
-
-	test('ajustar uma âncora automática a torna manual', () => {
-		const tl = nudgeSegment(tap(EMPTY_TIMELINE, 1, 9, 'auto'), LINES, 1, 0.1);
-		expect(tl.anchors[0]).toEqual({ line: 1, video: 9.1, source: 'manual' });
 	});
 });
 
@@ -209,7 +193,7 @@ describe('guardar e reencontrar', () => {
 
 	test('ida e volta pela forma guardada', () => {
 		let tl = tap(EMPTY_TIMELINE, 0, 5);
-		tl = tap(tl, 4, 22.5, 'auto');
+		tl = tap(tl, 4, 22.5);
 		const stored = serializeSync(tl, LINES, { hintDismissed: true, lrclibId: 42 });
 		expect(parseStoredSync(JSON.parse(JSON.stringify(stored)))).toEqual(stored);
 		expect(resolveSync(stored, LINES)).toEqual({ timeline: tl, dropped: 0 });
@@ -223,7 +207,7 @@ describe('guardar e reencontrar', () => {
 		const shifted = LINES.map((l) => ({ ...l, start: l.start + 2, end: l.end + 2 }));
 		const { timeline, dropped } = resolveSync(stored, shifted);
 		expect(dropped).toBe(0);
-		expect(timeline.anchors).toEqual([{ line: 2, video: 19, source: 'manual' }]);
+		expect(timeline.anchors).toEqual([{ line: 2, video: 19 }]);
 	});
 
 	test('linha que sumiu da letra: a âncora cai e conta', () => {
@@ -243,7 +227,7 @@ describe('guardar e reencontrar', () => {
 	test('validação do corpo do POST', () => {
 		const sync: StoredSync = {
 			...EMPTY_SYNC,
-			anchors: [{ lyric: 7, video: 17, hash: 'abcdef01', source: 'manual' }]
+			anchors: [{ lyric: 7, video: 17, hash: 'abcdef01' }]
 		};
 		expect(parseSyncUpdate({ workId: WORK, sync })).toEqual({ workId: WORK, sync });
 		expect(parseSyncUpdate({ workId: 'x', sync })).toBeNull();
@@ -251,13 +235,8 @@ describe('guardar e reencontrar', () => {
 		expect(bad({ rate: 1.5 })).toBeNull();
 		expect(bad({ hintDismissed: 'sim' })).toBeNull();
 		expect(bad({ lrclibId: -3 })).toBeNull();
-		expect(
-			bad({ anchors: [{ lyric: 7, video: 400, hash: 'abcdef01', source: 'manual' }] })
-		).toBeNull();
-		expect(bad({ anchors: [{ lyric: 7, video: 17, hash: 'xyz', source: 'manual' }] })).toBeNull();
-		expect(
-			bad({ anchors: [{ lyric: 7, video: 17, hash: 'abcdef01', source: 'magia' }] })
-		).toBeNull();
+		expect(bad({ anchors: [{ lyric: 7, video: 400, hash: 'abcdef01' }] })).toBeNull();
+		expect(bad({ anchors: [{ lyric: 7, video: 17, hash: 'xyz' }] })).toBeNull();
 		expect(bad({ anchors: Array(65).fill(sync.anchors[0]) })).toBeNull();
 	});
 });

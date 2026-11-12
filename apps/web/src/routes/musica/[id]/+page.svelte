@@ -10,14 +10,6 @@
 	import Resumo from '#lib/music/Resumo.svelte';
 	import Sincronia, { type LyricVersion } from '#lib/music/Sincronia.svelte';
 	import WordCard from '#lib/music/WordCard.svelte';
-	import AutoSyncBench from '#lib/music/auto-sync/AutoSyncBench.svelte';
-	import {
-		autoSyncMessage,
-		createAutoSync,
-		type AutoSync,
-		type AutoSyncModel
-	} from '#lib/music/auto-sync/auto-sync.ts';
-	import { autoSyncSupported } from '#lib/music/auto-sync/support.ts';
 	import {
 		MusicController,
 		type Effect,
@@ -33,7 +25,7 @@
 		type Session,
 		type SessionGap
 	} from '#lib/music/session.ts';
-	import { durationHint, formatOffset, lyricTimeAt, type StoredSync } from '#lib/music/timeline.ts';
+	import { durationHint, formatOffset, type StoredSync } from '#lib/music/timeline.ts';
 	import type { PlayerAdapter } from '#lib/music/youtube.ts';
 	import { createYoutubePlayer } from '#lib/music/youtube-player.ts';
 	import type { PageProps } from './$types';
@@ -212,7 +204,6 @@
 	/** Troca a versão da letra: volta à tela de início com a letra nova e guarda a escolha. */
 	async function chooseVersion(id: number) {
 		if (!ctl || id === lrclibId) return;
-		stopAuto();
 		if (ctl.mode === 'sync') send({ type: 'closeSync', conclude: false });
 		if (ctl.mode === 'game') send({ type: 'backToStart' });
 		resetRound();
@@ -276,52 +267,13 @@
 		send({ type: 'openSync' });
 	}
 
-	// ---------- sincronizar sozinho (Whisper) ----------
-	/** Modelo padrão do reconhecedor; a bancada (só em dev) compara tiny e base. */
-	const AUTO_MODEL: AutoSyncModel = 'tiny';
-	const autoSupported = typeof navigator !== 'undefined' && autoSyncSupported();
-	let autoSync: AutoSync | null = null;
-	let autoRunning = $state(false);
-	let autoMessage = $state('');
-
-	function toggleAuto() {
-		if (autoRunning) {
-			stopAuto();
-			return;
-		}
-		const c = ctl;
-		if (!c) return;
-		autoRunning = true;
-		autoSync = createAutoSync({
-			lines: lyrics.map((l, i) => ({ index: i, start: l.start, text: l.text })),
-			lang,
-			model: AUTO_MODEL,
-			getVideoTime: () => c.time,
-			isPlaying: () => c.videoPlaying,
-			expectedLyricTime: (v) =>
-				c.timeline.anchors.length > 0 ? lyricTimeAt(c.timeline, lyrics, v) : undefined,
-			onAnchor: (a) => send({ type: 'autoAnchor', line: a.line, video: a.video }),
-			onStatus: (s) => {
-				autoMessage = autoSyncMessage(s);
-				if (s.kind === 'erro' || s.kind === 'parado' || s.kind === 'sem-audio') {
-					autoRunning = false;
-					autoSync = null;
-				}
-			}
-		});
-		// Direto do clique: o navegador só abre o seletor de aba com gesto da pessoa.
-		void autoSync.start();
+	// ---------- sincronia ----------
+	/** "Ouvir a linha": um pouco antes de a linha escolhida começar no vídeo. */
+	const LISTEN_LEAD_S = 3;
+	function listenFrom(): number {
+		const sel = view?.sync?.selected ?? 0;
+		return Math.max(0, (lines[sel]?.start ?? 0) - LISTEN_LEAD_S);
 	}
-
-	function stopAuto() {
-		autoSync?.stop();
-		autoSync = null;
-		autoRunning = false;
-	}
-
-	$effect(() => {
-		if (!syncing) stopAuto();
-	});
 
 	// ---------- relógio ----------
 	let clockSeconds = $state(0);
@@ -355,7 +307,6 @@
 		return () => {
 			cancelAnimationFrame(raf);
 			document.removeEventListener('visibilitychange', onHidden);
-			stopAuto();
 			player?.destroy();
 			player = null;
 		};
@@ -483,11 +434,15 @@
 
 	// ---------- teclado ----------
 	function onSyncKey(e: KeyboardEvent) {
-		const step = e.shiftKey ? 1 : 0.1;
+		const step = e.altKey ? 5 : e.shiftKey ? 1 : 0.1;
+		if (e.altKey && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+		const listen: MusicEvent = { type: 'syncSeek', to: listenFrom(), play: true };
 		const keys: Record<string, MusicEvent> = {
 			' ': { type: 'mark' },
 			p: { type: 'syncTogglePlay' },
 			P: { type: 'syncTogglePlay' },
+			o: listen,
+			O: listen,
 			ArrowLeft: { type: 'nudge', delta: -step },
 			ArrowRight: { type: 'nudge', delta: step },
 			ArrowUp: { type: 'moveSelection', delta: -1 },
@@ -502,7 +457,7 @@
 	}
 
 	function onKeydown(e: KeyboardEvent) {
-		if (e.metaKey || e.ctrlKey || e.altKey || !view) return;
+		if (e.metaKey || e.ctrlKey || (e.altKey && !syncing) || !view) return;
 		const target = e.target as HTMLElement | null;
 		if (target?.matches('input, textarea')) return;
 		if (syncing) {
@@ -759,9 +714,7 @@
 								{#if !line.present}
 									<p class="corte">não está no vídeo</p>
 								{:else if anchor}
-									<p class="ancora" class:auto={anchor.source === 'auto'}>
-										{anchor.source === 'auto' ? 'auto · ' : ''}{formatOffset(anchor.offset)}
-									</p>
+									<p class="ancora">{formatOffset(anchor.offset)}</p>
 								{/if}
 								{#if showPt && !syncing && i === shownLine && session.lines[i]}
 									{@const known = session.lines[i].tokens.filter(
@@ -815,23 +768,12 @@
 					{lines}
 					{time}
 					{duration}
-					auto={autoSupported ? { running: autoRunning, message: autoMessage } : null}
 					versions={versionList}
 					version={lrclibId}
+					{listenFrom}
 					onsend={send}
-					onauto={toggleAuto}
 					onversion={chooseVersion}
 				/>
-				{#if import.meta.env.DEV && ctl}
-					{@const c = ctl}
-					<AutoSyncBench
-						lines={lyrics.map((l, i) => ({ index: i, start: l.start, text: l.text }))}
-						{lang}
-						getVideoTime={() => c.time}
-						isPlaying={() => c.videoPlaying}
-						manualAnchors={view.sync.anchors.filter((a) => a.source === 'manual')}
-					/>
-				{/if}
 			</div>
 		{:else}
 			<div class="ops" role="group" aria-label="Escolha a palavra que falta">
@@ -1019,6 +961,7 @@
 		message={summaryMessage}
 		onsaveall={saveAllWrong}
 		onagain={backToStart}
+		next={data.album?.next}
 	/>
 {/if}
 
@@ -1519,10 +1462,6 @@
 		font-style: normal;
 		font-variant-numeric: tabular-nums;
 		color: var(--ok-ink);
-	}
-
-	.ancora.auto {
-		color: var(--gold-ink);
 	}
 
 	/* ===== respostas ===== */

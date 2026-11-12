@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { albumFromWork } from '#lib/music/album.ts';
 import { songFromWork } from '#lib/music/song.ts';
 import { wordKey } from '#lib/music/tokenize.ts';
 import type { PageServerLoad } from './$types';
@@ -6,7 +7,7 @@ import type { PageServerLoad } from './$types';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BANK_LIMIT = 5000;
 
-export const load: PageServerLoad = async ({ locals, params }) => {
+export const load: PageServerLoad = async ({ locals, params, url }) => {
 	const user = await locals.getUser();
 	if (!user) error(401, 'Entre para jogar.');
 	if (!UUID.test(params.id)) error(404, 'Música não encontrada.');
@@ -52,5 +53,43 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		.map((i) => ({ key: wordKey(i.lemma), sense: i.sense, ipa: i.ipa, pos: i.part_of_speech }))
 		.filter((w) => w.key !== '' && !/\s/.test(w.key));
 
-	return { song, bank, bankTotal: total.count ?? bankItems.data.length };
+	return {
+		song,
+		bank,
+		bankTotal: total.count ?? bankItems.data.length,
+		album: await albumNav(locals, user.id, url.searchParams.get('album'), song.id)
+	};
 };
+
+/** Veio de um álbum: em que faixa está e qual é a próxima (para o resumo). */
+async function albumNav(
+	locals: App.Locals,
+	userId: string,
+	albumId: string | null,
+	songId: string
+) {
+	if (!albumId || !UUID.test(albumId)) return null;
+	const { data: work } = await locals.supabase
+		.from('works')
+		.select('id, title, subtitle, refs, language, played_at')
+		.eq('id', albumId)
+		.eq('user_id', userId)
+		.eq('kind', 'album')
+		.is('deleted_at', null)
+		.maybeSingle();
+	const album = work ? albumFromWork(work) : null;
+	const index = album?.tracks.indexOf(songId) ?? -1;
+	if (!album || index < 0) return null;
+
+	const nextId = album.tracks[index + 1];
+	const { data: next } = nextId
+		? await locals.supabase.from('works').select('title').eq('id', nextId).maybeSingle()
+		: { data: null };
+	return {
+		id: album.id,
+		title: album.title,
+		track: index + 1,
+		total: album.tracks.length,
+		next: next ? { title: next.title, href: `/musica/album/${album.id}?faixa=${index + 2}` } : null
+	};
+}

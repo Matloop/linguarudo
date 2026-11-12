@@ -37,5 +37,12 @@ export const VIDEOS = {
 	down: { id: 'FORADOAR001', title: 'Fora do Ar', artist: 'Banda Inventada' }
 } as const;
 
+/** Playlist de álbum falsa: uma faixa com letra e uma sem. */
+export const PLAYLIST = {
+	id: 'OLAK5uy_inventada001',
+	title: 'Disco Inventado',
+	videos: [VIDEOS.ok, VIDEOS.noLyrics]
+} as const;
+
 /** Ids dos registros no LRCLIB falso. O clipe tem duas versões: a faixa e a ao vivo. */
 export const LRCLIB_IDS = { ok: 1, clip: 2, clipLive: 3, noLyrics: 4 } as const;

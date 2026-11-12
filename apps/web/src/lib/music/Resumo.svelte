@@ -20,6 +20,8 @@
 		message: string;
 		onsaveall: () => void;
 		onagain: () => void;
+		/** Faixa seguinte, quando a música faz parte de um álbum. */
+		next?: { title: string; href: string } | null;
 	}
 
 	let {
@@ -35,7 +37,8 @@
 		saving,
 		message,
 		onsaveall,
-		onagain
+		onagain,
+		next = null
 	}: Props = $props();
 
 	const missing = $derived(wrong.filter((g) => !isInBank(g.key)));
@@ -149,6 +152,14 @@
 				Jogar de novo
 			</button>
 		</div>
+		{#if next}
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- href já vem resolvido do load -->
+			<a class="proxima" href={next.href} data-sveltekit-reload>
+				<span>Próxima faixa</span>
+				<b>{next.title}</b>
+				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+			</a>
+		{/if}
 		<a class="voltar" href={resolve('/musica')}>Voltar às músicas</a>
 	</div>
 </div>
@@ -416,6 +427,40 @@
 		stroke-linecap: round;
 		stroke-linejoin: round;
 		flex: none;
+	}
+
+	.proxima {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-top: 8px;
+		padding: 12px 14px;
+		border-radius: var(--r-m);
+		background: var(--tile);
+		box-shadow: inset 0 0 0 1px var(--line);
+		color: var(--ink);
+		text-decoration: none;
+		text-align: left;
+		transition: background-color 0.18s var(--ease);
+	}
+
+	.proxima:hover {
+		background: var(--hover);
+	}
+
+	.proxima span {
+		font-size: 14px;
+		color: var(--ink-3);
+		flex: none;
+	}
+
+	.proxima b {
+		flex: 1;
+		min-width: 0;
+		font: 600 16px/1.3 var(--f-head);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.voltar {

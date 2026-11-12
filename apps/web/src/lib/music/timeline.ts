@@ -12,14 +12,11 @@
 // Fica na obra do usuário, em refs.lyrics_sync. As âncoras guardam o tempo da letra
 // e um hash do texto da linha, para reencontrar a linha se a letra mudar.
 
-export type AnchorSource = 'manual' | 'auto';
-
 export interface Anchor {
 	/** Índice da linha. */
 	line: number;
 	/** Segundo do vídeo em que a linha começa. */
 	video: number;
-	source: AnchorSource;
 }
 
 export interface Timeline {
@@ -128,21 +125,16 @@ function inOrder(a: Anchor, b: Anchor): boolean {
 
 /**
  * Marca a linha no tempo dado. Substitui a âncora da mesma linha e tira as que ficariam
- * fora de ordem. Âncora automática nunca derruba uma manual: é ela que fica de fora.
+ * fora de ordem.
  */
 export function withAnchor(tl: Timeline, lines: readonly TimedLine[], anchor: Anchor): Timeline {
 	if (!Number.isInteger(anchor.line) || anchor.line < 0 || anchor.line >= lines.length) return tl;
 	if (!Number.isFinite(anchor.video)) return tl;
 	const video = round2(Math.max(0, Math.min(MAX_SECONDS, anchor.video)));
 	if (Math.abs(video - lines[anchor.line].start) > OFFSET_LIMIT_S) return tl;
-	const next: Anchor = { line: anchor.line, video, source: anchor.source };
+	const next: Anchor = { line: anchor.line, video };
 
 	const others = tl.anchors.filter((a) => a.line !== next.line);
-	const same = tl.anchors.find((a) => a.line === next.line);
-	if (next.source === 'auto' && same?.source === 'manual') return tl;
-	const clashes = others.filter((a) => !inOrder(a, next));
-	if (next.source === 'auto' && clashes.some((a) => a.source === 'manual')) return tl;
-
 	const kept = others.filter((a) => inOrder(a, next));
 	if (kept.length >= MAX_ANCHORS) return tl;
 	const anchors = [...kept, next].sort((a, b) => a.line - b.line);
@@ -155,7 +147,7 @@ export function withoutAnchor(tl: Timeline, index: number): Timeline {
 }
 
 /**
- * Ajuste fino do trecho que contém a linha. Sem âncoras, cria uma (manual) na linha.
+ * Ajuste fino do trecho que contém a linha. Sem âncoras, cria uma na linha.
  * O trecho não passa das âncoras vizinhas.
  */
 export function nudgeSegment(
@@ -168,11 +160,7 @@ export function nudgeSegment(
 	const k = segmentOf(tl, line);
 	if (k < 0) {
 		const at = Math.max(0, Math.min(lines.length - 1, line));
-		return withAnchor(tl, lines, {
-			line: at,
-			video: lines[at].start * tl.rate + delta,
-			source: 'manual'
-		});
+		return withAnchor(tl, lines, { line: at, video: lines[at].start * tl.rate + delta });
 	}
 	const a = tl.anchors[k];
 	const prev = tl.anchors[k - 1];
@@ -182,9 +170,7 @@ export function nudgeSegment(
 	if (next) video = Math.min(video, next.video - MIN_GAP_S);
 	video = round2(Math.max(0, video));
 	if (Math.abs(video - lines[a.line].start) > OFFSET_LIMIT_S) return tl;
-	const anchors = tl.anchors.map((x, i) =>
-		i === k ? { ...x, video, source: 'manual' as const } : x
-	);
+	const anchors = tl.anchors.map((x, i) => (i === k ? { ...x, video } : x));
 	return { ...tl, anchors };
 }
 
@@ -263,7 +249,6 @@ export interface StoredAnchor {
 	video: number;
 	/** Hash do texto da linha (FNV-1a, 8 dígitos hex). */
 	hash: string;
-	source: AnchorSource;
 }
 
 export interface StoredSync {
@@ -314,8 +299,7 @@ export function serializeSync(
 		anchors: tl.anchors.map((a) => ({
 			lyric: round2(lines[a.line].start),
 			video: round2(a.video),
-			hash: lineHash(lines[a.line].text),
-			source: a.source
+			hash: lineHash(lines[a.line].text)
 		})),
 		...extra
 	};
@@ -353,7 +337,7 @@ export function resolveSync(
 		}
 		const video = bestDist <= NEAR_S ? s.video : s.video + (lines[best].start - s.lyric);
 		const before = tl.anchors.length;
-		tl = withAnchor(tl, lines, { line: best, video, source: s.source });
+		tl = withAnchor(tl, lines, { line: best, video });
 		if (tl.anchors.length <= before) dropped++;
 	}
 	return { timeline: tl, dropped };
@@ -381,8 +365,7 @@ export function parseStoredSync(raw: unknown): StoredSync | null {
 		if (!isNum(x.lyric, 0, MAX_SECONDS) || !isNum(x.video, 0, MAX_SECONDS)) return null;
 		if (Math.abs(x.video - x.lyric) > OFFSET_LIMIT_S) return null;
 		if (typeof x.hash !== 'string' || !HASH.test(x.hash)) return null;
-		if (x.source !== 'manual' && x.source !== 'auto') return null;
-		anchors.push({ lyric: x.lyric, video: x.video, hash: x.hash, source: x.source });
+		anchors.push({ lyric: x.lyric, video: x.video, hash: x.hash });
 	}
 	return {
 		v: 1,

@@ -29,7 +29,6 @@ import {
 	withAnchor,
 	withRate,
 	withoutAnchor,
-	type AnchorSource,
 	type LineTiming,
 	type StoredSync,
 	type TimedLine,
@@ -66,17 +65,20 @@ export type MusicEvent =
 	| { type: 'moveSelection'; delta: number }
 	/** Espaço: marca de novo a linha escolhida. */
 	| { type: 'mark' }
-	/** Ajuste fino do trecho (na sincronia: da linha escolhida; no jogo: da linha atual). */
-	| { type: 'nudge'; delta: number }
+	/**
+	 * Move o trecho (na sincronia: da linha escolhida; no jogo: da linha atual).
+	 * `merge`: continua o gesto anterior (segurar o botão, arrastar) e não cria outro desfazer.
+	 */
+	| { type: 'nudge'; delta: number; merge?: boolean }
+	/** Põe o trecho da linha escolhida neste deslocamento (valor digitado, arrastar). */
+	| { type: 'setOffset'; offset: number; merge?: boolean }
 	| { type: 'zero' }
 	| { type: 'undo' }
 	| { type: 'deleteAnchor'; index: number }
 	| { type: 'acceptRate' }
-	| { type: 'autoAnchor'; line: number; video: number }
 	/** Controles do vídeo pedidos de propósito no painel de sincronia. */
 	| { type: 'syncTogglePlay' }
-	| { type: 'syncBack'; seconds: number }
-	| { type: 'syncRestart' }
+	| { type: 'syncSeek'; to: number; play?: boolean }
 	| { type: 'hidden' }
 	| { type: 'playerState'; state: PlayerState }
 	| { type: 'autoplayBlocked' }
@@ -109,7 +111,6 @@ export interface AnchorView {
 	video: number;
 	/** Deslocamento do trecho (vídeo − letra). */
 	offset: number;
-	source: AnchorSource;
 }
 
 export interface SyncView {
@@ -335,7 +336,12 @@ export class MusicController {
 				this.#edit(withAnchor(this.#timeline, this.#lines, this.#anchorNow(this.#selected)));
 				return [];
 			case 'nudge':
-				return this.#nudge(event.delta, now);
+				return this.#nudge(event.delta, now, event.merge ?? false);
+			case 'setOffset': {
+				if (this.#mode !== 'sync' || !Number.isFinite(event.offset)) return [];
+				const current = offsetAt(this.#timeline, this.#lines, this.#selected);
+				return this.#nudge(event.offset - current, now, event.merge ?? false);
+			}
 			case 'zero':
 				if (this.#mode !== 'sync') return [];
 				this.#edit({ ...EMPTY_TIMELINE });
@@ -352,25 +358,16 @@ export class MusicController {
 				if (rate !== null) this.#edit(withRate(this.#timeline, rate));
 				return [];
 			}
-			case 'autoAnchor': {
-				if (this.#mode !== 'sync') return [];
-				const next = withAnchor(this.#timeline, this.#lines, {
-					line: event.line,
-					video: event.video,
-					source: 'auto'
-				});
-				if (next !== this.#timeline) this.#setTimeline(next);
-				return [];
-			}
 			case 'syncTogglePlay':
 				if (this.#mode !== 'sync') return [];
 				return this.#own([{ type: this.#videoPlaying ? 'pause' : 'play' }], now);
-			case 'syncBack':
-				if (this.#mode !== 'sync') return [];
-				return this.#own([{ type: 'seek', to: Math.max(0, this.#time - event.seconds) }], now);
-			case 'syncRestart':
-				if (this.#mode !== 'sync') return [];
-				return this.#own([{ type: 'seek', to: 0 }, { type: 'play' }], now);
+			case 'syncSeek': {
+				if (this.#mode !== 'sync' || !Number.isFinite(event.to)) return [];
+				const to = Math.max(0, event.to);
+				const effects: Command[] = [{ type: 'seek', to }];
+				if (event.play) effects.push({ type: 'play' });
+				return this.#own(effects, now);
+			}
 			case 'hidden':
 				return this.#hidden(now);
 			case 'playerState':
@@ -467,8 +464,7 @@ export class MusicController {
 				anchors: this.#timeline.anchors.map((a) => ({
 					line: a.line,
 					video: a.video,
-					offset: offsetAt(this.#timeline, this.#lines, a.line),
-					source: a.source
+					offset: offsetAt(this.#timeline, this.#lines, a.line)
 				})),
 				segment,
 				offset: offsetAt(this.#timeline, this.#lines, this.#selected),
@@ -691,12 +687,12 @@ export class MusicController {
 	}
 
 	#anchorNow(line: number) {
-		return { line, video: this.#time, source: 'manual' as const };
+		return { line, video: this.#time };
 	}
 
-	#nudge(delta: number, now: number): Effect[] {
+	#nudge(delta: number, now: number, merge = false): Effect[] {
 		if (this.#mode === 'sync') {
-			this.#edit(nudgeSegment(this.#timeline, this.#lines, this.#selected, delta));
+			this.#edit(nudgeSegment(this.#timeline, this.#lines, this.#selected, delta), merge);
 			return [];
 		}
 		if (this.#mode !== 'game') return [];
@@ -708,10 +704,10 @@ export class MusicController {
 		return [];
 	}
 
-	/** Mudança manual na sincronia (entra no desfazer). */
-	#edit(next: Timeline) {
+	/** Mudança na sincronia. Entra no desfazer, a não ser que continue o gesto anterior. */
+	#edit(next: Timeline, merge = false) {
 		if (next === this.#timeline) return;
-		this.#history.push(this.#timeline);
+		if (!merge || this.#history.length === 0) this.#history.push(this.#timeline);
 		this.#setTimeline(next);
 	}
 
@@ -719,14 +715,7 @@ export class MusicController {
 		if (this.#mode !== 'sync') return [];
 		const prev = this.#history.pop();
 		if (!prev) return [];
-		// As âncoras automáticas que chegaram depois continuam (se ainda couberem).
-		let tl = prev;
-		for (const a of this.#timeline.anchors) {
-			if (a.source === 'auto' && !prev.anchors.some((p) => p.line === a.line)) {
-				tl = withAnchor(tl, this.#lines, a);
-			}
-		}
-		this.#setTimeline(tl);
+		this.#setTimeline(prev);
 		return [];
 	}
 

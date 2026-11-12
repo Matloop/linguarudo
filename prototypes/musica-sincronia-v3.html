@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sincronizar letra · proposta v3</title>
+<style>
+  :root {
+    --bg: #1d1b19; --panel: #262320; --panel2: #2d2a26; --line: #3a3631;
+    --text: #ebe5da; --muted: #9a9187; --cream: #f2ede3; --amber: #e2b56b;
+    --amber-soft: rgba(226,181,107,.16); --ok: #9cc59a; --warn: #e49a7f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--text);
+    font: 15px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  kbd { font: 12px/1 ui-monospace, monospace; padding: 3px 5px; border-radius: 5px;
+    border: 1px solid var(--line); color: var(--muted); background: #211f1c; }
+
+  .intro { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .intro b { color: var(--text); font-weight: 500; }
+
+  .sinc { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+  .top { display: flex; align-items: center; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--line); }
+  .top h2 { margin: 0; font-size: 18px; font-weight: 600; }
+  .top p { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
+  .top .esp { flex: 1; }
+  .bt { border: 1px solid var(--line); background: var(--panel2); border-radius: 10px; padding: 8px 14px; }
+  .bt:hover { border-color: #55504a; }
+  .bt.pri { background: var(--cream); color: #1d1b19; border-color: var(--cream); font-weight: 600; }
+  .bt.fant { background: transparent; border-color: transparent; color: var(--muted); }
+  .bt.fant:hover { color: var(--text); }
+  .bt:disabled { opacity: .4; cursor: default; }
+
+  .corpo { display: grid; grid-template-columns: 1fr 1fr; }
+  /* Letra */
+  .letra { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .letra .cab { display: flex; justify-content: space-between; align-items: baseline;
+    padding: 14px 22px 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .lista { list-style: none; margin: 0; padding: 4px 10px 14px; height: 360px; overflow-y: auto; scroll-behavior: smooth; }
+  .lista li { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: 12px; font-size: 14px; line-height: 1.35; cursor: pointer; border: 1px solid transparent; position: relative; }
+  .lista li:hover { background: #2b2824; }
+  .lista li:hover .dica { opacity: 1; }
+  .lista .tm { font: 12px ui-monospace, monospace; color: var(--muted); }
+  .lista .tx { color: #cfc8bc; transition: color .2s; }
+  .lista li.lit .tx { color: var(--cream); font-weight: 500; }
+  .lista li.lit::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--amber); }
+  .lista li.sel { border-color: var(--amber); background: var(--amber-soft); }
+  .lista .dica { opacity: 0; font-size: 12px; color: var(--amber); transition: opacity .15s; white-space: nowrap; }
+  .lista .pin { font-size: 11.5px; padding: 2px 7px; border-radius: 99px; background: var(--amber); color: #1d1b19; font-weight: 600; white-space: nowrap; }
+  
+  .lista li.flash { animation: flash .5s; }
+  @keyframes flash { from { background: rgba(226,181,107,.45); } to { background: var(--amber-soft); } }
+
+  /* Lado direito */
+  .lado { padding: 16px 18px; display: flex; flex-direction: column; gap: 16px; }
+  .video { background: #151412; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .video .row { display: flex; align-items: center; gap: 8px; }
+  .video .clock { font: 600 22px ui-monospace, monospace; min-width: 70px; }
+  .video .sim { margin-top: 10px; padding: 9px 12px; border-radius: 10px; background: #1e1c1a; font-size: 13.5px; color: var(--muted); min-height: 40px; }
+  .video .sim small { display: block; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: #6f685f; }
+  .video .sim .voz { color: var(--text); }
+  .video .sim .ok { color: var(--ok); } .video .sim .no { color: var(--warn); }
+  .round { width: 40px; height: 40px; border-radius: 50%; background: var(--cream); color: #1d1b19; border: 0; font-size: 15px; font-weight: 700; }
+  .ctrl { white-space: nowrap; border: 1px solid var(--line); background: transparent; border-radius: 9px; padding: 6px 10px; font-size: 13px; color: #d6cfc3; }
+  .ctrl:hover { border-color: #55504a; }
+
+  .marcar { width: 100%; padding: 16px; border-radius: 14px; border: 0; background: var(--cream); color: #1d1b19;
+    font-size: 16.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .marcar kbd { color: #6b6359; border-color: #d4cdbf; background: #e7e1d5; }
+  .marcar small { display: block; font-weight: 400; font-size: 12.5px; color: #5c554c; }
+  .marcar:active { transform: scale(.99); }
+
+  .estado { display: flex; align-items: baseline; gap: 12px; }
+  .estado b { white-space: nowrap; font-size: 30px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+  .estado span { color: var(--muted); font-size: 13.5px; }
+  .ajuste { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .ajuste button { border: 1px solid var(--line); background: var(--panel2); border-radius: 10px; padding: 9px 0; font-variant-numeric: tabular-nums; font-size: 14px; user-select: none; }
+  .ajuste button.big { color: var(--amber); }
+  .ajuste button:hover { border-color: #55504a; }
+  .digitar { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .digitar input { width: 92px; background: #1b1917; border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 6px 8px; font: 14px ui-monospace, monospace; }
+
+  /* Linha do tempo */
+  .tempo { border-top: 1px solid var(--line); padding: 14px 22px 18px; }
+  .tempo .cab { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .tempo .cab strong { white-space: nowrap; font-size: 13px; font-weight: 600; }
+  .tempo .cab span { font-size: 12.5px; color: var(--muted); }
+  .seg { display: inline-flex; margin-left: auto; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .seg button { white-space: nowrap; border: 0; background: transparent; padding: 5px 12px; font-size: 12.5px; color: var(--muted); }
+  .seg button.on { background: var(--panel2); color: var(--text); }
+  .pista { position: relative; height: 92px; background: #1a1816; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; user-select: none; touch-action: none; }
+  .pista .lane-v { position: absolute; left: 0; right: 0; top: 0; height: 26px; border-bottom: 1px dashed #34302b; }
+  .pista .tick { position: absolute; top: 6px; font: 10.5px ui-monospace, monospace; color: #6f685f; transform: translateX(-50%); }
+  .pista .lane-l { position: absolute; left: 0; right: 0; top: 34px; bottom: 8px; cursor: grab; }
+  .pista .lane-l.drag { cursor: grabbing; }
+  .pista .blk { position: absolute; top: 8px; height: 34px; border-radius: 7px; background: #3b3630; border: 1px solid #4a443d;
+    font-size: 11.5px; color: #cfc8bc; padding: 0 7px; line-height: 32px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .pista .blk.cur { background: #4a4136; border-color: var(--amber); }
+  .pista .blk.lit { color: var(--cream); background: #5a4d3b; }
+  .pista .anc { position: absolute; top: 28px; bottom: 0; width: 2px; background: var(--amber); }
+  .pista .anc::before { content: ""; position: absolute; top: -4px; left: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--amber); }
+  .pista .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--cream); box-shadow: 0 0 0 1px #1a1816; }
+  .tempo .rod { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+  .mais { border-top: 1px solid var(--line); padding: 10px 22px 14px; font-size: 13px; color: var(--muted); }
+  .mais summary { cursor: pointer; color: var(--amber); }
+  .marcas { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; }
+  .marcas li { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 8px; background: #221f1c; }
+  .marcas li .off { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text); }
+  .marcas li button { border: 0; background: transparent; color: var(--muted); }
+  .mais .acoes { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .atalhos { padding: 0 22px 16px; font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+
+  .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px); opacity: 0;
+    background: var(--cream); color: #1d1b19; padding: 10px 16px; border-radius: 12px; font-weight: 500; transition: .25s; pointer-events: none; }
+  .toast.on { opacity: 1; transform: translateX(-50%); }
+
+  .notas { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .nota { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; font-size: 13.5px; color: #d3ccc0; }
+  .nota h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--amber); font-weight: 600; }
+  .nota ul { margin: 0; padding-left: 18px; } .nota li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="intro"><b>Protótipo.</b> O “vídeo” é simulado: a voz só começa em 0:33 (a letra do LRCLIB acha que começa em 0:10), e o vídeo corta 4 s antes da linha 10. Dê play e tente acertar a letra.</p>
+
+  <section class="sinc" aria-label="Sincronizar a letra">
+    <header class="top">
+      <div>
+        <h2>Sincronizar letra</h2>
+        <p>O jogo está pausado. Quando ouvir uma linha começar, toque nela.</p>
+      </div>
+      <span class="esp"></span>
+      <button class="bt fant" id="cancelar">Cancelar</button>
+      <button class="bt pri" id="concluir">Concluir</button>
+    </header>
+
+    <div class="corpo">
+      <div class="letra">
+        <div class="cab"><span>Letra</span><span id="contagem">nenhuma marca</span></div>
+        <ul class="lista" id="lista"></ul>
+      </div>
+
+      <div class="lado">
+        <div class="video">
+          <div class="row">
+            <button class="round" id="play" aria-label="Tocar">▶</button>
+            <span class="clock" id="clock">0:00</span>
+            <span style="flex:1"></span>
+            <button class="ctrl" id="voltar">−10 s</button>
+            <button class="ctrl" id="avancar">+10 s</button>
+            <button class="ctrl" id="testar" title="Volta 3 s antes da linha escolhida e toca">Ouvir linha</button>
+          </div>
+          <div class="sim" id="sim"></div>
+        </div>
+
+        <button class="marcar" id="marcar">
+          <span>Começou agora<small id="alvo">Linha 1</small></span><kbd>Espaço</kbd>
+        </button>
+
+        <div>
+          <div class="estado"><b id="off">0,0 s</b><span id="explica">a letra segue o tempo original</span></div>
+        </div>
+
+        <div class="ajuste" role="group" aria-label="Mover a letra">
+          <button class="big" data-d="-5">−5 s</button>
+          <button data-d="-1">−1 s</button>
+          <button data-d="-0.1">−0,1</button>
+          <button data-d="0.1">+0,1</button>
+          <button data-d="1">+1 s</button>
+          <button class="big" data-d="5">+5 s</button>
+        </div>
+        <label class="digitar">ou digite <input id="digitar" inputmode="decimal" placeholder="+23,5" /> s
+          </label>
+      </div>
+    </div>
+
+    <div class="tempo">
+      <div class="cab">
+        <strong>Arraste a letra</strong>
+        <span>até cair onde a voz entra. Move o trecho da linha escolhida.</span>
+        <div class="seg"><button data-z="all" class="on">Tudo</button><button data-z="near">30 s</button></div>
+      </div>
+      <div class="pista" id="pista">
+        <div class="lane-v" id="laneV"></div>
+        <div class="lane-l" id="laneL"></div>
+      </div>
+      <div class="rod"><span id="ini">0:00</span><span id="dragInfo">&nbsp;</span><span id="fim">3:20</span></div>
+    </div>
+
+    <details class="mais">
+      <summary>Marcas e outras versões da letra</summary>
+      <ul class="marcas" id="marcas"></ul>
+      <div class="acoes">
+        <button class="bt" id="desfazer">Desfazer</button>
+        <button class="bt" id="zerar">Apagar todas as marcas</button>
+        <button class="bt">Outras versões da letra ▾</button>
+      </div>
+    </details>
+    <div class="atalhos">
+      <span><kbd>Espaço</kbd> marca a linha escolhida</span>
+      <span><kbd>↑</kbd><kbd>↓</kbd> escolhe</span>
+      <span><kbd>←</kbd><kbd>→</kbd> 0,1 s · <kbd>Shift</kbd> 1 s · <kbd>Alt</kbd> 5 s</span>
+      <span><kbd>P</kbd> tocar/pausar</span>
+      <span><kbd>O</kbd> ouvir a linha</span>
+      <span><kbd>Enter</kbd> conclui · <kbd>Esc</kbd> cancela</span>
+    </div>
+  </section>
+
+  <div class="notas">
+    <div class="nota">
+      <h3>O que sai</h3>
+      <ul>
+        <li>“Sincronizar sozinho” inteiro: botão, captura da aba, aviso da barra do Chrome, Whisper no Worker, marcas <i>auto</i>. A pasta <code>auto-sync/</code> some.</li>
+        <li>O passo fixo de 1 s como maior ajuste. Para uma introdução de 25 s, eram 25 cliques.</li>
+        <li>A lista de marcas sempre aberta e a fileira de 8 botões no rodapé.</li>
+      </ul>
+    </div>
+    <div class="nota">
+      <h3>O que entra</h3>
+      <ul>
+        <li><b>Um toque resolve qualquer atraso.</b> Toque na linha (ou Espaço) quando a voz começa: 3 s ou 40 s, é o mesmo gesto.</li>
+        <li><b>Arrastar na linha do tempo.</b> Em “Tudo”, um arraste curto move dezenas de segundos; em “30 s”, ajusta décimos.</li>
+        <li><b>Saltos de 5 s e valor digitado</b>; segurar um botão repete cada vez mais rápido.</li>
+        <li><b>“Ouvir a linha”</b> volta 3 s antes da linha escolhida para conferir de ouvido. A letra acesa já serve de prova.</li>
+        <li>Marcas, desfazer e outras versões ficam em “Marcas e outras versões”, fechado por padrão.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// Versos originais (fixture), nunca letra real.
+const LRC = [
+  [10.0, "Sotto la luce gialla del mattino"],
+  [14.6, "porto il caffè sul bordo del balcone"],
+  [19.2, "la città si sveglia piano piano"],
+  [23.8, "e io conto le finestre accese"],
+  [29.5, "Dimmi dove vanno i treni lenti"],
+  [34.0, "quando il cielo cambia colore"],
+  [38.6, "ho lasciato aperta la mia porta"],
+  [43.1, "per chi torna senza far rumore"],
+  [49.0, "E resta, resta ancora un po'"],
+  [53.4, "il vento sa il tuo nome"],
+  [57.9, "resta, resta ancora un po'"],
+  [62.3, "finché la sera non viene"],
+  [70.0, "Ho imparato a leggere le nuvole"],
+  [74.5, "a parlare piano con il mare"],
+];
+const DUR = 200;
+const TRUE_OFF = (i) => (i < 9 ? 23.6 : 19.2); // o “vídeo” de verdade
+const lineLen = (i) => Math.min(5, (LRC[i + 1]?.[0] ?? LRC[i][0] + 5) - LRC[i][0]) - 0.3;
+
+const S = { t: 0, playing: false, anchors: [], sel: 0, zoom: "all", hist: [] };
+let saved = [];
+
+const $ = (id) => document.getElementById(id);
+const fmtT = (s) => { s = Math.max(0, s); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; };
+const fmtO = (o) => { const r = Math.round(o * 10) / 10; return `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toFixed(1).replace(".", ",")} s`; };
+
+function govIndex(i) {
+  if (!S.anchors.length) return -1;
+  let k = 0;
+  S.anchors.forEach((a, j) => { if (a.line <= i) k = j; });
+  return k;
+}
+function offsetFor(i) {
+  const k = govIndex(i);
+  if (k < 0) return 0;
+  const a = S.anchors[k];
+  return a.video - LRC[a.line][0];
+}
+const startOf = (i) => LRC[i][0] + offsetFor(i);
+function litAt(t, off) {
+  for (let i = LRC.length - 1; i >= 0; i--) {
+    const s = LRC[i][0] + off(i);
+    if (t >= s) return t < s + lineLen(i) ? i : -1;
+  }
+  return -1;
+}
+
+function snapshot() { S.hist.push(JSON.stringify(S.anchors)); if (S.hist.length > 50) S.hist.shift(); }
+function cleanOrder(keep) {
+  // marcas fora de ordem (linha depois, tempo antes) saem, menos a recém-feita
+  S.anchors.sort((a, b) => a.line - b.line);
+  S.anchors = S.anchors.filter((a) => a === keep || (a.line < keep.line ? a.video < keep.video : a.video > keep.video));
+}
+function mark(i) {
+  snapshot();
+  S.anchors = S.anchors.filter((a) => a.line !== i);
+  const a = { line: i, video: Math.round(S.t * 10) / 10 };
+  S.anchors.push(a);
+  cleanOrder(a);
+  S.sel = i;
+  listDirty = true;
+  render();
+  const li = $("lista").children[i];
+  li.classList.remove("flash"); void li.offsetWidth; li.classList.add("flash");
+}
+function shiftSegment(line, delta, record = true) {
+  if (record) snapshot();
+  if (!S.anchors.length) S.anchors.push({ line: 0, video: LRC[0][0] });
+  const a = S.anchors[govIndex(line)];
+  a.video = Math.max(0, Math.min(DUR, Math.round((a.video + delta) * 10) / 10));
+  cleanOrder(a);
+  listDirty = true;
+}
+function setOffset(line, off) {
+  const cur = offsetFor(line);
+  shiftSegment(line, off - cur);
+}
+
+// ---------- render ----------
+let listDirty = true;
+function renderList() {
+  const ul = $("lista");
+  ul.innerHTML = LRC.map(([, txt], i) => {
+    const a = S.anchors.find((x) => x.line === i);
+    return `<li data-i="${i}" class="${i === S.sel ? "sel" : ""}">
+      <span class="tm">${fmtT(startOf(i))}</span>
+      <span class="tx">${txt}</span>
+      ${a ? `<span class="pin">${fmtO(a.video - LRC[i][0])}</span>` : `<span class="dica">começou agora</span>`}
+    </li>`;
+  }).join("");
+  const n = S.anchors.length;
+  $("contagem").textContent = n === 0 ? "nenhuma marca" : n === 1 ? "1 marca" : `${n} marcas`;
+  $("marcas").innerHTML = n ? S.anchors.map((a, j) =>
+    `<li>Linha ${a.line + 1} em diante <span class="off">${fmtO(a.video - LRC[a.line][0])}</span><button data-del="${j}" aria-label="Apagar">✕</button></li>`).join("")
+    : `<li>Nenhuma marca ainda.</li>`;
+  $("desfazer").disabled = !S.hist.length;
+  listDirty = false;
+}
+
+let lastLit = -2;
+function render() {
+  if (listDirty) { renderList(); lastLit = -2; }
+  const lit = litAt(S.t, offsetFor);
+  if (lit !== lastLit) {
+    [...$("lista").children].forEach((li, i) => li.classList.toggle("lit", i === lit));
+    if (lit >= 0) { const ul = $("lista"), li = ul.children[lit]; ul.scrollTop = li.offsetTop - ul.clientHeight / 2 + li.clientHeight / 2; }
+    lastLit = lit;
+  }
+  $("clock").textContent = fmtT(S.t);
+  $("play").textContent = S.playing ? "❚❚" : "▶";
+  $("alvo").textContent = `Linha ${S.sel + 1} · “${LRC[S.sel][1].slice(0, 32)}${LRC[S.sel][1].length > 32 ? "…" : ""}”`;
+
+  const off = offsetFor(S.sel);
+  $("off").textContent = fmtO(off);
+  $("explica").textContent = !S.anchors.length ? "sem marcas, a letra segue o tempo original"
+    : Math.abs(off) < 0.05 ? "neste trecho a letra está no tempo original"
+    : off > 0 ? `neste trecho a letra entra ${fmtO(off).slice(1)} mais tarde`
+    : `neste trecho a letra entra ${fmtO(off).slice(1)} mais cedo`;
+
+  // simulação da voz
+  const voz = litAt(S.t, TRUE_OFF);
+  let html = `<small>simulação do áudio (só no protótipo)</small>`;
+  if (voz < 0) html += S.playing ? `<span>♪ instrumental</span>` : `<span>pausado</span>`;
+  else html += `<span class="voz">🎤 ${LRC[voz][1]}</span> · ${lit === voz ? `<span class="ok">a letra acesa bate</span>` : `<span class="no">a letra acesa não bate</span>`}`;
+  $("sim").innerHTML = html;
+
+  renderTimeline(lit);
+}
+
+function view() {
+  if (S.zoom === "all") return [0, DUR];
+  const c = Math.max(15, Math.min(DUR - 15, S.t));
+  return [c - 15, c + 15];
+}
+function renderTimeline(lit) {
+  const [a, b] = view(), w = $("pista").clientWidth, px = (s) => ((s - a) / (b - a)) * w;
+  const step = S.zoom === "all" ? 20 : 5;
+  let ticks = "";
+  for (let s = Math.ceil(a / step) * step; s <= b; s += step) ticks += `<span class="tick" style="left:${px(s)}px">${fmtT(s)}</span>`;
+  $("laneV").innerHTML = ticks;
+  const segK = govIndex(S.sel);
+  $("laneL").innerHTML = LRC.map((l, i) => {
+    const s = startOf(i), x = px(s), wd = Math.max(3, px(s + lineLen(i)) - x);
+    const cur = govIndex(i) === segK || segK < 0;
+    return `<div class="blk ${cur ? "cur" : ""} ${i === lit ? "lit" : ""}" data-i="${i}" style="left:${x}px;width:${wd}px">${wd > 60 ? l[1] : ""}</div>`;
+  }).join("") + S.anchors.map((an) => `<i class="anc" style="left:${px(an.video)}px"></i>`).join("")
+    + `<i class="ph" style="left:${px(S.t)}px;top:-34px"></i>`;
+  $("ini").textContent = fmtT(a); $("fim").textContent = fmtT(b);
+}
+
+// ---------- relógio ----------
+let prev = performance.now();
+function tick(now) {
+  const dt = (now - prev) / 1000; prev = now;
+  if (S.playing && !drag) { S.t = Math.min(DUR, S.t + dt); if (S.t >= DUR) S.playing = false; }
+  render();
+  requestAnimationFrame(tick);
+}
+
+// ---------- eventos ----------
+const seek = (t) => { S.t = Math.max(0, Math.min(DUR, t)); };
+$("play").onclick = () => { S.playing = !S.playing; };
+$("voltar").onclick = () => seek(S.t - 10);
+$("avancar").onclick = () => seek(S.t + 10);
+const ouvir = () => { seek(startOf(S.sel) - 3); S.playing = true; };
+$("testar").onclick = ouvir;
+$("marcar").onclick = () => mark(S.sel);
+$("lista").addEventListener("click", (e) => { const li = e.target.closest("li"); if (li) mark(+li.dataset.i); });
+$("marcas").addEventListener("click", (e) => { const b = e.target.closest("[data-del]"); if (b) { snapshot(); S.anchors.splice(+b.dataset.del, 1); listDirty = true; } });
+$("desfazer").onclick = () => { if (S.hist.length) { S.anchors = JSON.parse(S.hist.pop()); listDirty = true; } };
+$("zerar").onclick = () => { snapshot(); S.anchors = []; listDirty = true; };
+document.querySelectorAll(".seg button").forEach((b) => b.onclick = () => {
+  S.zoom = b.dataset.z; document.querySelectorAll(".seg button").forEach((x) => x.classList.toggle("on", x === b));
+});
+const toast = (m) => { const t = $("toast"); t.textContent = m; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), 2200); };
+$("concluir").onclick = () => { saved = JSON.parse(JSON.stringify(S.anchors)); S.playing = false; toast("Sincronia salva. O jogo volta de onde parou."); };
+$("cancelar").onclick = () => { S.anchors = JSON.parse(JSON.stringify(saved)); S.hist = []; S.playing = false; listDirty = true; toast("Nada mudou."); };
+
+// segurar repete, acelerando
+document.querySelectorAll(".ajuste button").forEach((b) => {
+  let h, n;
+  const go = () => { shiftSegment(S.sel, +b.dataset.d, n === 0); n++; h = setTimeout(go, n === 1 ? 420 : Math.max(50, 180 - n * 12)); };
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); n = 0; go(); });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => b.addEventListener(ev, () => clearTimeout(h)));
+});
+$("digitar").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const v = parseFloat(e.target.value.replace(",", ".").replace("−", "-"));
+  if (Number.isFinite(v)) { setOffset(S.sel, Math.max(-300, Math.min(300, v))); e.target.value = ""; e.target.blur(); }
+  e.stopPropagation();
+});
+
+// arrastar a letra
+let drag = null;
+$("laneL").addEventListener("pointerdown", (e) => {
+  const blk = e.target.closest(".blk");
+  if (blk) { S.sel = +blk.dataset.i; listDirty = true; }
+  snapshot();
+  if (!S.anchors.length) S.anchors.push({ line: 0, video: LRC[0][0] });
+  const [a, b] = view();
+  drag = { x: e.clientX, anchor: S.anchors[govIndex(S.sel)], v0: S.anchors[govIndex(S.sel)].video, sp: (b - a) / $("pista").clientWidth, view: [a, b] };
+  $("laneL").classList.add("drag"); $("laneL").setPointerCapture(e.pointerId);
+});
+$("laneL").addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const d = (e.clientX - drag.x) * drag.sp;
+  drag.anchor.video = Math.max(0, Math.min(DUR, Math.round((drag.v0 + d) * 10) / 10));
+  $("dragInfo").textContent = `movendo ${fmtO(drag.anchor.video - drag.v0)} · trecho fica em ${fmtO(drag.anchor.video - LRC[drag.anchor.line][0])}`;
+  listDirty = true;
+});
+const endDrag = () => { if (!drag) return; cleanOrder(drag.anchor); drag = null; $("laneL").classList.remove("drag"); $("dragInfo").innerHTML = "&nbsp;"; listDirty = true; };
+$("laneL").addEventListener("pointerup", endDrag);
+$("laneL").addEventListener("pointercancel", endDrag);
+// clicar na régua do vídeo = ir para o tempo
+$("laneV").addEventListener("pointerdown", (e) => {
+  const r = $("pista").getBoundingClientRect(), [a, b] = view();
+  seek(a + ((e.clientX - r.left) / r.width) * (b - a));
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  const k = e.key;
+  if (k === " ") { e.preventDefault(); mark(S.sel); }
+  else if (k === "ArrowUp") { e.preventDefault(); S.sel = Math.max(0, S.sel - 1); listDirty = true; }
+  else if (k === "ArrowDown") { e.preventDefault(); S.sel = Math.min(LRC.length - 1, S.sel + 1); listDirty = true; }
+  else if (k === "ArrowLeft" || k === "ArrowRight") { e.preventDefault(); const d = e.altKey ? 5 : e.shiftKey ? 1 : 0.1; shiftSegment(S.sel, k === "ArrowLeft" ? -d : d); }
+  else if (k === "p" || k === "P") S.playing = !S.playing;
+  else if (k === "o" || k === "O") ouvir();
+  else if (k === "Enter") $("concluir").click();
+  else if (k === "Escape") $("cancelar").click();
+});
+
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

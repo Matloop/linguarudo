@@ -7,6 +7,7 @@ import {
 	LRC,
 	LRC_LIVE,
 	LRCLIB_IDS,
+	PLAYLIST,
 	VIDEOS,
 	VIDEO_SECONDS
 } from './fixtures.ts';
@@ -71,6 +72,24 @@ Bun.serve({
 			return Response.json({
 				title: `${video.artist} - ${video.title} (Official Video)`,
 				author_name: 'BandaInventadaVEVO'
+			});
+		}
+
+		// Página de playlist: só o ytInitialData que playlist.ts lê.
+		if (url.pathname === '/playlist' && url.searchParams.get('list') === PLAYLIST.id) {
+			const item = (v: { id: string; title: string; artist: string }) => ({
+				playlistVideoRenderer: {
+					videoId: v.id,
+					title: { runs: [{ text: `${v.artist} - ${v.title}` }] },
+					shortBylineText: { runs: [{ text: 'BandaInventadaVEVO' }] }
+				}
+			});
+			const data = {
+				metadata: { playlistMetadataRenderer: { title: `Album - ${PLAYLIST.title}` } },
+				contents: PLAYLIST.videos.map(item)
+			};
+			return new Response(`<script>var ytInitialData = ${JSON.stringify(data)};</script>`, {
+				headers: { 'Content-Type': 'text/html' }
 			});
 		}
 
