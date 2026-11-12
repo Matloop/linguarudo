@@ -4,10 +4,12 @@
 
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { InferenceSession, Tensor } from 'onnxruntime-node';
 
-const REPO = 'Supertone/supertonic-3';
+// Cópia de Supertone/supertonic-3 @ 3cadd1ee (Hugging Face) numa release do GitHub: da Vercel
+// em gru1 o Hugging Face entrega 1,2 MB/s (5 min para 381 MB); o GitHub, ~50 MB/s.
+const RELEASE = 'https://github.com/Matloop/linguetta/releases/download/supertonic-3-fp32';
 const REVISION = '3cadd1ee6394adea1bd021217a0e650ede09a323';
 const FILES = [
 	'onnx/duration_predictor.onnx',
@@ -46,13 +48,13 @@ const exists = (path: string) =>
 		() => false
 	);
 
-/** Baixa um arquivo do Hugging Face com nome temporário e renomeia no fim: nunca fica meio arquivo. */
+/** Baixa um arquivo da release com nome temporário e renomeia no fim: nunca fica meio arquivo. */
 async function download(dir: string, file: string): Promise<void> {
 	const target = join(dir, file);
 	if (await exists(target)) return;
 	await mkdir(dirname(target), { recursive: true });
-	const response = await fetch(`https://huggingface.co/${REPO}/resolve/${REVISION}/${file}`);
-	if (!response.ok || !response.body) throw new Error(`Hugging Face ${response.status}: ${file}`);
+	const response = await fetch(`${RELEASE}/${basename(file)}`);
+	if (!response.ok || !response.body) throw new Error(`Modelo ${response.status}: ${file}`);
 	const partial = `${target}.${process.pid}.${Date.now()}.part`;
 	await writeFile(partial, response.body);
 	await rename(partial, target);

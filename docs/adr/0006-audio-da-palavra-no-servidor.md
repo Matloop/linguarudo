@@ -15,7 +15,7 @@
   3. O Supertonic 3 fp32, voz F1, 8 passos, velocidade 1.0. O servidor guarda um WAV PCM 16 bits mono (cerca de 130 KB por palavra).
 - O Supertonic fala 31 idiomas. Fora deles a rota responde 404.
 - O servidor envia o arquivo com o cliente do usuário logado. Não há service key. Quem está logado pode inserir no bucket, mas não pode trocar nem apagar.
-- O modelo roda no onnxruntime-node, numa função própria da Vercel (2 GB, 60 s). O primeiro uso de cada instância baixa 380 MB do Hugging Face para o `/tmp`.
+- O modelo roda no onnxruntime-node, numa função própria da Vercel (2 GB, 60 s). O primeiro uso de cada instância baixa 380 MB para o `/tmp` da release `supertonic-3-fp32` do GitHub (cópia do Hugging Face com a LICENSE). Da Vercel em gru1, o Hugging Face entrega 1,2 MB/s e estoura os 60 s; o GitHub entrega ~50 MB/s. Primeiro uso medido: 19 s; depois, 2 s.
 - O modelo tem licença OpenRAIL-M. O repositório no Hugging Face foi arquivado em 2026-09-09, então a revisão fica fixa no código.
 
 ## Porquê
