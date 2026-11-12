@@ -203,25 +203,13 @@ describe('a linha acaba sem resposta', () => {
 	test('"Continuar jogando" volta ao início da linha e segue, com a lacuna ainda aberta', () => {
 		const { game } = waiting();
 		game.tick(10.05, 11_000);
-		expect(game.continueAfterGameOver(12_000)).toEqual([{ type: 'seek', to: 6 }, { type: 'play' }]);
+		expect(game.continueAfterGameOver()).toEqual([{ type: 'seek', to: 6 }, { type: 'play' }]);
 		expect(game.phase).toBe('playing');
-		// O player ainda informa o tempo antigo por um instante: não vale esperar de novo.
-		expect(game.tick(10.2, 12_050)).toEqual([]);
-		expect(game.phase).toBe('playing');
-		// Assim que o seek chega, o jogo volta ao normal.
 		game.tick(6.1, 12_100);
 		expect(game.answerable?.line).toBe(1);
 		expect(game.tick(10.05, 15_000)).toEqual([{ type: 'pause' }]);
 		expect(game.phase).toBe('waiting');
 		expect(game.waitRemainingMs(15_000)).toBe(10_000);
-	});
-
-	test('se o seek nunca chegar, o jogo volta a confiar no relógio depois de 3 s', () => {
-		const { game } = waiting();
-		game.tick(10.05, 11_000);
-		game.continueAfterGameOver(12_000);
-		expect(game.tick(10.2, 14_000)).toEqual([]);
-		expect(game.tick(10.3, 15_001)).toEqual([{ type: 'pause' }]);
 	});
 
 	test('"Tentar de novo" zera tudo e recomeça a música', () => {
@@ -232,7 +220,7 @@ describe('a linha acaba sem resposta', () => {
 		game.tick(18.05, 40);
 		game.tick(18.05, 11_000);
 		expect(game.phase).toBe('gameover');
-		expect(game.retry(12_000)).toEqual([{ type: 'seek', to: 0 }, { type: 'play' }]);
+		expect(game.retry()).toEqual([{ type: 'seek', to: 0 }, { type: 'play' }]);
 		expect(game.phase).toBe('playing');
 		expect(game.score).toBe(0);
 		expect(game.combo).toBe(1);
@@ -272,7 +260,7 @@ describe('repetir a linha', () => {
 	test('tocando: volta ao início da linha atual', () => {
 		const game = started();
 		game.tick(8.5, 10);
-		expect(game.repeatLine(20)).toEqual([{ type: 'seek', to: 6 }]);
+		expect(game.repeatLine()).toEqual([{ type: 'seek', to: 6 }]);
 		expect(game.phase).toBe('playing');
 	});
 
@@ -280,7 +268,7 @@ describe('repetir a linha', () => {
 		const game = started();
 		game.tick(7, 10);
 		game.tick(10.05, 1000);
-		expect(game.repeatLine(2000)).toEqual([{ type: 'seek', to: 6 }, { type: 'play' }]);
+		expect(game.repeatLine()).toEqual([{ type: 'seek', to: 6 }, { type: 'play' }]);
 		expect(game.phase).toBe('playing');
 		expect(game.waitLine).toBeNull();
 		game.tick(6.1, 2100);
@@ -292,48 +280,104 @@ describe('repetir a linha', () => {
 		const game = started();
 		game.tick(12, 10);
 		game.pause(20);
-		expect(game.repeatLine(30)).toEqual([{ type: 'seek', to: 10 }, { type: 'play' }]);
+		expect(game.repeatLine()).toEqual([{ type: 'seek', to: 10 }, { type: 'play' }]);
 		expect(game.phase).toBe('playing');
 	});
 
 	test('antes da primeira linha não há o que repetir', () => {
 		const game = started();
 		game.tick(1, 10);
-		expect(game.repeatLine(20)).toEqual([]);
+		expect(game.repeatLine()).toEqual([]);
 	});
 });
 
-describe('voltar à linha depois de ajustar a sincronia', () => {
-	test('pausado tocando: volta ao início da linha e continua pausado', () => {
+describe('sincronia aberta', () => {
+	test('congela o jogo: sem comandos, sem resposta, contador parado', () => {
+		const game = started();
+		game.tick(7, 10);
+		game.tick(10.1, 1_000);
+		expect(game.phase).toBe('waiting');
+		game.suspend(3_000);
+		expect(game.suspended).toBe(true);
+		expect(game.answerable).toBeNull();
+		expect(game.answer('bravo')).toEqual([]);
+		expect(game.tick(20, 60_000)).toEqual([]);
+		expect(game.phase).toBe('waiting');
+		expect(game.waitRemainingMs(60_000)).toBe(8_000);
+		expect(game.pause(60_000)).toEqual([]);
+		expect(game.repeatLine()).toEqual([]);
+	});
+
+	test('ao fechar, segue do tempo do vídeo sem comandos; lacunas que passaram ficam puladas', () => {
+		const game = started();
+		game.tick(3, 10);
+		game.suspend(20);
+		game.relocate(15, true);
+		expect(game.suspended).toBe(false);
+		expect(game.phase).toBe('playing');
+		expect(game.activeLine).toBe(3);
+		expect(game.results).toEqual([
+			{ line: 1, answer: 'bravo', chosen: '', ok: false, points: 0, skipped: true }
+		]);
+		expect(game.answerable?.line).toBe(3);
+		expect(game.summary().wrong).toEqual([]);
+	});
+
+	test('com o vídeo parado, fecha pausado e o play retoma', () => {
 		const game = started();
 		game.tick(7, 10);
 		game.pause(20);
-		expect(game.rewindToLine(30)).toEqual([{ type: 'seek', to: 6 }]);
+		game.suspend(30);
+		game.relocate(7.5, false);
 		expect(game.phase).toBe('paused');
+		expect(game.answerable).toBeNull();
 		expect(game.resume(40)).toEqual([{ type: 'play' }]);
-		expect(game.phase).toBe('playing');
-	});
-
-	test('pausado na espera: larga o contador e a linha toca de novo ao retomar', () => {
-		const game = started();
-		game.tick(7, 10);
-		game.tick(10.1, 20);
-		expect(game.phase).toBe('waiting');
-		game.pause(30);
-		game.rewindToLine(40);
-		expect(game.waitRemainingMs(50)).toBeNull();
-		expect(game.resume(60)).toEqual([{ type: 'play' }]);
-		expect(game.activeLine).toBe(1);
 		expect(game.answerable?.line).toBe(1);
 	});
 
-	test('antes da primeira linha ou fora da pausa não faz nada', () => {
+	test('fora do jogo (pronto, fim) não suspende', () => {
+		const game = new Game(config());
+		game.suspend(0);
+		expect(game.suspended).toBe(false);
+	});
+});
+
+describe('tempos da sincronia', () => {
+	test('setTiming troca os tempos das linhas', () => {
 		const game = started();
-		game.pause(10);
-		expect(game.rewindToLine(20)).toEqual([]);
-		const playing = started();
-		playing.tick(7, 10);
-		expect(playing.rewindToLine(20)).toEqual([]);
+		game.setTiming([
+			{ start: 12, end: 16 },
+			{ start: 16, end: 20 },
+			{ start: 20, end: 24 },
+			{ start: 24, end: 28 }
+		]);
+		game.tick(7, 10);
+		expect(game.activeLine).toBe(-1);
+		game.tick(17, 20);
+		expect(game.answerable?.line).toBe(1);
+	});
+
+	test('linha ausente é pulada e a lacuna dela não conta', () => {
+		const game = started();
+		game.setTiming([
+			{ start: 2, end: 6 },
+			{ start: 6, end: 10, present: false },
+			{ start: 6, end: 10 },
+			{ start: 10, end: 14 }
+		]);
+		game.tick(7, 10);
+		expect(game.activeLine).toBe(2);
+		expect(game.answerable).toBeNull();
+		expect(game.total).toBe(1);
+		expect(game.summary().total).toBe(1);
+	});
+
+	test('pulo para a frente no vídeo marca as lacunas do meio como puladas', () => {
+		const game = started();
+		game.tick(3, 10);
+		game.tick(15, 20);
+		expect(game.activeLine).toBe(3);
+		expect(game.results.map((r) => [r.line, r.skipped])).toEqual([[1, true]]);
 	});
 });
 
@@ -372,7 +416,7 @@ describe('fim', () => {
 	test('"Jogar de novo" depois do resumo recomeça', () => {
 		const game = started();
 		game.finishNow();
-		expect(game.retry(5)).toEqual([{ type: 'seek', to: 0 }, { type: 'play' }]);
+		expect(game.retry()).toEqual([{ type: 'seek', to: 0 }, { type: 'play' }]);
 		expect(game.phase).toBe('playing');
 	});
 });

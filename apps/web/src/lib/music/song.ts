@@ -2,7 +2,7 @@
 // tipo 'musica'; os limites espelham os checks da tabela works.
 
 import { LIMITS, normalizeText } from '../items.ts';
-import { syncFromRefs, type LyricsSync } from './offset.ts';
+import { syncFromRefs, type StoredSync } from './timeline.ts';
 import { isMusicLanguage, type MusicLanguage } from './wordlists.ts';
 import { parseYoutubeId } from './youtube.ts';
 
@@ -69,8 +69,8 @@ export interface Song {
 	artist: string;
 	language: MusicLanguage;
 	playedAt: string | null;
-	/** Deslocamento da letra que a pessoa acertou para este vídeo. */
-	sync: LyricsSync;
+	/** Linha do tempo da letra que a pessoa acertou para este vídeo. */
+	sync: StoredSync;
 }
 
 /** Uma obra do tipo 'musica' como o jogo usa; null se não dá para jogar. */

@@ -9,27 +9,43 @@ import { VIDEO_SECONDS } from './fixtures.ts';
 const FAKE_IFRAME_API = `
 (() => {
 	const SPEED = window.__fakeYTSpeed || 1;
-	const state = { time: 0, playing: false, rate: 1, last: performance.now(), duration: ${VIDEO_SECONDS} };
+	// Manias do YouTube de verdade, que já quebraram o jogo: o seek chega depois (e o tempo
+	// antigo segue aparecendo), cai no keyframe antes do alvo, seek fora da pausa toca, e
+	// os eventos de estado chegam atrasados (postMessage).
+	const Q = { seekLagMs: 250, keyframeS: 0.5, stateLagMs: 40 };
+	const state = { time: 0, status: 'unstarted', rate: 1, last: performance.now(), duration: ${VIDEO_SECONDS} };
 	const log = [];
 	let current = null;
+	let pending = null;
+	const CODES = { unstarted: -1, ended: 0, playing: 1, paused: 2 };
+
+	function emit(status) {
+		state.status = status;
+		const data = CODES[status];
+		setTimeout(() => current && current.events.onStateChange({ data }), Q.stateLagMs);
+	}
 
 	function sync() {
 		const now = performance.now();
-		if (state.playing) {
+		if (state.status === 'playing') {
 			state.time = Math.min(state.duration, state.time + ((now - state.last) / 1000) * state.rate * SPEED);
-			if (state.time >= state.duration) {
-				state.playing = false;
-				log.push('ended');
-				current && current.events.onStateChange({ data: 0 });
-			}
+		}
+		if (pending && now >= pending.at) {
+			state.time = pending.to;
+			pending = null;
+		}
+		if (state.status === 'playing' && state.time >= state.duration) {
+			log.push('ended');
+			emit('ended');
 		}
 		state.last = now;
 	}
 
 	window.__fakeYT = {
 		log,
+		/** O que se ouve (sem o atraso do seek). */
 		get time() { sync(); return state.time; },
-		get playing() { return state.playing; },
+		get playing() { return state.status === 'playing'; },
 		get rate() { return state.rate; },
 		/** Quantas vezes cada comando foi chamado. */
 		count(name) { return log.filter((entry) => entry === name || entry.startsWith(name + ':')).length; }
@@ -44,9 +60,20 @@ const FAKE_IFRAME_API = `
 			target.replaceWith(frame);
 			setTimeout(() => options.events.onReady({ target: this }), 20);
 		}
-		playVideo() { sync(); state.playing = true; log.push('play'); current.events.onStateChange({ data: 1 }); }
-		pauseVideo() { sync(); state.playing = false; log.push('pause'); current.events.onStateChange({ data: 2 }); }
-		seekTo(seconds) { sync(); state.time = seconds; log.push('seek:' + seconds); }
+		playVideo() {
+			sync();
+			if (state.status === 'ended') state.time = 0;
+			log.push('play');
+			emit('playing');
+		}
+		pauseVideo() { sync(); log.push('pause'); emit('paused'); }
+		seekTo(seconds) {
+			sync();
+			log.push('seek:' + seconds);
+			const kf = Q.keyframeS;
+			pending = { to: Math.max(0, Math.min(state.duration, Math.floor(seconds / kf) * kf)), at: performance.now() + Q.seekLagMs };
+			if (state.status !== 'paused' && state.status !== 'playing') emit('playing');
+		}
 		getCurrentTime() { sync(); return state.time; }
 		getDuration() { return state.duration; }
 		setPlaybackRate(rate) { state.rate = rate; log.push('rate:' + rate); }

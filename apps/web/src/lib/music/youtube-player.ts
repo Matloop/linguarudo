@@ -2,7 +2,7 @@
 // Só este arquivo conhece a API; o jogo fala com `PlayerAdapter`, o que deixa
 // trocar o player por um fake nos testes (os e2e interceptam o script oficial).
 
-import type { PlayerAdapter, PlayerEvents, PlayerFactory } from './youtube.ts';
+import type { PlayerAdapter, PlayerEvents, PlayerFactory, PlayerState } from './youtube.ts';
 
 interface YTPlayer {
 	playVideo(): void;
@@ -41,7 +41,16 @@ declare global {
 
 const API_URL = 'https://www.youtube.com/iframe_api';
 const READY_TIMEOUT_MS = 15_000;
-const ENDED = 0;
+const STATES: Record<number, PlayerState> = {
+	[-1]: 'unstarted',
+	0: 'ended',
+	1: 'playing',
+	2: 'paused',
+	3: 'buffering',
+	5: 'cued'
+};
+/** Sem tocar nem carregar este tempo depois do play: o navegador bloqueou. */
+const AUTOPLAY_CHECK_MS = 2_500;
 
 let apiPromise: Promise<YTNamespace> | undefined;
 
@@ -85,6 +94,17 @@ export const createYoutubePlayer: PlayerFactory = async (host, videoId, events: 
 			() => reject(new Error('O player do YouTube demorou demais para abrir.')),
 			READY_TIMEOUT_MS
 		);
+		let state: PlayerState = 'unstarted';
+		let playCheck: ReturnType<typeof setTimeout> | undefined;
+		const requestPlay = () => {
+			player.playVideo();
+			clearTimeout(playCheck);
+			playCheck = setTimeout(() => {
+				if (state !== 'playing' && state !== 'buffering' && state !== 'ended') {
+					events.onAutoplayBlocked();
+				}
+			}, AUTOPLAY_CHECK_MS);
+		};
 		const player = new YT.Player(target, {
 			videoId,
 			width: '100%',
@@ -103,17 +123,28 @@ export const createYoutubePlayer: PlayerFactory = async (host, videoId, events: 
 				onReady: () => {
 					clearTimeout(timer);
 					resolve({
-						play: () => player.playVideo(),
-						pause: () => player.pauseVideo(),
+						play: requestPlay,
+						pause: () => {
+							clearTimeout(playCheck);
+							player.pauseVideo();
+						},
 						seekTo: (s) => player.seekTo(s, true),
 						currentTime: () => player.getCurrentTime() || 0,
 						duration: () => player.getDuration() || 0,
 						setRate: (r) => player.setPlaybackRate(r),
-						destroy: () => player.destroy()
+						destroy: () => {
+							clearTimeout(playCheck);
+							player.destroy();
+						}
 					});
 				},
 				onStateChange: (e) => {
-					if (e.data === ENDED) events.onEnded();
+					const next = STATES[e.data];
+					if (!next) return;
+					state = next;
+					if (next === 'playing') clearTimeout(playCheck);
+					events.onState(next);
+					if (next === 'ended') events.onEnded();
 				},
 				onError: (e) => {
 					clearTimeout(timer);

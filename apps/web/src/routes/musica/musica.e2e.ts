@@ -350,27 +350,32 @@ test('no celular o vídeo e as opções cabem na tela', async ({ page }) => {
 	expect(overflow).toBe(false);
 });
 
-test('sincronia: o palpite pela duração aparece em clipe, e aplicar fica salvo na música', async ({
+test('sincronia: clipe mostra o palpite e outra versão da letra fica salva na música', async ({
 	page
 }) => {
 	await installFakeYoutube(page);
 	await login(page);
 	await pickSong(page, VIDEOS.clip);
 
-	// O vídeo tem 12 s a mais que a faixa do LRCLIB: a letra é achada mesmo assim e vem o palpite.
+	// O vídeo tem 12 s a mais que a faixa do LRCLIB: a letra é achada mesmo assim e vem o aviso.
 	const dica = page.getByTestId('dica-sincronia');
 	await expect(dica).toContainText('12,0 s a mais que a música');
-	await Promise.all([
-		page.waitForResponse((r) => r.url().includes('/musica/sincronia') && r.ok()),
-		dica.getByRole('button', { name: 'Aplicar +12,0 s' }).click()
-	]);
-	await expect(dica).toBeHidden();
+	await expect(dica.getByRole('button', { name: /^Aplicar/ })).toHaveCount(0);
 
+	// Outras versões: a ao vivo (70 s) troca a letra e fica salva.
+	await dica.getByRole('button', { name: 'Ver outras versões' }).click();
+	const versoes = page.getByTestId('versoes');
+	await expect(versoes).toContainText('Ao Vivo');
+	await Promise.all([
+		page.waitForRequest((r) => r.url().includes('/musica/letra') && r.url().includes('id=3')),
+		page.waitForResponse((r) => r.url().includes('/musica/sincronia') && r.ok()),
+		versoes.getByRole('button', { name: /Ao Vivo/ }).click()
+	]);
+
+	const letra = page.waitForRequest((r) => r.url().includes('/musica/letra'));
 	await page.reload();
+	expect((await letra).url()).toContain('id=3');
 	await expect(page.getByRole('button', { name: 'Começar' })).toBeVisible();
-	await expect(page.getByTestId('dica-sincronia')).toHaveCount(0);
-	await begin(page);
-	await expect(page.getByTestId('sincronia')).toContainText('+12,0 s');
 });
 
 test('sincronia: ignorar o palpite também fica salvo', async ({ page }) => {
@@ -388,7 +393,7 @@ test('sincronia: ignorar o palpite também fica salvo', async ({ page }) => {
 	await expect(page.getByTestId('dica-sincronia')).toHaveCount(0);
 });
 
-test('sincronia: marcar a linha no tempo, ajuste fino, concluir salva e cancelar desfaz', async ({
+test('sincronia: não mexe no vídeo, marca trechos, não pula de linha sozinha, concluir salva e cancelar desfaz', async ({
 	page
 }) => {
 	test.setTimeout(60_000);
@@ -399,30 +404,47 @@ test('sincronia: marcar a linha no tempo, ajuste fino, concluir salva e cancelar
 	await expect(page.getByRole('button', { name: 'Começar' })).toBeVisible();
 	await expect(page.getByTestId('dica-sincronia')).toHaveCount(0);
 	await begin(page);
-	await page.waitForTimeout(800);
+	await expect.poll(() => page.evaluate(() => window.__fakeYT.time)).toBeGreaterThan(2);
 
-	// Nunca ajustada: o modo abre do começo do vídeo, mirando a primeira linha, sem lacunas.
-	const seeksBefore = await calls(page, 'seek:0');
+	const log = () => page.evaluate(() => [...window.__fakeYT.log]);
+	const panel = page.getByRole('region', { name: 'Sincronizar a letra' });
+	const trechos = page.getByTestId('sinc-trechos');
+	const gapsBefore = await page.locator('.gap').count();
+
+	// Abrir não manda nada para o player: nem pausa, nem play, nem seek.
+	const logBefore = await log();
 	await page.keyboard.press('s');
-	await expect(page.getByRole('region', { name: 'Sincronizar a letra' })).toBeVisible();
+	await expect(panel).toBeVisible();
 	await expect(page.getByTestId('estado')).toHaveText('Ajustando a sincronia');
-	expect(await calls(page, 'seek:0')).toBe(seeksBefore + 1);
-	await expect(page.getByTestId('sinc-alvo')).toHaveText(VERSES[0]);
-	await expect(page.locator('.gap')).toHaveCount(0);
-	await expect(page.locator('.op')).toHaveCount(0);
+	await page.waitForTimeout(500);
+	expect(await log()).toEqual(logBefore);
 	expect(await playing(page)).toBe(true);
+	// As lacunas continuam escondidas: a sincronia não entrega as respostas.
+	await expect(page.locator('.gap')).toHaveCount(gapsBefore);
+	await expect(page.locator('.op')).toHaveCount(0);
 
-	// "Começou agora" (Espaço) com o vídeo uns 2 s adiante da linha 1, que começa em 1 s.
-	await expect.poll(() => page.evaluate(() => window.__fakeYT.time)).toBeGreaterThan(3);
+	// Tocar na linha 2 ancora ela agora.
+	await page.locator('.lin[data-line="1"] .lin-alvo').click();
+	await expect(trechos.locator('li')).toHaveCount(1);
+	await expect(trechos).toContainText('Linha 2 em diante');
+	await expect(page.locator('.lin.alvo-sinc')).toHaveCount(1);
+	await expect(page.locator('.lin[data-line="1"].alvo-sinc')).toBeVisible();
+
+	// O tempo passa e a linha escolhida não muda sozinha.
+	await page.waitForTimeout(2500);
+	await expect(page.locator('.lin[data-line="1"].alvo-sinc')).toBeVisible();
+
+	// ↓ escolhe a próxima, Espaço marca: dois trechos.
+	await page.keyboard.press('ArrowDown');
+	await expect(page.locator('.lin[data-line="2"].alvo-sinc')).toBeVisible();
 	await page.keyboard.press('Space');
-	const marked = await page.getByTestId('sinc-offset').innerText();
-	expect(marked).toMatch(/^\+[1-9],\d s$/);
-	await expect(page.getByTestId('sinc-alvo')).toHaveText(VERSES[1]);
+	await expect(trechos.locator('li')).toHaveCount(2);
+	await expect(trechos).toContainText('Linha 3 em diante');
 
-	// Ajuste fino: Shift+→ soma 1 s, ← tira 0,1 s.
+	// Ajuste fino do trecho: Shift+→ soma 1 s, ← tira 0,1 s.
+	const marked = await page.getByTestId('sinc-offset').innerText();
 	await page.keyboard.press('Shift+ArrowRight');
 	await page.keyboard.press('ArrowLeft');
-	const tuned = await page.getByTestId('sinc-offset').innerText();
 	const num = (s: string) =>
 		Number(
 			s
@@ -430,26 +452,44 @@ test('sincronia: marcar a linha no tempo, ajuste fino, concluir salva e cancelar
 				.replace(',', '.')
 				.replace('−', '-')
 		);
-	expect(num(tuned)).toBeCloseTo(num(marked) + 0.9, 5);
+	await expect
+		.poll(async () => num(await page.getByTestId('sinc-offset').innerText()) - num(marked))
+		.toBeCloseTo(0.9, 5);
 
-	// Concluir: volta ao jogo, pausado, com aviso; o valor fica salvo na música.
-	await page.keyboard.press('Enter');
-	await expect(page.getByRole('region', { name: 'Sincronizar a letra' })).toBeHidden();
-	await expect(page.getByText(/Sincronia salva: .*Toque play para continuar/)).toBeVisible();
-	await expect(page.getByTestId('estado')).toHaveText('Pausado');
-	expect(await playing(page)).toBe(false);
-	await expect(page.getByTestId('sincronia')).toContainText(tuned);
+	// Desfazer volta o último passo (o −0,1).
+	await panel.getByRole('button', { name: 'Desfazer' }).click();
+	await expect
+		.poll(async () => num(await page.getByTestId('sinc-offset').innerText()) - num(marked))
+		.toBeCloseTo(1, 5);
+	const tuned = await page.getByTestId('sinc-offset').innerText();
 
-	// Cancelar desfaz o que mudou no modo.
-	await page.getByTestId('sincronia').click();
-	await expect(page.getByRole('region', { name: 'Sincronizar a letra' })).toBeVisible();
+	// Concluir (Enter): salva, avisa e também não mexe no vídeo.
+	const logBeforeClose = await log();
+	await Promise.all([
+		page.waitForResponse((r) => r.url().includes('/musica/sincronia') && r.ok()),
+		page.keyboard.press('Enter')
+	]);
+	await expect(panel).toBeHidden();
+	await expect(page.getByText('Sincronia salva.')).toBeVisible();
+	expect(await log()).toEqual(logBeforeClose);
+	expect(await playing(page)).toBe(true);
+	const bar = await page.getByTestId('barra-offset').innerText();
+
+	// Cancelar (Esc) desfaz o que mudou no modo.
+	await page.keyboard.press('s');
+	await expect(panel).toBeVisible();
 	await page.keyboard.press('Shift+ArrowRight');
 	await expect(page.getByTestId('sinc-offset')).not.toHaveText(tuned);
 	await page.keyboard.press('Escape');
-	await expect(page.getByRole('region', { name: 'Sincronizar a letra' })).toBeHidden();
-	await expect(page.getByTestId('sincronia')).toContainText(tuned);
+	await expect(panel).toBeHidden();
+	await expect(page.getByTestId('barra-offset')).toHaveText(bar);
 
+	// Depois de recarregar, os trechos continuam lá.
 	await page.reload();
 	await begin(page);
-	await expect(page.getByTestId('sincronia')).toContainText(tuned);
+	await page.keyboard.press('s');
+	await expect(trechos.locator('li')).toHaveCount(2);
+	await expect(trechos).toContainText('Linha 2 em diante');
+	await expect(trechos).toContainText('Linha 3 em diante');
+	await expect(trechos).toContainText(tuned);
 });

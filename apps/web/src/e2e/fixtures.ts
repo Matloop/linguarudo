@@ -18,7 +18,15 @@ export const LRC = [
 	'[00:25.00]'
 ].join('\n');
 
+/** Outra versão da letra no LRCLIB (ao vivo): os mesmos versos 2 s depois. */
+export const LRC_LIVE = [
+	...VERSES.map((text, i) => `[00:${String(3 + i * 3).padStart(2, '0')}.00] ${text}`),
+	'[00:27.00]'
+].join('\n');
+
 export const VIDEO_SECONDS = 28;
+/** Duração da versão ao vivo: longe do vídeo, nunca é a escolhida sozinha. */
+export const LIVE_SECONDS = 70;
 export const CLIP_EXTRA_SECONDS = 12;
 
 export const VIDEOS = {
@@ -28,3 +36,6 @@ export const VIDEOS = {
 	noLyrics: { id: 'SEMLETRA001', title: 'Sem Letra', artist: 'Banda Inventada' },
 	down: { id: 'FORADOAR001', title: 'Fora do Ar', artist: 'Banda Inventada' }
 } as const;
+
+/** Ids dos registros no LRCLIB falso. O clipe tem duas versões: a faixa e a ao vivo. */
+export const LRCLIB_IDS = { ok: 1, clip: 2, clipLive: 3, noLyrics: 4 } as const;

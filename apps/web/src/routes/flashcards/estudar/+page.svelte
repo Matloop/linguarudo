@@ -18,7 +18,8 @@
 		type ItemReview
 	} from '#lib/review.ts';
 	import { FICHA_KIND_LABELS, renderCloze } from '#lib/fichas.ts';
-	import { langAttrs, languageInline, pickVoice } from '#lib/languages.ts';
+	import { playWord } from '#lib/audio.ts';
+	import { langAttrs, languageInline } from '#lib/languages.ts';
 	import { isTypingTarget, shortcutFor } from '#lib/shortcuts.ts';
 	import { toast } from '#lib/ui/app-state.svelte.ts';
 	import Icon from '#lib/ui/Icon.svelte';
@@ -39,7 +40,11 @@
 	let leech = $state<{ itemId: string; lemma: string; lapses: number } | null>(null);
 	/** Quando o cartão atual apareceu, para a duração da revisão (estatísticas). */
 	let shownAt = 0;
-	let canSpeak = $state(false);
+	/** Preferências do aparelho: tocar a palavra sozinha e mostrar frase e obra na frente. */
+	const PREFS_KEY = 'linguetta:revisar';
+	let autoplay = $state(false);
+	let showContext = $state(true);
+	let prefsLoaded = false;
 
 	let rateForm: HTMLFormElement | undefined = $state();
 	let undoForm: HTMLFormElement | undefined = $state();
@@ -107,7 +112,26 @@
 	}
 
 	onMount(() => {
-		canSpeak = 'speechSynthesis' in window;
+		try {
+			const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}');
+			autoplay = saved.autoplay === true;
+			showContext = saved.showContext !== false;
+		} catch {
+			// Preferência corrompida: fica o padrão.
+		}
+		prefsLoaded = true;
+	});
+
+	$effect(() => {
+		const prefs = JSON.stringify({ autoplay, showContext });
+		if (prefsLoaded) localStorage.setItem(PREFS_KEY, prefs);
+	});
+
+	// No "produzir" a frente é a tradução: o áudio só toca no verso, para não dar a resposta.
+	$effect(() => {
+		if (!autoplay || current?.source !== 'item' || (current.kind === 'produzir') !== flipped)
+			return;
+		speak(false, (flipped ? media?.answer.audio : media?.ask.audio) ?? null);
 	});
 
 	async function flip() {
@@ -188,15 +212,13 @@
 		untrack(() => play(audio));
 	});
 
-	function speak(audio: string | null = null) {
+	/** Gravação do flashcard vence; sem ela, a palavra vem do servidor. No autoplay o navegador pode recusar antes da primeira interação: aí fica em silêncio. */
+	function speak(explicit: boolean, audio: string | null = null) {
 		if (audio) return play(audio);
-		if (!current || current.source !== 'item' || !canSpeak) return;
-		const utterance = new SpeechSynthesisUtterance(current.lemma);
-		utterance.lang = current.language;
-		const voice = pickVoice(speechSynthesis.getVoices(), current.language);
-		if (voice) utterance.voice = voice;
-		speechSynthesis.cancel();
-		speechSynthesis.speak(utterance);
+		if (!current || current.source !== 'item') return;
+		playWord(current.lemma, current.language).catch(() => {
+			if (explicit) toast('Não foi possível tocar o áudio desta palavra');
+		});
 	}
 
 	function rate(grade: Grade) {
@@ -208,7 +230,7 @@
 			screen: 'flashcards',
 			typing: isTypingTarget(e.target),
 			dialogOpen: !!document.querySelector(
-				'dialog[open], details.lang-wrap[open], [data-drawer-open], [data-popover-open]'
+				'dialog[open], details.lang-wrap[open], details.rv-prefs[open], [data-drawer-open], [data-popover-open]'
 			),
 			flipped
 		});
@@ -297,24 +319,24 @@
 	<title>Flashcards · Linguetta</title>
 </svelte:head>
 
-{#snippet source(item: ItemReview, audio: string | null)}
+{#snippet source(item: ItemReview, audio: string | null, withOrigin: boolean)}
 	<div class="fh">
-		<span class="src">
-			<Icon name={ORIGIN_ICONS[item.origin ?? 'manual']} size="sm" />
-			{item.sourceDetail || 'Guardada à mão'}
-		</span>
-		{#if audio || canSpeak}
-			<button
-				class="icon-btn"
-				class:rec={!!audio}
-				type="button"
-				onclick={() => speak(audio)}
-				aria-label="Ouvir"
-				title={audio ? 'Ouvir a pronúncia guardada' : 'Ouvir'}
-			>
-				<Icon name="sound" size="sm" />
-			</button>
-		{/if}
+		{#if withOrigin}
+			<span class="src">
+				<Icon name={ORIGIN_ICONS[item.origin ?? 'manual']} size="sm" />
+				{item.sourceDetail || 'Guardada à mão'}
+			</span>
+		{:else}<span></span>{/if}
+		<button
+			class="icon-btn"
+			class:rec={!!audio}
+			type="button"
+			onclick={() => speak(true, audio)}
+			aria-label="Ouvir"
+			title={audio ? 'Ouvir a pronúncia guardada' : 'Ouvir'}
+		>
+			<Icon name="sound" size="sm" />
+		</button>
 	</div>
 {/snippet}
 
@@ -427,6 +449,18 @@
 			>
 			<span class="r">
 				<span data-testid="contador">{current ? session.answered + 1 : total} de {total}</span>
+				<details class="rv-prefs">
+					<summary class="icon-btn" aria-label="Preferências da revisão" title="Preferências"
+						><Icon name="settings" /></summary
+					>
+					<div class="menu">
+						<label><input type="checkbox" bind:checked={autoplay} />Tocar a palavra sozinha</label>
+
+						<label
+							><input type="checkbox" bind:checked={showContext} />Mostrar frase e origem na frente</label
+						>
+					</div>
+				</details>
 				<a class="icon-btn" href={resolve('/flashcards')} aria-label="Sair da revisão" title="Sair"
 					><Icon name="x" /></a
 				>
@@ -483,7 +517,7 @@
 								</section>
 							{:else}
 								<section class="face front" inert={flipped} aria-label="Frente do flashcard">
-									{@render source(current, media?.ask.audio ?? null)}
+									{@render source(current, media?.ask.audio ?? null, showContext)}
 									<div class="mid">
 										{#if current.kind === 'produzir'}
 											{@render picture(media?.ask.image ?? null)}
@@ -497,10 +531,13 @@
 											{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
 										{/if}
 									</div>
-									{#if current.kind === 'reconhecer'}{@render sentence(current, true)}{/if}
+									{#if current.kind === 'reconhecer' && showContext}{@render sentence(
+											current,
+											true
+										)}{/if}
 								</section>
 								<section class="face back" inert={!flipped} aria-label="Verso do flashcard">
-									{@render source(current, media?.answer.audio ?? null)}
+									{@render source(current, media?.answer.audio ?? null, true)}
 									<div class="mid">
 										{@render picture(media?.answer.image ?? null)}
 										{#if current.kind === 'produzir'}
@@ -744,6 +781,42 @@
 		font: 500 14.5px var(--f-body);
 		font-variant-numeric: tabular-nums;
 		color: var(--ink-3);
+	}
+	.rv-prefs {
+		position: relative;
+	}
+	.rv-prefs summary {
+		list-style: none;
+		cursor: pointer;
+	}
+	.rv-prefs summary::-webkit-details-marker {
+		display: none;
+	}
+	.rv-prefs .menu {
+		position: absolute;
+		right: 0;
+		top: calc(100% + 6px);
+		z-index: 10;
+		display: grid;
+		gap: 2px;
+		padding: 6px;
+		min-width: 260px;
+		border-radius: var(--r-m);
+		background: var(--raise);
+		box-shadow: var(--sh-lift);
+		color: var(--ink);
+	}
+	.rv-prefs label {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 10px;
+		border-radius: var(--r-s);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.rv-prefs label:hover {
+		background: var(--tile);
 	}
 	.rv-stage {
 		flex: 1;

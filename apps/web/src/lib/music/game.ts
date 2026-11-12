@@ -4,13 +4,12 @@
 // enquanto ela toca. Se a linha acaba sem resposta, o vídeo pausa e começa um
 // contador de 10 s; sem resposta nesse tempo, é fim de jogo.
 //
-// A classe não conhece o player nem o relógio: recebe o tempo do vídeo e o
-// "agora" a cada chamada e devolve comandos para o player executar.
+// A classe não conhece o player nem o relógio: recebe o tempo do vídeo (já filtrado
+// pelo Playhead) e o "agora" a cada chamada e devolve comandos para o player executar.
+// As linhas vêm em tempo do vídeo (a sincronia já aplicada); linha ausente (o clipe
+// cortou) é pulada e a lacuna dela não conta.
 
 export const WAIT_MS = 10_000;
-/** Depois de um seek, ignora o tempo antigo que o player ainda informa; confia de novo após isto. */
-const SEEK_GRACE_MS = 3_000;
-const SEEK_TOLERANCE_S = 1;
 /** Depois do fim da última linha, espera um pouco (o final da frase) e fecha o jogo. */
 const OUTRO_S = 1.5;
 const MAX_COMBO = 4;
@@ -23,6 +22,8 @@ export type Command = { type: 'play' } | { type: 'pause' } | { type: 'seek'; to:
 export interface GameLineTiming {
 	start: number;
 	end: number;
+	/** false: o clipe cortou a linha. Padrão: true. */
+	present?: boolean;
 }
 
 export interface GameGapConfig {
@@ -43,6 +44,8 @@ export interface GapResult {
 	chosen: string;
 	ok: boolean;
 	points: number;
+	/** O vídeo passou da linha sem dar chance de responder (seek, sincronia). */
+	skipped?: boolean;
 }
 
 export interface Summary {
@@ -73,10 +76,22 @@ export class Game {
 	#frozenRemaining = 0;
 	#resumeTo: 'playing' | 'waiting' = 'playing';
 	#overLine = -1;
-	#pending: { to: number; until: number } | null = null;
+	#suspended = false;
 
 	constructor(config: GameConfig) {
 		this.#config = config;
+	}
+
+	/** A sincronia mudou: novos tempos (do vídeo) para as mesmas linhas. */
+	setTiming(lines: readonly GameLineTiming[]) {
+		if (lines.length !== this.#config.lines.length) return;
+		this.#config = { ...this.#config, lines };
+		this.#changed();
+	}
+
+	/** Enquanto a pessoa sincroniza, o jogo congela: nada de pontos, lacunas ou comandos. */
+	get suspended(): boolean {
+		return this.#suspended;
 	}
 
 	get lines() {
@@ -93,6 +108,7 @@ export class Game {
 		if (this.phase === 'playing') line = this.activeLine;
 		else if (this.phase === 'waiting' && this.waitLine !== null) line = this.waitLine;
 		else return null;
+		if (this.#suspended) return null;
 		return this.#openGap(line);
 	}
 
@@ -103,6 +119,7 @@ export class Game {
 
 	/** Milissegundos que faltam do contador; null fora da espera. */
 	waitRemainingMs(now: number): number | null {
+		if (this.phase === 'waiting' && this.#suspended) return this.#frozenRemaining;
 		if (this.phase === 'waiting') return Math.max(0, this.#deadline - now);
 		if (this.phase === 'paused' && this.#resumeTo === 'waiting') return this.#frozenRemaining;
 		return null;
@@ -117,12 +134,7 @@ export class Game {
 
 	tick(time: number, now: number): Command[] {
 		if (this.phase !== 'playing' && this.phase !== 'waiting') return [];
-
-		if (this.#pending) {
-			const arrived = Math.abs(time - this.#pending.to) <= SEEK_TOLERANCE_S;
-			if (!arrived && now < this.#pending.until) return [];
-			this.#pending = null;
-		}
+		if (this.#suspended) return [];
 
 		if (this.phase === 'waiting') {
 			if (now >= this.#deadline) {
@@ -148,6 +160,8 @@ export class Game {
 		const line = this.#lineAt(time);
 		if (line !== this.activeLine) {
 			this.#changed();
+			// Pulo para a frente (a pessoa arrastou a barra do vídeo): as lacunas do meio ficam puladas.
+			this.#skipBefore(line, prev + 1);
 			this.activeLine = line;
 		}
 
@@ -161,6 +175,7 @@ export class Game {
 	}
 
 	answer(option: string): Command[] {
+		if (this.#suspended) return [];
 		const gap = this.answerable;
 		if (!gap || !gap.options.includes(option)) return [];
 		this.#changed();
@@ -186,6 +201,7 @@ export class Game {
 	}
 
 	pause(now: number): Command[] {
+		if (this.#suspended) return [];
 		if (this.phase === 'playing') {
 			this.#changed();
 			this.phase = 'paused';
@@ -203,7 +219,7 @@ export class Game {
 	}
 
 	resume(now: number): Command[] {
-		if (this.phase !== 'paused') return [];
+		if (this.phase !== 'paused' || this.#suspended) return [];
 		this.#changed();
 		if (this.#resumeTo === 'waiting') {
 			this.phase = 'waiting';
@@ -215,7 +231,8 @@ export class Game {
 	}
 
 	/** Volta o vídeo ao início da linha atual e toca. */
-	repeatLine(now: number): Command[] {
+	repeatLine(): Command[] {
+		if (this.#suspended) return [];
 		if (this.phase !== 'playing' && this.phase !== 'waiting' && this.phase !== 'paused') return [];
 		// Na espera (ou na pausa que veio dela) a linha é a que aguarda resposta.
 		const index = this.waitLine ?? this.activeLine;
@@ -226,36 +243,47 @@ export class Game {
 		this.phase = 'playing';
 		this.waitLine = null;
 		this.activeLine = index;
-		return this.#seek(this.lines[index].start, now, !wasPlaying);
+		return this.#seek(this.lines[index].start, !wasPlaying);
+	}
+
+	/** Abre a sincronia: congela tudo, inclusive o contador da espera. Não mexe no vídeo. */
+	suspend(now: number) {
+		if (this.#suspended) return;
+		if (this.phase === 'ready' || this.phase === 'gameover' || this.phase === 'finished') return;
+		this.#changed();
+		if (this.phase === 'waiting') this.#frozenRemaining = Math.max(0, this.#deadline - now);
+		this.#suspended = true;
 	}
 
 	/**
-	 * Depois de ajustar a sincronia (jogo pausado): volta ao início da linha atual e
-	 * continua pausado. Na espera, larga o contador: ao retomar, a linha toca de novo.
+	 * Fecha a sincronia: o jogo continua de onde o vídeo está, com os tempos novos, sem
+	 * mexer no vídeo. Lacunas de linhas que já passaram ficam puladas (sem ponto, sem
+	 * zerar o combo). Pausa se o vídeo está parado.
 	 */
-	rewindToLine(now: number): Command[] {
-		if (this.phase !== 'paused') return [];
-		const index = this.waitLine ?? this.activeLine;
-		if (index < 0) return [];
+	relocate(time: number, playing: boolean) {
+		if (!this.#suspended) return;
+		this.#suspended = false;
 		this.#changed();
-		this.#resumeTo = 'playing';
+		const line = this.#lineAt(time);
+		this.#skipBefore(line, 0);
+		this.activeLine = line;
 		this.waitLine = null;
-		this.activeLine = index;
-		return this.#seek(this.lines[index].start, now, false);
+		this.#resumeTo = 'playing';
+		this.phase = playing ? 'playing' : 'paused';
 	}
 
 	/** Fim de jogo → continuar: volta ao início da linha e segue. */
-	continueAfterGameOver(now: number): Command[] {
+	continueAfterGameOver(): Command[] {
 		if (this.phase !== 'gameover') return [];
 		this.#changed();
 		const line = Math.max(0, this.#overLine);
 		this.phase = 'playing';
 		this.activeLine = line;
-		return this.#seek(this.lines[line].start, now, true);
+		return this.#seek(this.lines[line].start, true);
 	}
 
 	/** Recomeça a música do zero (fim de jogo ou resumo). */
-	retry(now: number): Command[] {
+	retry(): Command[] {
 		if (this.phase !== 'gameover' && this.phase !== 'finished') return [];
 		this.#changed();
 		this.phase = 'playing';
@@ -267,7 +295,8 @@ export class Game {
 		this.results = [];
 		this.waitLine = null;
 		this.#overLine = -1;
-		return this.#seek(0, now, true);
+		this.#suspended = false;
+		return this.#seek(0, true);
 	}
 
 	/** Encerra e mostra o resumo (Sair do fim de jogo, ou o vídeo acabou). */
@@ -276,14 +305,22 @@ export class Game {
 		this.#changed();
 		this.phase = 'finished';
 		this.waitLine = null;
+		this.#suspended = false;
 		return [{ type: 'pause' }];
+	}
+
+	/** Lacunas que contam: as de linhas presentes, mais as já respondidas. */
+	get total(): number {
+		return this.gaps.filter(
+			(g) => this.#present(g.line) || this.results.some((r) => r.line === g.line)
+		).length;
 	}
 
 	summary(): Summary {
 		return {
-			total: this.gaps.length,
+			total: this.total,
 			correct: this.results.filter((r) => r.ok).length,
-			wrong: this.results.filter((r) => !r.ok),
+			wrong: this.results.filter((r) => !r.ok && !r.skipped),
 			score: this.score,
 			maxCombo: this.maxCombo,
 			timeouts: this.timeouts
@@ -296,22 +333,43 @@ export class Game {
 		this.revision++;
 	}
 
-	#seek(to: number, now: number, play: boolean): Command[] {
-		this.#pending = { to, until: now + SEEK_GRACE_MS };
-		return play ? [{ type: 'seek', to }, { type: 'play' }] : [{ type: 'seek', to }];
+	#seek(to: number, play: boolean): Command[] {
+		const at = Math.max(0, to);
+		return play ? [{ type: 'seek', to: at }, { type: 'play' }] : [{ type: 'seek', to: at }];
+	}
+
+	#present(line: number): boolean {
+		return this.lines[line]?.present !== false;
 	}
 
 	#lineAt(time: number): number {
 		let found = -1;
 		for (let i = 0; i < this.lines.length; i++) {
+			if (!this.#present(i)) continue;
 			if (this.lines[i].start <= time) found = i;
 			else break;
 		}
 		return found;
 	}
 
+	/** Lacunas abertas em linhas de `from` até antes de `line` ficam puladas. */
+	#skipBefore(line: number, from: number) {
+		for (let i = from; i < line; i++) {
+			const gap = this.#openGap(i);
+			if (gap)
+				this.results.push({
+					line: i,
+					answer: gap.answer,
+					chosen: '',
+					ok: false,
+					points: 0,
+					skipped: true
+				});
+		}
+	}
+
 	#openGap(line: number): GameGapConfig | null {
-		if (line < 0) return null;
+		if (line < 0 || !this.#present(line)) return null;
 		const gap = this.gaps.find((g) => g.line === line);
 		if (!gap || this.results.some((r) => r.line === line)) return null;
 		return gap;

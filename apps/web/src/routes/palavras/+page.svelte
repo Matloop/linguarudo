@@ -5,7 +5,8 @@
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { LIMITS } from '#lib/items.ts';
-	import { langAttrs, languageInline, pickVoice } from '#lib/languages.ts';
+	import { playWord } from '#lib/audio.ts';
+	import { langAttrs, languageInline } from '#lib/languages.ts';
 	import {
 		GRADE_LABELS,
 		STRENGTH_LABELS,
@@ -63,7 +64,6 @@
 	const inDeck = $derived(data.items.filter((i) => !deckScope || deckScope.has(i.deckId)));
 	let editing = $state(false);
 	let busy = $state(false);
-	let canSpeak = $state(false);
 	let drawerEl: HTMLElement | undefined = $state();
 
 	const now = $derived(new Date(data.now));
@@ -127,7 +127,6 @@
 	);
 
 	onMount(() => {
-		canSpeak = 'speechSynthesis' in window;
 		answers.load();
 	});
 	// Trocar de palavra fecha a edição.
@@ -183,12 +182,9 @@
 	}
 
 	function speak(text: string) {
-		const u = new SpeechSynthesisUtterance(text);
-		u.lang = data.language;
-		const voice = pickVoice(speechSynthesis.getVoices(), data.language);
-		if (voice) u.voice = voice;
-		speechSynthesis.cancel();
-		speechSynthesis.speak(u);
+		playWord(text, data.language).catch(() =>
+			toast('Não foi possível tocar o áudio desta palavra')
+		);
 	}
 
 	function onSave(e: MouseEvent) {
@@ -534,21 +530,17 @@
 				{#if data.selectedMedia.image}
 					<img class="dr-img" src={data.selectedMedia.image} alt="" loading="lazy" />
 				{/if}
-				{#if selected.ipa || canSpeak || data.selectedMedia.audio}
-					<div class="dr-ipa">
-						{#if selected.ipa}<span>{selected.ipa}</span>{/if}
-						{#if data.selectedMedia.audio}
-							{@const rec = data.selectedMedia.audio}
-							<button class="listen" type="button" onclick={() => void new Audio(rec).play()}
-								><Icon name="sound" size="sm" />Ouvir gravação</button
-							>
-						{:else if canSpeak}<button
-								class="listen"
-								type="button"
-								onclick={() => speak(selected.lemma)}><Icon name="sound" size="sm" />Ouvir</button
-							>{/if}
-					</div>
-				{/if}
+				<div class="dr-ipa">
+					{#if selected.ipa}<span>{selected.ipa}</span>{/if}
+					{#if data.selectedMedia.audio}
+						{@const rec = data.selectedMedia.audio}
+						<button class="listen" type="button" onclick={() => void new Audio(rec).play()}
+							><Icon name="sound" size="sm" />Ouvir gravação</button
+						>
+					{:else}<button class="listen" type="button" onclick={() => speak(selected.lemma)}
+							><Icon name="sound" size="sm" />Ouvir</button
+						>{/if}
+				</div>
 				<div class="dr-tr" class:faint={!selected.sense}>{selected.sense || 'Sem tradução'}</div>
 				{#if selected.note}<p class="note">{selected.note}</p>{/if}
 				{#if selected.tags.length > 0}

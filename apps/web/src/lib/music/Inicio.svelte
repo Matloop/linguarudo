@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { DIFFICULTIES, DIFFICULTY_LABELS, type Difficulty } from './gaps.ts';
-	import { formatOffset } from './offset.ts';
+	import type { LyricVersion } from './Sincronia.svelte';
+	import { formatOffset } from './timeline.ts';
 	import type { MusicLanguage } from './wordlists.ts';
 
 	interface Props {
@@ -17,7 +18,10 @@
 		onretry: () => void;
 		/** Quanto o vídeo tem a mais que a faixa, se a música nunca foi sincronizada. */
 		hint?: number | null;
-		onapplyhint?: () => void;
+		/** Outras versões da letra no LRCLIB (a atual incluída). */
+		versions?: readonly LyricVersion[];
+		version?: number | null;
+		onversion?: (id: number) => void;
 		onsynchint?: () => void;
 		ondismisshint?: () => void;
 	}
@@ -33,10 +37,14 @@
 		onstart,
 		onretry,
 		hint = null,
-		onapplyhint,
+		versions = [],
+		version = null,
+		onversion,
 		onsynchint,
 		ondismisshint
 	}: Props = $props();
+
+	let versionsOpen = $state(false);
 
 	const hintText = $derived(
 		hint === null
@@ -94,15 +102,38 @@
 				<div class="dica" data-testid="dica-sincronia">
 					<p>
 						{hintText}
-						<small>A letra pode sair do tempo. Aplique o palpite ou sincronize você mesmo.</small>
+						<small
+							>A letra pode sair do tempo. Tente outra versão da letra ou sincronize você mesmo.</small
+						>
 					</p>
 					<div class="dica-bts">
-						<button type="button" class="pri" onclick={onapplyhint}
-							>Aplicar {formatOffset(hint)}</button
+						{#if versions.length > 1}
+							<button
+								type="button"
+								class="pri"
+								aria-expanded={versionsOpen}
+								onclick={() => (versionsOpen = !versionsOpen)}>Ver outras versões</button
+							>
+						{/if}
+						<button type="button" class:pri={versions.length <= 1} onclick={onsynchint}
+							>Sincronizar</button
 						>
-						<button type="button" onclick={onsynchint}>Sincronizar</button>
 						<button type="button" class="fant" onclick={ondismisshint}>Ignorar</button>
 					</div>
+					{#if versionsOpen}
+						<ul class="versoes" data-testid="versoes">
+							{#each versions as v (v.id)}
+								<li>
+									<button
+										type="button"
+										class="fant"
+										disabled={v.id === version}
+										onclick={() => onversion?.(v.id)}>{v.label}</button
+									>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				</div>
 			{/if}
 			<button class="ir" type="button" bind:this={go} onclick={onstart}>
@@ -127,6 +158,15 @@
 </div>
 
 <style>
+	.versoes {
+		list-style: none;
+		margin: 8px 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
 	.tela {
 		position: fixed;
 		inset: 0;

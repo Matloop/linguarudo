@@ -43,8 +43,14 @@ export interface PlayerAdapter {
 	destroy(): void;
 }
 
+export type PlayerState = 'unstarted' | 'playing' | 'paused' | 'buffering' | 'ended' | 'cued';
+
 export interface PlayerEvents {
+	/** Mudança de estado, inclusive as que a pessoa faz no próprio player. */
+	onState(state: PlayerState): void;
 	onEnded(): void;
+	/** O navegador não deixou o play começar (falta um gesto da pessoa). */
+	onAutoplayBlocked(): void;
 	onError(message: string): void;
 }
 
