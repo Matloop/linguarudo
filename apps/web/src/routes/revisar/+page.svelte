@@ -14,7 +14,8 @@
 		undoLast,
 		type Grade
 	} from '#lib/review.ts';
-	import { langAttrs, languageInline, pickVoice } from '#lib/languages.ts';
+	import { playWord } from '#lib/audio.ts';
+	import { langAttrs, languageInline } from '#lib/languages.ts';
 	import { isTypingTarget, shortcutFor } from '#lib/shortcuts.ts';
 	import { toast } from '#lib/ui/app-state.svelte.ts';
 	import Icon from '#lib/ui/Icon.svelte';
@@ -34,7 +35,11 @@
 	let leech = $state<{ itemId: string; lemma: string; lapses: number } | null>(null);
 	/** Quando o cartão atual apareceu, para a duração da revisão (estatísticas). */
 	let shownAt = 0;
-	let canSpeak = $state(false);
+	/** Preferências do aparelho: tocar a palavra sozinha e mostrar frase e obra na frente. */
+	const PREFS_KEY = 'linguetta:revisar';
+	let autoplay = $state(false);
+	let showContext = $state(true);
+	let prefsLoaded = false;
 
 	let rateForm: HTMLFormElement | undefined = $state();
 	let undoForm: HTMLFormElement | undefined = $state();
@@ -56,7 +61,24 @@
 	);
 
 	onMount(() => {
-		canSpeak = 'speechSynthesis' in window;
+		try {
+			const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}');
+			autoplay = saved.autoplay === true;
+			showContext = saved.showContext !== false;
+		} catch {
+			// Preferência corrompida: fica o padrão.
+		}
+		prefsLoaded = true;
+	});
+
+	$effect(() => {
+		const prefs = JSON.stringify({ autoplay, showContext });
+		if (prefsLoaded) localStorage.setItem(PREFS_KEY, prefs);
+	});
+
+	// No "produzir" a frente é a tradução: o áudio só toca no verso, para não dar a resposta.
+	$effect(() => {
+		if (autoplay && current && (current.kind === 'produzir') === flipped) speak(false);
 	});
 
 	async function flip() {
@@ -73,14 +95,12 @@
 		showButton?.focus({ preventScroll: true });
 	}
 
-	function speak() {
-		if (!current || !canSpeak) return;
-		const utterance = new SpeechSynthesisUtterance(current.lemma);
-		utterance.lang = current.language;
-		const voice = pickVoice(speechSynthesis.getVoices(), current.language);
-		if (voice) utterance.voice = voice;
-		speechSynthesis.cancel();
-		speechSynthesis.speak(utterance);
+	/** No autoplay o navegador pode recusar antes da primeira interação: aí fica em silêncio. */
+	function speak(explicit: boolean) {
+		if (!current) return;
+		playWord(current.lemma, current.language).catch(() => {
+			if (explicit) toast('Não foi possível tocar o áudio desta palavra');
+		});
 	}
 
 	function rate(grade: Grade) {
@@ -91,7 +111,9 @@
 		const action = shortcutFor(e, {
 			screen: 'revisar',
 			typing: isTypingTarget(e.target),
-			dialogOpen: !!document.querySelector('dialog[open], details.lang-wrap[open]'),
+			dialogOpen: !!document.querySelector(
+				'dialog[open], details.lang-wrap[open], details.rv-prefs[open]'
+			),
 			flipped
 		});
 		if (!action) return;
@@ -177,18 +199,24 @@
 	<title>Revisar · Linguetta</title>
 </svelte:head>
 
-{#snippet source()}
+{#snippet source(withOrigin: boolean)}
 	{#if current}
 		<div class="fh">
-			<span class="src">
-				<Icon name={ORIGIN_ICONS[current.origin ?? 'manual']} size="sm" />
-				{current.sourceDetail || 'Guardada à mão'}
-			</span>
-			{#if canSpeak}
-				<button class="icon-btn" type="button" onclick={speak} aria-label="Ouvir" title="Ouvir">
-					<Icon name="sound" size="sm" />
-				</button>
-			{/if}
+			{#if withOrigin}
+				<span class="src">
+					<Icon name={ORIGIN_ICONS[current.origin ?? 'manual']} size="sm" />
+					{current.sourceDetail || 'Guardada à mão'}
+				</span>
+			{:else}<span></span>{/if}
+			<button
+				class="icon-btn"
+				type="button"
+				onclick={() => speak(true)}
+				aria-label="Ouvir"
+				title="Ouvir"
+			>
+				<Icon name="sound" size="sm" />
+			</button>
 		</div>
 	{/if}
 {/snippet}
@@ -241,6 +269,18 @@
 			>
 			<span class="r">
 				<span data-testid="contador">{current ? session.answered + 1 : total} de {total}</span>
+				<details class="rv-prefs">
+					<summary class="icon-btn" aria-label="Preferências da revisão" title="Preferências"
+						><Icon name="settings" /></summary
+					>
+					<div class="menu">
+						<label><input type="checkbox" bind:checked={autoplay} />Tocar a palavra sozinha</label>
+
+						<label
+							><input type="checkbox" bind:checked={showContext} />Mostrar frase e origem na frente</label
+						>
+					</div>
+				</details>
 				<a class="icon-btn" href={resolve('/inicio')} aria-label="Sair da revisão" title="Sair"
 					><Icon name="x" /></a
 				>
@@ -270,7 +310,7 @@
 					<div class="card3d enter" class:flipped data-testid="cartao">
 						<div class="card-in">
 							<section class="face front" inert={flipped} aria-label="Frente do cartão">
-								{@render source()}
+								{@render source(showContext)}
 								<div class="mid">
 									{#if current.kind === 'produzir'}
 										<div class="ask">Como se diz em {languageName}?</div>
@@ -283,10 +323,10 @@
 										{#if current.ipa}<div class="ipa">{current.ipa}</div>{/if}
 									{/if}
 								</div>
-								{#if current.kind === 'reconhecer'}{@render sentence(true)}{/if}
+								{#if current.kind === 'reconhecer' && showContext}{@render sentence(true)}{/if}
 							</section>
 							<section class="face back" inert={!flipped} aria-label="Verso do cartão">
-								{@render source()}
+								{@render source(true)}
 								<div class="mid">
 									{#if current.kind === 'produzir'}
 										<div class="small-w" {...native}>{current.sense}</div>
@@ -437,6 +477,42 @@
 		font: 500 14.5px var(--f-body);
 		font-variant-numeric: tabular-nums;
 		color: var(--ink-3);
+	}
+	.rv-prefs {
+		position: relative;
+	}
+	.rv-prefs summary {
+		list-style: none;
+		cursor: pointer;
+	}
+	.rv-prefs summary::-webkit-details-marker {
+		display: none;
+	}
+	.rv-prefs .menu {
+		position: absolute;
+		right: 0;
+		top: calc(100% + 6px);
+		z-index: 10;
+		display: grid;
+		gap: 2px;
+		padding: 6px;
+		min-width: 260px;
+		border-radius: var(--r-m);
+		background: var(--raise);
+		box-shadow: var(--sh-lift);
+		color: var(--ink);
+	}
+	.rv-prefs label {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 10px;
+		border-radius: var(--r-s);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.rv-prefs label:hover {
+		background: var(--tile);
 	}
 	.rv-stage {
 		flex: 1;

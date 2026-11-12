@@ -47,24 +47,6 @@ export function languageSelfLabel(tag: Language): string {
 	return capitalize(languageEndonym(tag), tag);
 }
 
-/**
- * Voz para falar o idioma: a da tag inteira ('pt-BR'), senão qualquer uma da base
- * ('pt'). As vozes vêm como 'pt-BR' ou 'pt_BR', em qualquer caixa.
- */
-export function pickVoice<V extends { lang: string }>(
-	voices: readonly V[],
-	tag: Language
-): V | undefined {
-	const norm = (s: string) => s.replace(/_/g, '-').toLowerCase();
-	const full = norm(tag);
-	const base = languageProfile(tag).base.toLowerCase();
-	return (
-		voices.find((v) => norm(v.lang) === full) ??
-		voices.find((v) => norm(v.lang).startsWith(`${full}-`)) ??
-		voices.find((v) => norm(v.lang).split('-')[0] === base)
-	);
-}
-
 /** Atributos lang/dir para texto escrito no idioma. */
 export function langAttrs(tag: Language): { lang: string; dir: 'ltr' | 'rtl' } {
 	return { lang: tag, dir: languageProfile(tag).dir };

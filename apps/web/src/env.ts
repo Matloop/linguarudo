@@ -45,6 +45,11 @@ export const variables = defineEnvVars({
 		schema: optionalUrl('YOUTUBE_OEMBED_URL', 'https://www.youtube.com/oembed'),
 		description: 'oEmbed do YouTube (título e canal do vídeo). Padrão: o endpoint oficial'
 	},
+	SUPERTONIC_DIR: {
+		schema: (value: string | undefined): string => value ?? '',
+		description:
+			'Pasta local do Supertonic 3 (onnx/ e voice_styles/). Vazio: baixa do Hugging Face para o /tmp no primeiro uso'
+	},
 	SYNC_PAIR_LIMITS: {
 		schema: (value: string | undefined): 'on' | 'off' => (value === 'off' ? 'off' : 'on'),
 		description:

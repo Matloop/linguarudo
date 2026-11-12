@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { enhance } from '$app/forms';
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { LIMITS } from '#lib/items.ts';
-	import { langAttrs, languageInline, pickVoice } from '#lib/languages.ts';
+	import { playWord } from '#lib/audio.ts';
+	import { langAttrs, languageInline } from '#lib/languages.ts';
 	import {
 		GRADE_LABELS,
 		STRENGTH_LABELS,
@@ -38,7 +38,6 @@
 	let q = $derived(page.url.searchParams.get('q') ?? '');
 	let editing = $state(false);
 	let busy = $state(false);
-	let canSpeak = $state(false);
 	let drawerEl: HTMLElement | undefined = $state();
 
 	const now = $derived(new Date(data.now));
@@ -70,9 +69,6 @@
 		form?.action === 'edit' && 'errors' in form && form.id === selected?.id ? form.errors : null
 	);
 
-	onMount(() => {
-		canSpeak = 'speechSynthesis' in window;
-	});
 	// Trocar de palavra fecha a edição.
 	$effect(() => {
 		void data.selectedId;
@@ -124,12 +120,9 @@
 	}
 
 	function speak(text: string) {
-		const u = new SpeechSynthesisUtterance(text);
-		u.lang = data.language;
-		const voice = pickVoice(speechSynthesis.getVoices(), data.language);
-		if (voice) u.voice = voice;
-		speechSynthesis.cancel();
-		speechSynthesis.speak(u);
+		playWord(text, data.language).catch(() =>
+			toast('Não foi possível tocar o áudio desta palavra')
+		);
 	}
 
 	function onSave(e: MouseEvent) {
@@ -400,14 +393,12 @@
 			<div class="dr-body">
 				{#if selected.reading}<div class="dr-reading" {...study}>{selected.reading}</div>{/if}
 				<h2 class="dr-word" {...study}>{selected.lemma}</h2>
-				{#if selected.ipa || canSpeak}
-					<div class="dr-ipa">
-						{#if selected.ipa}<span>{selected.ipa}</span>{/if}
-						{#if canSpeak}<button class="listen" type="button" onclick={() => speak(selected.lemma)}
-								><Icon name="sound" size="sm" />Ouvir</button
-							>{/if}
-					</div>
-				{/if}
+				<div class="dr-ipa">
+					{#if selected.ipa}<span>{selected.ipa}</span>{/if}
+					<button class="listen" type="button" onclick={() => speak(selected.lemma)}
+						><Icon name="sound" size="sm" />Ouvir</button
+					>
+				</div>
 				<div class="dr-tr" class:faint={!selected.sense}>{selected.sense || 'Sem tradução'}</div>
 				{#if selected.note}<p class="note">{selected.note}</p>{/if}
 

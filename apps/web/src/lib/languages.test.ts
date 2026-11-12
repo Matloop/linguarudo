@@ -8,8 +8,7 @@ import {
 	languageLabel,
 	parseLanguage,
 	parseStudyLanguages,
-	parseUiLanguage,
-	pickVoice
+	parseUiLanguage
 } from './languages';
 
 describe('parseLanguage', () => {
@@ -79,17 +78,6 @@ describe('Accept-Language', () => {
 		expect(languageDefaults('de-AT,en;q=0.5,pt;q=0.4')).toEqual({ ui: 'en', native: 'de' });
 		expect(languageDefaults('ja')).toEqual({ ui: 'en', native: 'ja' });
 		expect(languageDefaults('')).toEqual({ ui: 'en', native: 'en' });
-	});
-});
-
-describe('pickVoice', () => {
-	const voices = [{ lang: 'pt_PT' }, { lang: 'pt-BR' }, { lang: 'en-US' }];
-
-	test('tenta a tag inteira e depois a base', () => {
-		expect(pickVoice(voices, 'pt-BR')).toEqual({ lang: 'pt-BR' });
-		expect(pickVoice(voices, 'pt')).toEqual({ lang: 'pt_PT' });
-		expect(pickVoice(voices, 'en-GB')).toEqual({ lang: 'en-US' });
-		expect(pickVoice(voices, 'ja')).toBeUndefined();
 	});
 });
 
