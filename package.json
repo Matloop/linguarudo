@@ -9,6 +9,7 @@
     "packages/stremio-server/devaddon"
   ],
   "scripts": {
+    "predev": "bash scripts/dev-preflight.sh",
     "dev": "bun --filter web dev",
     "build": "bun --filter web build",
     "check": "bun --filter web check",
