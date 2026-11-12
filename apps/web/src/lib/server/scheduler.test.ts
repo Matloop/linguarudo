@@ -9,6 +9,7 @@ import {
 	unlocksProduce,
 	type FlashcardRow
 } from './scheduler';
+import { LEARN_AHEAD_MS } from '#lib/review.ts';
 
 const now = new Date('2026-11-10T15:00:00.000Z');
 
@@ -31,13 +32,27 @@ function newRow(over: Partial<FlashcardRow> = {}): FlashcardRow {
 }
 
 describe('applyRating', () => {
-	test('Bom num flashcard novo agenda para dias depois e incrementa reps', async () => {
+	test('Bom num flashcard novo fica no passo de 10 min e incrementa reps', async () => {
 		const { next } = await applyRating(newRow(), 3, now);
 		expect(next.reps).toBe(1);
-		expect(next.state).toBeGreaterThan(0);
+		expect(next.state).toBe(1);
 		expect(next.stability).toBeGreaterThan(0);
 		expect(next.last_review_at).toBe(now.toISOString());
-		expect(new Date(next.due_at).getTime()).toBeGreaterThan(now.getTime() + 24 * 3600_000);
+		expect(new Date(next.due_at).getTime() - now.getTime()).toBe(10 * 60_000);
+	});
+
+	test('Difícil num flashcard novo volta na mesma sessão (o modelo não pula o passo)', async () => {
+		const { next } = await applyRating(newRow(), 2, now);
+		expect(next.state).toBe(1);
+		expect(new Date(next.due_at).getTime() - now.getTime()).toBeLessThanOrEqual(LEARN_AHEAD_MS);
+	});
+
+	test('Bom no último passo forma o flashcard para dias depois', async () => {
+		const { next: passo } = await applyRating(newRow(), 3, now);
+		const depois = new Date(passo.due_at);
+		const { next } = await applyRating({ ...newRow(), ...passo }, 3, depois);
+		expect(next.state).toBe(2);
+		expect(new Date(next.due_at).getTime()).toBeGreaterThanOrEqual(depois.getTime() + 86_400_000);
 	});
 
 	test('De novo deixa o flashcard para daqui a minutos', async () => {
@@ -58,11 +73,13 @@ describe('applyRating', () => {
 	});
 
 	test('errar um flashcard em revisão conta um lapso', async () => {
-		const { next: aprendido } = await applyRating(newRow(), 3, now);
+		const { next: aprendido } = await applyRating(newRow(), 4, now);
+		expect(aprendido.state).toBe(2);
 		const depois = new Date(aprendido.due_at);
 		const { next } = await applyRating({ ...newRow(), ...aprendido }, 1, depois);
 		expect(next.lapses).toBe(1);
 		expect(next.reps).toBe(2);
+		expect(next.state).toBe(3);
 	});
 
 	test('o resultado é determinístico para o mesmo flashcard e momento', async () => {

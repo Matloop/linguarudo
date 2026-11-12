@@ -13,6 +13,7 @@
 		"relearningSteps": [
 			"10m"
 		],
+		"allowModelOverride": false,
 		"maximumInterval": 36500,
 		"weights": "default (FSRS7_DEFAULT_WEIGHTS)",
 		"fuzzSeed": "flashcardId + String(reps after the review)"
@@ -32,17 +33,17 @@
 					"rating": 3,
 					"reviewedAt": "2026-11-01T12:00:00.000Z",
 					"expected": {
-						"due_at": "2026-11-04T12:00:00.000Z",
+						"due_at": "2026-11-01T12:10:00.000Z",
 						"stability": 3.9221,
 						"stability_fast": 3.13768,
 						"difficulty": 3.53072398,
-						"state": 2,
-						"schedule_status": "review",
+						"state": 1,
+						"schedule_status": "learning",
 						"last_review_at": "2026-11-01T12:00:00.000Z",
 						"reps": 1,
 						"lapses": 0,
-						"scheduled_days": 3,
-						"learning_step": 0
+						"scheduled_days": 0.006944444444444444,
+						"learning_step": 1
 					}
 				},
 				{
@@ -396,17 +397,17 @@
 					"rating": 3,
 					"reviewedAt": "2026-06-01T10:00:00.000Z",
 					"expected": {
-						"due_at": "2026-06-06T10:00:00.000Z",
+						"due_at": "2026-06-01T10:10:00.000Z",
 						"stability": 3.9221,
 						"stability_fast": 3.13768,
 						"difficulty": 3.53072398,
-						"state": 2,
-						"schedule_status": "review",
+						"state": 1,
+						"schedule_status": "learning",
 						"last_review_at": "2026-06-01T10:00:00.000Z",
 						"reps": 1,
 						"lapses": 0,
-						"scheduled_days": 5,
-						"learning_step": 0
+						"scheduled_days": 0.006944444444444444,
+						"learning_step": 1
 					}
 				},
 				{
@@ -481,7 +482,7 @@
 					"rating": 1,
 					"reviewedAt": "2026-11-12T10:05:00.000Z",
 					"expected": {
-						"due_at": "2026-11-13T07:27:06.012Z",
+						"due_at": "2026-11-12T10:15:00.000Z",
 						"stability": 7.15064365,
 						"stability_fast": 0.39807685,
 						"difficulty": 9.2467734,
@@ -490,7 +491,7 @@
 						"last_review_at": "2026-11-12T10:05:00.000Z",
 						"reps": 6,
 						"lapses": 1,
-						"scheduled_days": 0.8903473697896866,
+						"scheduled_days": 0.006944444444444444,
 						"learning_step": 0
 					}
 				}
@@ -513,17 +514,17 @@
 					"rating": 3,
 					"reviewedAt": "2026-11-01T09:00:00.000Z",
 					"expected": {
-						"due_at": "2026-11-07T09:00:00.000Z",
+						"due_at": "2026-11-01T09:10:00.000Z",
 						"stability": 3.9221,
 						"stability_fast": 3.13768,
 						"difficulty": 3.53072398,
-						"state": 2,
-						"schedule_status": "review",
+						"state": 1,
+						"schedule_status": "learning",
 						"last_review_at": "2026-11-01T09:00:00.000Z",
 						"reps": 1,
 						"lapses": 0,
-						"scheduled_days": 6,
-						"learning_step": 0
+						"scheduled_days": 0.006944444444444444,
+						"learning_step": 1
 					}
 				},
 				{

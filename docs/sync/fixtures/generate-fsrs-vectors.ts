@@ -4,7 +4,8 @@
 // Cada passo é o flashcard depois de aplicar a revisão, como o servidor grava em flashcards.
 
 import { readFileSync } from 'node:fs';
-import { DESIRED_RETENTION, replay, type LogEntry } from '../../../apps/web/src/lib/server/scheduler.ts';
+import { replay, type LogEntry } from '../../../apps/web/src/lib/server/scheduler.ts';
+import { DEFAULT_RETENTION } from '../../../apps/web/src/lib/review.ts';
 import type { Grade } from '../../../apps/web/src/lib/review.ts';
 
 type Step = [Grade, string];
@@ -101,11 +102,12 @@ const out = {
 	tsFsrs: tsFsrsVersion,
 	scheduler: {
 		version: 'FSRS-7',
-		desiredRetention: DESIRED_RETENTION,
+		desiredRetention: DEFAULT_RETENTION,
 		enableFuzz: true,
 		enableShortTerm: true,
 		learningSteps: ['1m', '10m'],
 		relearningSteps: ['10m'],
+		allowModelOverride: false,
 		maximumInterval: 36500,
 		weights: 'default (FSRS7_DEFAULT_WEIGHTS)',
 		fuzzSeed: 'flashcardId + String(reps after the review)'

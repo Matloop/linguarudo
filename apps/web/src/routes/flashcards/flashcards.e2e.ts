@@ -85,7 +85,7 @@ test('revisão: conhecida, virar, avaliar, desfazer, teclado, fim e estado vazio
 	await expect(grades(page).getByRole('button')).toHaveText([
 		/Errei\s*\d+ min/,
 		/Difícil/,
-		/Bom\s*\d+ (h|d)/,
+		/Bom\s*10 min/,
 		/Fácil\s*\d+ (d|mês|meses)/
 	]);
 
@@ -103,18 +103,28 @@ test('revisão: conhecida, virar, avaliar, desfazer, teclado, fim e estado vazio
 	// Teclado: Espaço vira, 3 = Bom. (Fácil libera o Produzir; tem teste próprio.)
 	await page.keyboard.press('Space');
 	await expect(card(page)).toHaveClass(/flipped/);
+	// Bom num novo vai para o passo de 10 min: volta no fim da fila, como no Anki.
 	await page.keyboard.press('3');
 	await expect(front(page)).toContainText('however');
-	await expect(progresso).toHaveAttribute('aria-valuenow', '50');
+	await expect(counter(page)).toHaveText('2 de 3');
 
 	await page.keyboard.press('Space');
 	await expect(back(page)).toContainText('porém');
 	await expect(front(page).locator('u')).toHaveCount(0); // sem frase, sem destaque
 	await page.keyboard.press('3');
 
+	// Bom no último passo forma o flashcard (dias): sai da sessão.
+	await expect(front(page)).toContainText('give up');
+	await page.keyboard.press('Space');
+	await page.keyboard.press('3');
+	await expect(front(page)).toContainText('however');
+	await expect(progresso).toHaveAttribute('aria-valuenow', '75');
+	await page.keyboard.press('Space');
+	await page.keyboard.press('3');
+
 	await expect(endTitle(page)).toHaveText('Pronto por hoje');
-	await expect(page.getByText('Você revisou 2 flashcards.')).toBeVisible();
-	await expect(page.getByTestId('resumo').locator('[data-g="3"] b')).toHaveText('2');
+	await expect(page.getByText('Você revisou 4 flashcards.')).toBeVisible();
+	await expect(page.getByTestId('resumo').locator('[data-g="3"] b')).toHaveText('4');
 	await expect(reviewLink(page)).not.toContainText('para hoje');
 
 	// Z desfaz a última nota mesmo na tela final.
@@ -179,7 +189,9 @@ test('desfazer o Fácil do Reconhecer apaga o Produzir que ele liberou', async (
 	await expect(front(page)).toContainText('wait');
 	await page.keyboard.press('Space');
 	await page.keyboard.press('3');
-	await expect(endTitle(page)).toHaveText('Pronto por hoje');
+	// Bom num novo fica no passo de 10 min e volta na sessão.
+	await expect(counter(page)).toHaveText('2 de 2');
+	await expect(front(page)).toContainText('wait');
 
 	// "Bom" deixa o flashcard em minutos: o Produzir some.
 	await expect.poll(async () => (await produces(page)).length).toBe(0);
@@ -198,7 +210,7 @@ test('a revisão só traz as palavras do idioma ativo', async ({ page }) => {
 	await expect(counter(page)).toHaveText('1 de 1');
 	await expect(front(page)).toContainText('magari');
 	await page.keyboard.press('Space');
-	await page.keyboard.press('3');
+	await page.keyboard.press('4');
 	await expect(endTitle(page)).toBeVisible();
 	await expect(page.getByText('however')).toHaveCount(0);
 });

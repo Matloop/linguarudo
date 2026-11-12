@@ -58,6 +58,7 @@ export const FSRS_HEADER = {
 	enableFuzz: true,
 	learningSteps: ['1m', '10m'],
 	relearningSteps: ['10m'],
+	allowModelOverride: false,
 	maximumInterval: 36500
 } as const;
 

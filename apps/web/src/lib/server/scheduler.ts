@@ -48,9 +48,12 @@ const DAY_MS = 86_400_000;
 // FSRS-7 (padrão do ts-fsrs 6) com passos de aprendizado e fuzz. O fuzz usa
 // cardId + reps como semente, então a prévia e a nota dão o mesmo intervalo.
 // A retenção desejada é da conta (user_settings.desired_retention): um agendador por valor.
+// allowModelOverride vem ligado no FSRS-7 e deixa o modelo pular os passos (Difícil num
+// cartão novo virava 14 h, Bom virava 6 d). Desligado, os passos valem como no Anki:
+// novo e reaprendendo passam por 1 min / 10 min antes de ir para dias.
 const schedulers = new Map<number, ReturnType<typeof createScheduler>>();
 function createScheduler(desiredRetention: number) {
-	return DefaultScheduler({ desiredRetention, enableFuzz: true });
+	return DefaultScheduler({ desiredRetention, enableFuzz: true, allowModelOverride: false });
 }
 function scheduler(retention: number) {
 	let s = schedulers.get(retention);
