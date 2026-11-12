@@ -1,4 +1,4 @@
-// Áudio da palavra (ADR 0005): pedido validado e chave do cache no bucket "audio".
+// Áudio da palavra (ADR 0006): pedido validado e chave do cache no bucket "audio".
 
 import { createHash } from 'node:crypto';
 import { languageProfile } from '@linguetta/language';

@@ -1,4 +1,4 @@
-# ADR 0005: Áudio da palavra gerado no servidor
+# ADR 0006: Áudio da palavra gerado no servidor
 
 - Status: Accepted
 - Date: 2026-11-12

@@ -58,7 +58,7 @@ async function store(bucket: Bucket, key: string, audio: Recording): Promise<str
 }
 
 /**
- * Áudio da palavra (ADR 0005): redirect para o arquivo público no bucket "audio".
+ * Áudio da palavra (ADR 0006): redirect para o arquivo público no bucket "audio".
  * Ordem: cache, gravação humana do Lingua Libre, Supertonic 3.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {

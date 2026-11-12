@@ -1,4 +1,4 @@
--- ADR 0005: áudio da palavra gerado no servidor (GET /audio).
+-- ADR 0006: áudio da palavra gerado no servidor (GET /audio).
 --
 -- Bucket público "audio", em <base do idioma>/<sha256 do texto>.<mp3|wav>: o mesmo
 -- texto é um arquivo só para todos. O servidor envia com o cliente do usuário logado

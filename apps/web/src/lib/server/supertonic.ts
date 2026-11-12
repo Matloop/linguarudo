@@ -1,6 +1,6 @@
 // Supertonic 3 (fp32, voz F1) no onnxruntime-node. Inferência portada de
 // supertone-inc/supertonic nodejs/helper.js (MIT, Copyright (c) 2025 Supertone Inc.).
-// Modelo: OpenRAIL-M; o repositório foi arquivado, então a revisão fica fixa (ADR 0005).
+// Modelo: OpenRAIL-M; o repositório foi arquivado, então a revisão fica fixa (ADR 0006).
 
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
