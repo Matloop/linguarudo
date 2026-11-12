@@ -52,16 +52,16 @@ export interface FlashcardBrief {
 
 /**
  * Entra na legenda primeiro: item ativo com algum flashcard aprendendo/reaprendendo
- * ou em revisão já vencida. Conhecido nunca entra.
+ * ou em revisão que vence hoje (até `dayEnd`, como na fila: isDue). Conhecido nunca entra.
  */
 export function isPreferred(
 	item: { status: ItemStatus; flashcards: readonly FlashcardBrief[] },
-	now: Date
+	dayEnd: Date
 ) {
 	if (item.status !== 'ativo') return false;
 	return item.flashcards.some(
 		(c) =>
-			c.state === 1 || c.state === 3 || (c.state === 2 && Date.parse(c.due_at) <= now.getTime())
+			c.state === 1 || c.state === 3 || (c.state === 2 && Date.parse(c.due_at) < dayEnd.getTime())
 	);
 }
 
@@ -159,7 +159,7 @@ export function distinctForms(raw: unknown, itemKey: string, language: Language)
 	return forms;
 }
 
-/** Uma linha de api_items como sai em GET /api/v1/items. */
+/** Uma linha de api_items como sai em GET /api/v1/items; `dayEnd` é o fim do dia de estudo. */
 export function apiItem(
 	row: {
 		id: string;
@@ -173,7 +173,7 @@ export function apiItem(
 		leech_hold: string | null;
 	},
 	language: Language,
-	now: Date
+	dayEnd: Date
 ): ApiItem {
 	const flashcards = flashcardBriefs(row.flashcards);
 	const status: ItemStatus = row.status === 'conhecido' ? 'conhecido' : 'ativo';
@@ -185,7 +185,7 @@ export function apiItem(
 		sense: row.sense,
 		status,
 		mastered: isMastered(flashcards),
-		prefer: isPreferred({ status, flashcards }, now),
+		prefer: isPreferred({ status, flashcards }, dayEnd),
 		flashcards: flashcards.map((c) => ({
 			kind: c.kind,
 			state: c.state,

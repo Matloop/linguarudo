@@ -1,7 +1,9 @@
 import { error } from '@sveltejs/kit';
 import { formatWorkSource, type Origin } from '#lib/items.ts';
+import { nextDayStart, STATE_REVIEW } from '#lib/review.ts';
 import { nextDueText } from '#lib/server/summary.ts';
-import type { PageServerLoad } from './$types';
+import { extraAction } from '#lib/server/deck-actions.ts';
+import type { Actions, PageServerLoad } from './$types';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -43,6 +45,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 		};
 	}
 
+	const dayEnd = nextDayStart(now, shell.clock).toISOString();
 	const flashcards = () =>
 		locals.supabase
 			.from('flashcards')
@@ -56,7 +59,14 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 			.limit(1, { referencedTable: 'items.encounters' });
 
 	const [due, fresh, last, week, song, tokens, nextDue] = await Promise.all([
-		flashcards().gt('state', 0).lte('due_at', nowIso).order('due_at').limit(1).maybeSingle(),
+		// Vencido como na fila (isDue): aprendendo no instante, revisão no dia de estudo.
+		flashcards()
+			.or(
+				`and(state.in.(1,3),due_at.lte."${nowIso}"),and(state.eq.${STATE_REVIEW},due_at.lt."${dayEnd}")`
+			)
+			.order('due_at')
+			.limit(1)
+			.maybeSingle(),
 		flashcards().eq('state', 0).order('created_at').limit(1).maybeSingle(),
 		locals.supabase
 			.from('items')
@@ -112,3 +122,5 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 		now: nowIso
 	};
 };
+
+export const actions: Actions = { extra: extraAction };

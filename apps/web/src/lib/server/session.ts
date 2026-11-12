@@ -116,7 +116,9 @@ export async function loadSessionQueue(
 	q: SessionQuery
 ): Promise<ReviewItem[] | null> {
 	const filter = { language: q.language, tag: q.tag, deckIds: [...plan.deckIds], queued: true };
-	const nowIso = q.now.toISOString();
+	// Até o fim do dia de estudo: a revisão vence no dia (isDue). Os passos que vencem mais
+	// tarde hoje também vêm, e o buildQueue os deixa de fora até a hora deles.
+	const dayEnd = nextDayStart(q.now, q.clock);
 	const sources = [
 		() => reviewableItemFlashcards(supabase, q.userId, filter),
 		() => reviewableFichaFlashcards(supabase, q.userId, filter)
@@ -126,7 +128,11 @@ export async function loadSessionQueue(
 		Promise.all(
 			sources.flatMap((base) => [
 				q.withDue
-					? base().gt('state', 0).lte('due_at', nowIso).order('due_at').limit(MAX_DUE_PER_LOAD)
+					? base()
+							.gt('state', 0)
+							.lt('due_at', dayEnd.toISOString())
+							.order('due_at')
+							.limit(MAX_DUE_PER_LOAD)
 					: none,
 				plan.ids.length > 0 ? base().eq('state', 0).in('id', plan.ids) : none
 			])
@@ -152,6 +158,7 @@ export async function loadSessionQueue(
 		})),
 		{
 			now: q.now,
+			dayEnd,
 			newLimit: plan.ids.length,
 			newDoneToday: 0,
 			plannedNew: true,

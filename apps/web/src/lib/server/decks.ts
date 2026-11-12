@@ -20,7 +20,7 @@ import {
 	type NewOrder
 } from '#lib/decks.ts';
 import type { Language } from '#lib/languages.ts';
-import { dayStart, DEFAULT_CLOCK, type DayClock } from '#lib/review.ts';
+import { dayStart, DEFAULT_CLOCK, nextDayStart, type DayClock } from '#lib/review.ts';
 import { parseQueueState, type QueueState } from './queue.ts';
 
 type Client = SupabaseClient<Database>;
@@ -91,15 +91,22 @@ export async function loadDeckSummaries(
 	clock: DayClock = DEFAULT_CLOCK
 ): Promise<DeckOverview> {
 	const start = dayStart(now, clock);
+	const nextDay = nextDayStart(now, clock);
 	const [decks, sums, counts] = await Promise.all([
 		listDecks(supabase, language),
 		supabase.rpc('deck_summaries', {
 			p_day_start: start.toISOString(),
 			p_now: now.toISOString(),
+			p_next_day_start: nextDay.toISOString(),
 			p_language: language
 		}),
 		supabase
-			.rpc('review_counts', { p_day_start: start.toISOString(), p_language: language })
+			.rpc('review_counts', {
+				p_day_start: start.toISOString(),
+				p_now: now.toISOString(),
+				p_next_day_start: nextDay.toISOString(),
+				p_language: language
+			})
 			.single()
 	]);
 	if (sums.error || counts.error || !counts.data) throw new Error('deck_summaries');

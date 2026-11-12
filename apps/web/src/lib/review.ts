@@ -154,6 +154,8 @@ export interface QueueFlashcard {
 
 export interface QueueOptions {
 	now: Date;
+	/** Fim do dia de estudo (nextDayStart): a revisão que vence até lá já entra (isDue). */
+	dayEnd: Date;
 	newLimit: number;
 	newDoneToday: number;
 	/** Cartões revisados desde o início do dia (dayStart): ocultam os irmãos. */
@@ -172,13 +174,24 @@ function isLearning(state: number): boolean {
 }
 
 /**
- * Vencidos primeiro (mais atrasado antes), depois novos por ordem de criação, até o limite.
+ * Já entra na sessão. Aprendendo e reaprendendo vencem no instante (passos em minutos).
+ * Em revisão (intervalo em dias) vence no dia de estudo, como no Anki: pelo instante, a
+ * revisão que vencia depois do horário da sessão de hoje ficava para amanhã, e na
+ * simulação de 30 dias (scripts/srs-sim) isso atrasava 1 em cada 5 revisões.
+ */
+export function isDue(c: { state: number; dueAt: string }, now: Date, dayEnd: Date): boolean {
+	if (c.state === STATE_NEW) return false;
+	const due = Date.parse(c.dueAt);
+	return c.state === STATE_REVIEW ? due < dayEnd.getTime() : due <= now.getTime();
+}
+
+/**
+ * Vencidos (isDue) primeiro, mais atrasado antes; depois novos por ordem de criação, até o limite.
  * Irmãos ocultos: o Reconhecer e o Produzir do mesmo item não caem no mesmo dia. Um
  * flashcard em revisão ou novo sai se o irmão foi revisado hoje, e só um deles entra por
  * item. Fichas não ocultam. Quem chama já tirou os flashcards de itens conhecidos ou apagados.
  */
 export function buildQueue<T extends QueueFlashcard>(cards: T[], opts: QueueOptions): T[] {
-	const now = opts.now.getTime();
 	const buried = new Map<string, Set<string>>();
 	for (const r of opts.reviewedToday ?? []) {
 		if (!r.itemId) continue;
@@ -196,7 +209,7 @@ export function buildQueue<T extends QueueFlashcard>(cards: T[], opts: QueueOpti
 		return true;
 	};
 	const due = cards
-		.filter((c) => c.state !== STATE_NEW && Date.parse(c.dueAt) <= now)
+		.filter((c) => isDue(c, opts.now, opts.dayEnd))
 		.sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt))
 		.filter(take);
 	const news = cards.filter((c) => c.state === STATE_NEW);

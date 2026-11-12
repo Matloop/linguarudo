@@ -510,6 +510,11 @@ export type Database = {
           reviewed_at: string
           state_before: number | null
           user_id: string
+          algo_version: string | null
+          desired_retention: number | null
+          difficulty_before: number | null
+          stability_before: number | null
+          stability_fast_before: number | null
         }
         Insert: {
           client_id?: string | null
@@ -523,6 +528,11 @@ export type Database = {
           reviewed_at: string
           state_before?: number | null
           user_id: string
+          algo_version?: string | null
+          desired_retention?: number | null
+          difficulty_before?: number | null
+          stability_before?: number | null
+          stability_fast_before?: number | null
         }
         Update: {
           client_id?: string | null
@@ -536,10 +546,81 @@ export type Database = {
           reviewed_at?: string
           state_before?: number | null
           user_id?: string
+          algo_version?: string | null
+          desired_retention?: number | null
+          difficulty_before?: number | null
+          stability_before?: number | null
+          stability_fast_before?: number | null
         }
         Relationships: [
           {
             foreignKeyName: "review_logs_flashcard_id_user_id_fkey"
+            columns: ["flashcard_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "flashcards"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      review_logs_undone: {
+        Row: {
+          flashcard_id: string
+          client_id: string | null
+          duration_ms: number | null
+          id: string
+          interval_days: number | null
+          last_interval_days: number | null
+          rating: number
+          received_at: string
+          reviewed_at: string
+          state_before: number | null
+          undone_at: string
+          user_id: string
+          algo_version: string | null
+          desired_retention: number | null
+          difficulty_before: number | null
+          stability_before: number | null
+          stability_fast_before: number | null
+        }
+        Insert: {
+          flashcard_id: string
+          client_id?: string | null
+          duration_ms?: number | null
+          id?: string
+          interval_days?: number | null
+          last_interval_days?: number | null
+          rating: number
+          received_at?: string
+          reviewed_at: string
+          state_before: number | null
+          user_id: string
+          algo_version?: string | null
+          desired_retention?: number | null
+          difficulty_before?: number | null
+          stability_before?: number | null
+          stability_fast_before?: number | null
+        }
+        Update: {
+          flashcard_id?: string
+          client_id?: string | null
+          duration_ms?: number | null
+          id?: string
+          interval_days?: number | null
+          last_interval_days?: number | null
+          rating?: number
+          received_at?: string
+          reviewed_at?: string
+          state_before?: number | null
+          user_id?: string
+          algo_version?: string | null
+          desired_retention?: number | null
+          difficulty_before?: number | null
+          stability_before?: number | null
+          stability_fast_before?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_logs_undone_flashcard_id_user_id_fkey"
             columns: ["flashcard_id", "user_id"]
             isOneToOne: false
             referencedRelation: "flashcards"
@@ -825,6 +906,7 @@ export type Database = {
         Args: {
           p_day_start: string
           p_language: string
+          p_next_day_start: string
           p_now: string
         }
         Returns: {
@@ -869,6 +951,11 @@ export type Database = {
           n: number
         }[]
       }
+      open_album: { Args: { p_album: Json }; Returns: string }
+      open_album_track: {
+        Args: { p_album: string; p_position: number }
+        Returns: string
+      }
       open_work: { Args: { p_work: Json }; Returns: string }
       queue_state: {
         Args: { p_day_start: string; p_language: string }
@@ -896,7 +983,12 @@ export type Database = {
         Returns: number
       }
       review_counts: {
-        Args: { p_day_start: string; p_language?: string }
+        Args: {
+          p_day_start: string
+          p_language?: string
+          p_next_day_start: string
+          p_now: string
+        }
         Returns: {
           due_now: number
           extra_new: number

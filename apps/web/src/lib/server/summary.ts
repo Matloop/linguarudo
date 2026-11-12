@@ -7,7 +7,14 @@ import type { Database } from '#lib/database.types.ts';
 import { isPausedIn } from '#lib/decks.ts';
 import { forToday, rowCounts, todayTotals } from '#lib/decks-ui.ts';
 import type { Language } from '#lib/languages.ts';
-import { DEFAULT_CLOCK, formatWhen, type DayClock } from '#lib/review.ts';
+import {
+	dayStart,
+	DEFAULT_CLOCK,
+	formatWhen,
+	nextDayStart,
+	STATE_REVIEW,
+	type DayClock
+} from '#lib/review.ts';
 import { loadDeckSummaries } from './decks.ts';
 
 type Client = SupabaseClient<Database>;
@@ -80,7 +87,10 @@ export async function loadShellSummary(
 	return { languages, decks };
 }
 
-/** Quando o próximo flashcard do idioma vence, para o "volta amanhã às 09:00". */
+/**
+ * Quando o próximo flashcard do idioma aparece, para o "volta amanhã às 04:00".
+ * Aprendendo vence no instante; revisão, no começo do dia de estudo em que vence (isDue).
+ */
 export async function nextDueText(
 	supabase: Client,
 	userId: string,
@@ -88,36 +98,37 @@ export async function nextDueText(
 	now: Date,
 	clock: DayClock = DEFAULT_CLOCK
 ): Promise<string | null> {
-	const nowIso = now.toISOString();
-	const [item, ficha] = await Promise.all([
-		supabase
+	const dayEnd = nextDayStart(now, clock).toISOString();
+	const first = (owner: 'items' | 'fichas', review: boolean) => {
+		const q = supabase
 			.from('flashcards')
-			.select('due_at, items!inner(language, status, deleted_at)')
+			.select(`due_at, ${owner}!inner(language, status, deleted_at)`)
 			.eq('user_id', userId)
-			.eq('items.language', language)
-			.eq('items.status', 'ativo')
-			.is('items.deleted_at', null)
-			.gt('state', 0)
-			.gt('due_at', nowIso)
-			.order('due_at')
-			.limit(1)
-			.maybeSingle(),
-		supabase
-			.from('flashcards')
-			.select('due_at, fichas!inner(language, status, deleted_at)')
-			.eq('user_id', userId)
-			.eq('fichas.language', language)
-			.eq('fichas.status', 'ativo')
-			.is('fichas.deleted_at', null)
-			.gt('state', 0)
-			.gt('due_at', nowIso)
-			.order('due_at')
-			.limit(1)
-			.maybeSingle()
+			.eq(`${owner}.language`, language)
+			.eq(`${owner}.status`, 'ativo')
+			.is(`${owner}.deleted_at`, null);
+		const due = review
+			? q.eq('state', STATE_REVIEW).gte('due_at', dayEnd)
+			: q.in('state', [1, 3]).gt('due_at', now.toISOString());
+		return due.order('due_at').limit(1).maybeSingle();
+	};
+	const [learnItem, learnFicha, reviewItem, reviewFicha] = await Promise.all([
+		first('items', false),
+		first('fichas', false),
+		first('items', true),
+		first('fichas', true)
 	]);
-	const dues = [item.data?.due_at, ficha.data?.due_at].filter((d): d is string => !!d);
-	if (dues.length === 0) return null;
-	return formatWhen(new Date(Math.min(...dues.map((d) => Date.parse(d)))), now, clock.timeZone);
+	type Row = { data: { due_at: string } | null };
+	const learning = (r: Row) => (r.data ? [Date.parse(r.data.due_at)] : []);
+	const review = (r: Row) => (r.data ? [dayStart(new Date(r.data.due_at), clock).getTime()] : []);
+	const options = [
+		...learning(learnItem),
+		...learning(learnFicha),
+		...review(reviewItem),
+		...review(reviewFicha)
+	];
+	if (options.length === 0) return null;
+	return formatWhen(new Date(Math.min(...options)), now, clock.timeZone);
 }
 
 /** Tags usadas em itens e fichas do idioma, em ordem alfabética (para os filtros). */

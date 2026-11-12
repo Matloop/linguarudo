@@ -2,12 +2,13 @@ import { error } from '@sveltejs/kit';
 import { apiItem, apiSaveResults, parseSaveBody } from '#lib/integrations.ts';
 import type { SaveEntry } from '#lib/items.ts';
 import { parseLanguage } from '#lib/languages.ts';
+import { DEFAULT_CLOCK, nextDayStart } from '#lib/review.ts';
 import { apiClient, json, readJson, requireToken, rpcFailure } from '#lib/server/api.ts';
 import type { RequestHandler } from './$types';
 
 /**
  * Itens do banco num idioma, com os flashcards. `preferWords` são os lemas que a
- * legenda deve trocar primeiro (aprendendo, reaprendendo ou revisão vencida).
+ * legenda deve trocar primeiro (aprendendo, reaprendendo ou revisão que vence hoje).
  */
 export const GET: RequestHandler = async (event) => {
 	const token = requireToken(event);
@@ -20,8 +21,9 @@ export const GET: RequestHandler = async (event) => {
 	});
 	if (dbError) rpcFailure(dbError);
 
-	const now = new Date();
-	const items = data.map((row) => apiItem(row, language, now));
+	// O token não traz o fuso da pessoa: o dia de estudo usa o relógio padrão.
+	const dayEnd = nextDayStart(new Date(), DEFAULT_CLOCK);
+	const items = data.map((row) => apiItem(row, language, dayEnd));
 	const preferWords = items.filter((i) => i.prefer).map((i) => i.lemma);
 	return json({ language, items, preferWords });
 };

@@ -50,7 +50,8 @@ describe('parseBearer', () => {
 });
 
 describe('isPreferred', () => {
-	const now = new Date('2026-11-10T15:00:00.000Z');
+	// Fim do dia de estudo: 04:00 de São Paulo.
+	const dayEnd = new Date('2026-11-11T07:00:00.000Z');
 	const card = (state: number, due_at = '2026-11-10T12:00:00.000Z') => ({ state, due_at });
 	const ativo = (...flashcards: ReturnType<typeof card>[]) => ({
 		status: 'ativo' as const,
@@ -58,23 +59,24 @@ describe('isPreferred', () => {
 	});
 
 	test('aprendendo e reaprendendo entram sempre', () => {
-		expect(isPreferred(ativo(card(1, '2026-12-01T00:00:00Z')), now)).toBe(true);
-		expect(isPreferred(ativo(card(3, '2026-12-01T00:00:00Z')), now)).toBe(true);
+		expect(isPreferred(ativo(card(1, '2026-12-01T00:00:00Z')), dayEnd)).toBe(true);
+		expect(isPreferred(ativo(card(3, '2026-12-01T00:00:00Z')), dayEnd)).toBe(true);
 	});
 
-	test('em revisão só quando venceu', () => {
-		expect(isPreferred(ativo(card(2)), now)).toBe(true);
-		expect(isPreferred(ativo(card(2, '2026-11-11T00:00:00Z')), now)).toBe(false);
+	test('em revisão quando vence até o fim do dia de estudo, como na fila', () => {
+		expect(isPreferred(ativo(card(2)), dayEnd)).toBe(true);
+		expect(isPreferred(ativo(card(2, '2026-11-10T20:00:00Z')), dayEnd)).toBe(true);
+		expect(isPreferred(ativo(card(2, '2026-11-11T07:00:00Z')), dayEnd)).toBe(false);
 	});
 
 	test('basta um flashcard do item (Reconhecer ou Produzir)', () => {
-		expect(isPreferred(ativo(card(0), card(2)), now)).toBe(true);
+		expect(isPreferred(ativo(card(0), card(2)), dayEnd)).toBe(true);
 	});
 
 	test('novos, sem flashcard e conhecidos não entram', () => {
-		expect(isPreferred(ativo(card(0)), now)).toBe(false);
-		expect(isPreferred(ativo(), now)).toBe(false);
-		expect(isPreferred({ status: 'conhecido', flashcards: [card(1)] }, now)).toBe(false);
+		expect(isPreferred(ativo(card(0)), dayEnd)).toBe(false);
+		expect(isPreferred(ativo(), dayEnd)).toBe(false);
+		expect(isPreferred({ status: 'conhecido', flashcards: [card(1)] }, dayEnd)).toBe(false);
 	});
 });
 
@@ -132,7 +134,7 @@ describe('parseSeenBody', () => {
 });
 
 describe('apiItem', () => {
-	const now = new Date('2026-11-11T12:00:00Z');
+	const dayEnd = new Date('2026-11-11T12:00:00Z');
 	const row = {
 		id: 'i1',
 		lemma: 'aspettare',
@@ -148,7 +150,7 @@ describe('apiItem', () => {
 	};
 
 	test('item com flashcards em camelCase, prefer e dominado', () => {
-		expect(apiItem(row, 'it', now)).toEqual({
+		expect(apiItem(row, 'it', dayEnd)).toEqual({
 			id: 'i1',
 			lemma: 'aspettare',
 			lemmaKey: 'aspettare',
@@ -167,46 +169,46 @@ describe('apiItem', () => {
 	});
 
 	test('leechWaiting: só a teimosa em espera (suspensa não volta com encontro)', () => {
-		expect(apiItem({ ...row, leech_hold: 'wait' }, 'it', now).leechWaiting).toBe(true);
-		expect(apiItem({ ...row, leech_hold: 'suspend' }, 'it', now).leechWaiting).toBe(false);
+		expect(apiItem({ ...row, leech_hold: 'wait' }, 'it', dayEnd).leechWaiting).toBe(true);
+		expect(apiItem({ ...row, leech_hold: 'suspend' }, 'it', dayEnd).leechWaiting).toBe(false);
 	});
 
 	test('forms: grafias vistas, só strings', () => {
-		expect(apiItem({ ...row, forms: ['aspetto', 'aspettavo'] }, 'it', now).forms).toEqual([
+		expect(apiItem({ ...row, forms: ['aspetto', 'aspettavo'] }, 'it', dayEnd).forms).toEqual([
 			'aspetto',
 			'aspettavo'
 		]);
-		expect(apiItem({ ...row, forms: ['ok', 3, null] }, 'it', now).forms).toEqual(['ok']);
-		expect(apiItem({ ...row, forms: null }, 'it', now).forms).toEqual([]);
+		expect(apiItem({ ...row, forms: ['ok', 3, null] }, 'it', dayEnd).forms).toEqual(['ok']);
+		expect(apiItem({ ...row, forms: null }, 'it', dayEnd).forms).toEqual([]);
 	});
 
 	test('forms: como escritas, uma por chave, sem a do próprio lema', () => {
 		const haus = { ...row, lemma: 'Haus', lemma_key: 'haus' };
 		expect(
-			apiItem({ ...haus, forms: ['haus', 'Häuser', 'häuser', 'HAUS'] }, 'de', now).forms
+			apiItem({ ...haus, forms: ['haus', 'Häuser', 'häuser', 'HAUS'] }, 'de', dayEnd).forms
 		).toEqual(['Häuser']);
 	});
 
 	test('leitura volta junto (japonês)', () => {
 		const neko = { ...row, lemma: '猫', lemma_key: '猫', reading: 'ねこ' };
-		expect(apiItem(neko, 'ja', now)).toMatchObject({
+		expect(apiItem(neko, 'ja', dayEnd)).toMatchObject({
 			lemma: '猫',
 			lemmaKey: '猫',
 			reading: 'ねこ'
 		});
-		expect(apiItem({ ...neko, reading: null }, 'ja', now).reading).toBe('');
+		expect(apiItem({ ...neko, reading: null }, 'ja', dayEnd).reading).toBe('');
 	});
 
 	test('flashcards fora do formato viram lista vazia', () => {
-		expect(apiItem({ ...row, flashcards: null }, 'it', now).flashcards).toEqual([]);
-		expect(apiItem({ ...row, flashcards: [{ kind: 'x' }] }, 'it', now).flashcards).toEqual([]);
+		expect(apiItem({ ...row, flashcards: null }, 'it', dayEnd).flashcards).toEqual([]);
+		expect(apiItem({ ...row, flashcards: [{ kind: 'x' }] }, 'it', dayEnd).flashcards).toEqual([]);
 	});
 
 	test('dominado quando todos os flashcards estão estáveis', () => {
 		const flashcards = [
 			{ kind: 'reconhecer', state: 2, due_at: '2027-06-01T00:00:00Z', stability: 120 }
 		];
-		const out = apiItem({ ...row, flashcards }, 'it', now);
+		const out = apiItem({ ...row, flashcards }, 'it', dayEnd);
 		expect(out.mastered).toBe(true);
 		expect(out.prefer).toBe(false);
 	});

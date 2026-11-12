@@ -367,7 +367,8 @@ end
     { "id": "9e8d7c6b-5a4f-4e3d-9c2b-1a0f9e8d7c20", "name": "Gramática", "default": false, "parentId": null, "newOrder": "deck", "newCap": 5 }
   ],
   "fsrs": { "tsFsrs": "6.0.0", "version": "FSRS-7", "desiredRetention": 0.9, "enableFuzz": true,
-            "learningSteps": ["1m", "10m"], "relearningSteps": ["10m"], "maximumInterval": 36500 }
+            "learningSteps": ["1m", "10m"], "relearningSteps": ["10m"], "allowModelOverride": false,
+            "maximumInterval": 36500 }
 }
 ```
 
@@ -605,9 +606,10 @@ Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 1
 
 ## 11. Paridade do FSRS
 
-- O servidor usa **ts-fsrs 6.0.0** (`bun.lock`) por `DefaultScheduler({ desiredRetention, enableFuzz: true })`, com a `desiredRetention` da conta (`header.fsrs`; os vetores usam 0,9), em `apps/web/src/lib/server/scheduler.ts`. Isso dá:
+- O servidor usa **ts-fsrs 6.0.0** (`bun.lock`) por `DefaultScheduler({ desiredRetention, enableFuzz: true, allowModelOverride: false })`, com a `desiredRetention` da conta (`header.fsrs`; os vetores usam 0,9), em `apps/web/src/lib/server/scheduler.ts`. Isso dá:
   - modelo **FSRS-7**, pesos padrão (`FSRS7_DEFAULT_WEIGHTS`), dias fracionários (`fractionalDays: true`);
   - `enableShortTerm: true`, passos de aprendizado `["1m", "10m"]`, reaprendizado `["10m"]`, `maximumInterval` 36500;
+  - `allowModelOverride: false` (o FSRS-7 liga por padrão): com passo definido para a nota, o intervalo é o do passo, sem `max(passo, modelo)`. Novo e reaprendendo passam por 1 min / 10 min como no Anki; sem isso, Difícil num novo dava ~14 h e Bom ~6 d. `graduatingInterval` 1;
   - middlewares na ordem: retenção desejada, fuzz, estatísticas, scheduled days, passos de aprendizado, intervalo máximo, intervalo monotônico;
   - fuzz determinístico: semente = `flashcardId` + `String(reps)` (o `reps` **depois** da revisão), hash FNV-1a de 32 bits sobre as unidades UTF-16 da string, PRNG mulberry32, primeiro valor; só para intervalo ≥ 2,5 dias, faixas `FUZZ_RANGES` (2,5–7 d: 15%; 7–20 d: 10%; > 20 d: 5%).
 - A fonte de referência para o port é o pacote instalado: `apps/web/node_modules/ts-fsrs/dist/models/fsrs-7.mjs` (modelo), `dist/middlewares-*.mjs` (fuzz, passos, intervalos) e `dist/index.mjs` (`DefaultScheduler`), mais `@open-spaced-repetition/srs-kit` 1.0.0.
@@ -619,7 +621,7 @@ Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 1
 
 A mesma regra do app (`buildQueue` em `apps/web/src/lib/review.ts` + `planNew` em `apps/web/src/lib/server/queue.ts`), sobre a visão local, só itens `ativo` e fichas `ativo` de decks em `header.decks`, e nunca com `leechWaiting: true`:
 
-1. Vencidos (`state > 0` e `dueAt <= agora`), mais atrasado primeiro.
+1. Vencidos (`isDue`), mais atrasado primeiro: aprendendo e reaprendendo (`state` 1 e 3) quando `dueAt <= agora`; em revisão (`state = 2`) quando `dueAt < nextDayStart`, ou seja, a revisão vale para o dia de estudo inteiro em que vence, como no Anki. Depois de `today.nextDayStart` sem novo sync, os dias seguintes contam de 24 em 24 h.
 2. Novos (`state = 0`) com `queueRank` não nulo, em ordem de `queueRank`, até o orçamento local (§8 "Visão local"). Novo com `queueRank: null` não entra hoje. Item salvo offline (sem rank) entra depois dos que têm rank. O aparelho não reordena nem aplica tetos: já vêm aplicados.
 
 Estudar um deck só: as mesmas regras restritas ao deck e aos filhos dele (`parentId`); o orçamento é o mesmo do idioma.

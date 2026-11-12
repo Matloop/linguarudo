@@ -102,6 +102,8 @@ function ficha(id: string, over: Partial<FichaReview> = {}): FichaReview {
 
 describe('buildQueue', () => {
 	const now = new Date('2026-11-10T15:00:00.000Z');
+	// Virada às 04:00 de São Paulo: o dia de estudo acaba em 11/11 07:00 UTC.
+	const dayEnd = nextDayStart(now, DEFAULT_CLOCK);
 
 	test('vencidos primeiro (mais atrasado antes), depois novos por ordem de criação', () => {
 		const q = buildQueue(
@@ -111,18 +113,23 @@ describe('buildQueue', () => {
 				card('novo-a', { state: 0, createdAt: '2026-11-02T00:00:00.000Z' }),
 				card('venc-1', { dueAt: '2026-11-09T10:00:00.000Z', state: 3 })
 			],
-			{ now, newLimit: 10, newDoneToday: 0 }
+			{ now, dayEnd, newLimit: 10, newDoneToday: 0 }
 		);
 		expect(q.map((c) => c.id)).toEqual(['venc-1', 'venc-2', 'novo-a', 'novo-b']);
 	});
 
-	test('ignora flashcards que ainda não venceram', () => {
-		const q = buildQueue([card('futuro', { dueAt: '2026-11-11T00:00:00.000Z' }), card('ok')], {
-			now,
-			newLimit: 10,
-			newDoneToday: 0
-		});
-		expect(q.map((c) => c.id)).toEqual(['ok']);
+	test('revisão vence no dia de estudo, como no Anki; aprendendo vence no instante', () => {
+		const q = buildQueue(
+			[
+				card('revisao-mais-tarde', { dueAt: '2026-11-11T00:00:00.000Z' }),
+				card('revisao-amanha', { dueAt: '2026-11-11T07:00:00.000Z' }),
+				card('passo-daqui-a-pouco', { state: 1, dueAt: '2026-11-10T15:10:00.000Z' }),
+				card('reaprendendo-daqui-a-pouco', { state: 3, dueAt: '2026-11-10T15:10:00.000Z' }),
+				card('ok')
+			],
+			{ now, dayEnd, newLimit: 10, newDoneToday: 0 }
+		);
+		expect(q.map((c) => c.id)).toEqual(['ok', 'revisao-mais-tarde']);
 	});
 
 	test('novos respeitam o limite do dia, descontando os já vistos hoje', () => {
@@ -132,24 +139,23 @@ describe('buildQueue', () => {
 				createdAt: new Date(Date.UTC(2026, 10, 1, i)).toISOString()
 			})
 		);
-		expect(buildQueue(novos, { now, newLimit: 10, newDoneToday: 0 })).toHaveLength(10);
-		expect(buildQueue(novos, { now, newLimit: 10, newDoneToday: 7 }).map((c) => c.id)).toEqual([
-			'n00',
-			'n01',
-			'n02'
-		]);
-		expect(buildQueue(novos, { now, newLimit: 10, newDoneToday: 12 })).toHaveLength(0);
+		expect(buildQueue(novos, { now, dayEnd, newLimit: 10, newDoneToday: 0 })).toHaveLength(10);
+		expect(
+			buildQueue(novos, { now, dayEnd, newLimit: 10, newDoneToday: 7 }).map((c) => c.id)
+		).toEqual(['n00', 'n01', 'n02']);
+		expect(buildQueue(novos, { now, dayEnd, newLimit: 10, newDoneToday: 12 })).toHaveLength(0);
 	});
 
 	test('revisões vencidas não têm limite', () => {
 		const vencidos = Array.from({ length: 300 }, (_, i) => card(`v${i}`));
-		expect(buildQueue(vencidos, { now, newLimit: 0, newDoneToday: 0 })).toHaveLength(300);
+		expect(buildQueue(vencidos, { now, dayEnd, newLimit: 0, newDoneToday: 0 })).toHaveLength(300);
 	});
 });
 
 describe('irmãos ocultos', () => {
 	const now = new Date('2026-11-10T15:00:00.000Z');
-	const opts = { now, newLimit: 10, newDoneToday: 0 };
+	const dayEnd = nextDayStart(now, DEFAULT_CLOCK);
+	const opts = { now, dayEnd, newLimit: 10, newDoneToday: 0 };
 
 	test('só um cartão em revisão por item entra no dia', () => {
 		const q = buildQueue(
