@@ -6,3 +6,6 @@
 prototypes/
 test-results/
 playwright-report/
+# Worktrees de agentes e saídas locais.
+.claude/
+apps/web/scripts/srs-sim/out/
