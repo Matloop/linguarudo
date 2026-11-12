@@ -411,6 +411,44 @@ describe('pacote .apkg', () => {
 		expect(built.notes[0].cards[0].logs).toEqual([{ rating: 3, at: '2026-01-01T00:00:00.000Z' }]);
 	});
 
+	test('lê coleção do Anki atual (collate unicase em tabela without rowid)', async () => {
+		// O Anki cria fields/templates como WITHOUT ROWID com COLLATE unicase, uma
+		// collation dele. O SQLite do sql.js não tem a collation e não consulta a tabela.
+		const SQL = await initSqlJs();
+		const db = new SQL.Database();
+		db.run(`
+			create table notetypes (id integer not null primary key, name text not null collate nocase, config blob not null);
+			create table fields (ntid integer not null, ord integer not null, name text not null collate nocase,
+				config blob not null, primary key (ntid, ord)) without rowid;
+			create table templates (ntid integer not null, ord integer not null, name text not null collate nocase,
+				config blob not null, primary key (ntid, ord)) without rowid;
+			create table decks (id integer, name text collate nocase);
+			create table notes (id integer, guid text, mid integer, tags text, flds text);
+			create table cards (id integer, nid integer, did integer, ord integer, queue integer);
+			create table revlog (id integer, cid integer, ease integer, type integer);
+		`);
+		db.run('insert into notetypes values (5, ?, ?)', ['Basic', proto([[1, 0]])]);
+		db.run("insert into fields values (5, 0, 'Front', x''), (5, 1, 'Back', x'')");
+		db.run("insert into templates values (5, 0, 'Card 1', ?)", [
+			proto([
+				[1, '{{Front}}'],
+				[2, '{{Back}}']
+			])
+		]);
+		db.run("insert into decks values (1, 'Default')");
+		db.exec(`
+			pragma writable_schema = on;
+			update sqlite_master set sql = replace(sql, 'collate nocase', 'COLLATE unicase');
+			pragma writable_schema = off;
+		`);
+		const data = zipSync({ 'collection.anki21': db.export() });
+		db.close();
+
+		const col = readPackage(data, SQL).collection;
+		expect(col.notetypes.get('5')).toMatchObject({ fields: ['Front', 'Back'] });
+		expect(col.notetypes.get('5')?.templates).toHaveLength(1);
+	});
+
 	test('lê coleção nova (notetypes com protobuf)', async () => {
 		const SQL = await initSqlJs();
 		const db = new SQL.Database();

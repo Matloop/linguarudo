@@ -3,7 +3,7 @@
 
 import { unzipSync } from 'fflate';
 import { decompress } from 'fzstd';
-import type { SqlJsStatic } from 'sql.js';
+import type { Database, SqlJsStatic } from 'sql.js';
 import { readCollection, type AnkiCollection } from './collection.ts';
 import { protoMessages, protoNumber, protoString, readMessage } from './protobuf.ts';
 
@@ -45,6 +45,26 @@ function mediaMap(raw: Uint8Array | undefined): Map<string, string> {
 
 const COLLECTIONS = ['collection.anki21b', 'collection.anki21', 'collection.anki2'];
 
+/**
+ * O Anki declara colunas com COLLATE unicase, uma collation só dele. O sql.js não a
+ * tem e não consulta tabelas WITHOUT ROWID que a usam (fields, templates): "no query
+ * solution". Só lemos, então tiramos a collation do esquema e reabrimos o banco.
+ */
+function withoutAnkiCollation(SQL: SqlJsStatic, db: Database): Database {
+	const uses = db.exec("select count(*) from sqlite_master where sql like '%collate unicase%'")[0]
+		?.values[0][0];
+	if (!uses) return db;
+	db.exec(`
+		pragma writable_schema = on;
+		update sqlite_master set sql = replace(replace(sql, 'COLLATE unicase', ''), 'collate unicase', '')
+			where sql like '%collate unicase%';
+		pragma writable_schema = off;
+	`);
+	const clean = new SQL.Database(db.export());
+	db.close();
+	return clean;
+}
+
 export function readPackage(data: Uint8Array, SQL: SqlJsStatic): AnkiPackage {
 	let files: Record<string, Uint8Array>;
 	try {
@@ -55,7 +75,7 @@ export function readPackage(data: Uint8Array, SQL: SqlJsStatic): AnkiPackage {
 	const name = COLLECTIONS.find((n) => files[n]);
 	if (!name) throw new AnkiPackageError('O pacote não tem uma coleção do Anki dentro.');
 
-	const db = new SQL.Database(maybeZstd(files[name]));
+	const db = withoutAnkiCollation(SQL, new SQL.Database(maybeZstd(files[name])));
 	let collection: AnkiCollection;
 	try {
 		collection = readCollection(db);
