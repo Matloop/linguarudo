@@ -19,7 +19,7 @@ import { releaseMedia, signMedia } from '#lib/server/media.ts';
 import { loadSettings } from '#lib/server/settings.ts';
 import { deckTree } from '#lib/decks.ts';
 import { listDecks } from '#lib/server/decks.ts';
-import { moveAction } from '#lib/server/deck-actions.ts';
+import { extraAction, moveAction } from '#lib/server/deck-actions.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const PAGE_SIZE = 500;
@@ -82,6 +82,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 			lapses: Math.max(0, ...flashcards.map((c) => c.lapses)),
 			hasProduce: flashcards.some((c) => c.kind === 'produzir'),
 			dueToday: status === 'ativo' && isDueToday(dueAts, now, shell.clock),
+			dueAt: dueAts.length ? Math.min(...dueAts.map(Date.parse)) : null,
 			next: status === 'ativo' ? formatNextReview(dueAts, now, shell.clock) : '',
 			encounters: encounters.map((e) => ({
 				id: e.id,
@@ -145,6 +146,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 
 export const actions: Actions = {
 	move: moveAction,
+	extra: extraAction,
 	add: async ({ locals, request }) => {
 		const user = await requireUser(locals);
 		const settings = await loadSettings(locals.supabase, user.id);

@@ -6,7 +6,8 @@
 	import Icon from '#lib/ui/Icon.svelte';
 	import LanguagePicker from '#lib/ui/LanguagePicker.svelte';
 	import Mark from '#lib/ui/Mark.svelte';
-	import { openSave } from '#lib/ui/app-state.svelte.ts';
+	import { openSave, toast } from '#lib/ui/app-state.svelte.ts';
+	import { postAction } from '#lib/ui/post-action.ts';
 	import { ORIGIN_ICONS } from '#lib/ui/origins.ts';
 	import type { PageProps } from './$types';
 
@@ -35,6 +36,14 @@
 		if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
 		e.preventDefault();
 		openSave();
+	}
+
+	let adding = $state(false);
+	async function addNew() {
+		adding = true;
+		const r = await postAction('extra', {});
+		adding = false;
+		toast(r.ok ? 'Mais 5 novas para revisar hoje' : r.message);
 	}
 
 	const words = (n: number) => (n === 1 ? 'palavra' : 'palavras');
@@ -126,6 +135,9 @@
 						<a class="btn btn-primary btn-lg" href={resolve('/flashcards/estudar')}
 							><Icon name="play" size="sm" />Revisar agora</a
 						>
+						<button class="btn btn-ghost btn-lg" type="button" disabled={adding} onclick={addNew}
+							><Icon name="plus" size="sm" />5 novas</button
+						>
 						<span class="hint">ou aperte <kbd>R</kbd></span>
 					</div>
 				{:else}
@@ -139,6 +151,11 @@
 						<a class="btn btn-soft btn-lg" href={resolve('/inicio?guardar')} onclick={onSave}
 							><Icon name="plus" size="sm" />Guardar palavra</a
 						>
+						{#if !empty}
+							<button class="btn btn-ghost btn-lg" type="button" disabled={adding} onclick={addNew}
+								><Icon name="plus" size="sm" />Revisar 5 novas</button
+							>
+						{/if}
 						<span class="hint">ou aperte <kbd>N</kbd></span>
 					</div>
 				{/if}

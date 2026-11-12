@@ -279,11 +279,8 @@
 			{:else}
 				<b data-testid="para-hoje">Tudo em dia</b>
 				<span class="meta"
-					>{#if data.nextDue?.startsWith('hoje')}O próximo volta {data.nextDue}{:else if data.tomorrow}Amanhã, cerca de {plural(
-							data.tomorrow,
-							'revisão',
-							'revisões'
-						)}{:else}Nada vence amanhã{/if}</span
+					>{#if data.nextDue?.startsWith('hoje')}O próximo volta {data.nextDue}{:else if data.tomorrow}Amanhã,
+						cerca de {plural(data.tomorrow, 'revisão', 'revisões')}{:else}Nada vence amanhã{/if}</span
 				>
 			{/if}
 			<span

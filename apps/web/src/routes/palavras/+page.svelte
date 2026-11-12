@@ -40,12 +40,23 @@
 		['dominadas', 'Dominadas'],
 		['teimosas', 'Teimosas']
 	];
+	type Order = 'recentes' | 'az' | 'revisao' | 'forca';
+	const ORDERS: [Order, string][] = [
+		['recentes', 'Mais recentes'],
+		['az', 'A–Z'],
+		['revisao', 'Próxima revisão'],
+		['forca', 'Força da memória']
+	];
 	const parseFilter = (v: string | null): Filter =>
 		FILTERS.some(([k]) => k === v) ? (v as Filter) : 'todas';
 
 	// Filtro e busca são locais (sem ir ao servidor); a URL guarda os dois.
 	let filter = $derived(parseFilter(page.url.searchParams.get('f')));
 	let q = $derived(page.url.searchParams.get('q') ?? '');
+	// O servidor manda as mais recentes primeiro; as outras ordens são locais.
+	let order = $derived(
+		ORDERS.find(([k]) => k === page.url.searchParams.get('o'))?.[0] ?? 'recentes'
+	);
 	// Deck da URL (?deck=); o de topo inclui os subdecks. Deck que sumiu = todos.
 	let deckFilter = $derived(
 		data.decks.some((d) => d.id === page.url.searchParams.get('deck'))
@@ -78,7 +89,7 @@
 	});
 	const rows = $derived.by(() => {
 		const needle = q.trim().toLocaleLowerCase();
-		return inDeck.filter((i) => {
+		const found = inDeck.filter((i) => {
 			if (filter === 'hoje' && !i.dueToday) return false;
 			if (filter === 'novas' && !(i.status === 'ativo' && i.strength === 0)) return false;
 			if (filter === 'dominadas' && i.strength !== 4) return false;
@@ -89,7 +100,37 @@
 				i.sense.toLocaleLowerCase().includes(needle)
 			);
 		});
+		// Sem revisão marcada (já sei) vai para o fim.
+		const due = (i: (typeof found)[number]) => i.dueAt ?? Number.MAX_SAFE_INTEGER;
+		if (order === 'az') found.sort((a, b) => a.lemma.localeCompare(b.lemma, data.language));
+		if (order === 'revisao') found.sort((a, b) => due(a) - due(b));
+		if (order === 'forca') found.sort((a, b) => a.strength - b.strength);
+		return found;
 	});
+
+	// Frases da lista: a escolha fica salva no navegador.
+	const SENTENCES_KEY = 'linguetta.frases';
+	let sentencesShown = $state(true);
+	function toggleSentences() {
+		sentencesShown = !sentencesShown;
+		localStorage.setItem(SENTENCES_KEY, sentencesShown ? '1' : '0');
+	}
+
+	let adding = $state(false);
+	async function addNew() {
+		adding = true;
+		const r = await postAction('extra', {});
+		adding = false;
+		toast(r.ok ? 'Mais 5 novas para revisar hoje' : r.message);
+	}
+
+	function pickOrder(e: Event) {
+		order = (e.currentTarget as HTMLSelectElement).value as Order;
+		replaceState(
+			resolve(`/palavras${searchWith({ o: order === 'recentes' ? null : order })}`),
+			page.state
+		);
+	}
 	const sel = new Selection(() => rows.map((i) => i.id));
 	$effect(() => {
 		void rows;
@@ -128,6 +169,7 @@
 
 	onMount(() => {
 		answers.load();
+		sentencesShown = localStorage.getItem(SENTENCES_KEY) !== '0';
 	});
 	// Trocar de palavra fecha a edição.
 	$effect(() => {
@@ -280,7 +322,23 @@
 			{/if}
 		</p>
 	</div>
-	{#if data.items.length > 0}<AnswersToggle />{/if}
+	{#if data.items.length > 0}
+		<div class="ph-acts">
+			{#if counts.novas > 0}
+				<button class="btn btn-ghost" type="button" disabled={adding} onclick={addNew}
+					><Icon name="plus" size="sm" />5 novas hoje</button
+				>
+			{/if}
+			<button
+				class="btn btn-ghost"
+				type="button"
+				aria-pressed={!sentencesShown}
+				onclick={toggleSentences}
+				><Icon name="eye" size="sm" />{sentencesShown ? 'Ocultar frases' : 'Mostrar frases'}</button
+			>
+			<AnswersToggle />
+		</div>
+	{/if}
 </div>
 
 {#if data.items.length === 0}
@@ -345,6 +403,12 @@
 				{/each}
 			</select>
 		{/if}
+		<label class="visually-hidden" for="ordem">Ordenar</label>
+		<select id="ordem" class="input deck-filter" value={order} onchange={pickOrder}>
+			{#each ORDERS as [key, label] (key)}
+				<option value={key}>{label}</option>
+			{/each}
+		</select>
 	</div>
 
 	{#if rows.length === 0}
@@ -354,7 +418,12 @@
 				: 'Nenhuma palavra neste filtro.'}
 		</div>
 	{:else}
-		<ul class="list" class:picking={sel.size > 0} aria-label="Palavras">
+		<ul
+			class="list"
+			class:picking={sel.size > 0}
+			class:no-ctx={!sentencesShown}
+			aria-label="Palavras"
+		>
 			{#each rows as item (item.id)}
 				{@const enc = item.encounters[0]}
 				<li data-sel-id={item.id} class:picked={sel.has(item.id)}>
@@ -1158,6 +1227,20 @@
 		margin-top: 20px;
 	}
 
+	.ph-acts {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+	}
+	.list.no-ctx .wrow .ctx {
+		display: none;
+	}
+	@media (min-width: 769px) {
+		.list.no-ctx .wrow {
+			grid-template-columns: minmax(0, 1fr) 28px 48px 96px;
+		}
+	}
 	@media (max-width: 1180px) {
 		.wrow {
 			grid-template-columns: minmax(150px, 1fr) minmax(0, 1.6fr) 28px 44px 80px;

@@ -7,6 +7,7 @@ import { DECK_NAME_UI_MAX } from '#lib/decks-ui.ts';
 import { deckErrorMessage, parseNewCap, parseNewOrder } from '#lib/decks.ts';
 import { LANGUAGE_COOKIE, resolveActiveLanguage } from '#lib/prefs.ts';
 import {
+	addExtraNew,
 	createDeck,
 	deleteDeck,
 	listDecks,
@@ -31,7 +32,7 @@ async function context(event: Event) {
 		settings.studyLanguages
 	);
 	if (!language) error(400, 'Escolha um idioma de estudo.');
-	return { user, language, form: await event.request.formData() };
+	return { user, language, clock: settings.clock, form: await event.request.formData() };
 }
 
 const ids = (form: FormData, key: string) => [
@@ -159,4 +160,12 @@ export async function releaseAction(event: Event) {
 	});
 	if (!res.ok) return fail(400, { op: 'release', message: res.message });
 	return { op: 'release' as const, n: res.value };
+}
+
+/** "+5 só hoje" fora do player (Início e Minhas palavras): soma ao extra de novas do dia. */
+export async function extraAction(event: Event) {
+	const { language, clock } = await context(event);
+	const res = await addExtraNew(event.locals.supabase, language, new Date(), clock);
+	if (!res.ok) return fail(400, { op: 'extra', message: res.message });
+	return { op: 'extra' as const };
 }
