@@ -40,15 +40,15 @@ export function selectProvider(env = process.env, { claudeCli } = {}) {
 }
 
 /**
- * Tradutor local (OPUS-MT em ONNX). LINGOBLEND_MT_DIR: pasta do modelo (padrão: defaultDir);
- * LINGOBLEND_MT_THREADS: threads do onnxruntime por fala (padrão 4). Sem modelo instalado o
- * tradutor volta com available: false e o servidor sobe do mesmo jeito.
+ * Tradutor local (OPUS-MT em ONNX). LINGOBLEND_MT_DIR: pasta raiz dos modelos, um por subpasta
+ * (padrão: defaultDir); LINGOBLEND_MT_THREADS: threads do onnxruntime por fala (padrão 4). Sem
+ * modelo instalado o tradutor volta com available: false e o servidor sobe do mesmo jeito.
  */
 export function selectTranslator(env = process.env, { defaultDir, log = console } = {}) {
   const raw = (env.LINGOBLEND_MT_THREADS ?? '').trim();
   const threads = raw ? Number(raw) : DEFAULT_MT_THREADS;
   if (!Number.isInteger(threads) || threads < 1) throw new Error(`LINGOBLEND_MT_THREADS inválido: "${raw}" (use um inteiro ≥ 1)`);
-  return createOpusMtTranslator({ dir: env.LINGOBLEND_MT_DIR || defaultDir, threads, log });
+  return createOpusMtTranslator({ root: env.LINGOBLEND_MT_DIR || defaultDir, threads, log });
 }
 
 /**

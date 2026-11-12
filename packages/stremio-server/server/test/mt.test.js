@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,11 +10,11 @@ import { createApp } from '../src/app.js';
 import { createDiskCache } from '../src/cache.js';
 import { selectTranslator } from '../src/config.js';
 import { translate } from '../src/lookup.js';
-import { createOpusMtTranslator, joinLines, MT_MODEL_DIRNAME, opusTargetToken } from '../src/mt/opus-mt.js';
+import { createOpusMtTranslator, joinLines, opusTargetToken } from '../src/mt/opus-mt.js';
 import { createSpmTokenizer, normalizeNmt } from '../src/mt/spm.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
-const MODEL_DIR = process.env.LINGOBLEND_MT_DIR || join(here, '..', '.models', MT_MODEL_DIRNAME);
+const MODELS_ROOT = process.env.LINGOBLEND_MT_DIR || join(here, '..', '.models');
 const S = '▁';
 
 // ------------------------------------------------------------------ tokenizador
@@ -96,16 +96,29 @@ test('joinLines: " / " vira espaço, barra sem espaços fica', () => {
   assert.equal(joinLines('1/2 e/o'), '1/2 e/o');
 });
 
-/** Pasta de modelo falsa: manifesto, vocab, config, peças e ONNX vazios (a fake do ORT não lê). */
-async function fakeModelDir() {
-  const dir = await mkdtemp(join(tmpdir(), 'lingoblend-mt-'));
-  const vocab = { ...VOCAB, '>>por<<': 4, '>>spa<<': 5, '>>ita<<': 6 };
-  await writeFile(join(dir, 'linguetta-mt.json'), JSON.stringify({ model: 'Helsinki-NLP/fake', revision: 'abc', sourceLanguages: ['it', 'es', 'pt', 'ast'] }));
+/** Um modelo falso na pasta: manifesto, vocab, config, peças e ONNX vazios (a fake do ORT não lê). */
+async function writeFakeModel(dir, manifest, vocab) {
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'linguetta-mt.json'), JSON.stringify(manifest));
   await writeFile(join(dir, 'vocab.json'), JSON.stringify(vocab));
   await writeFile(join(dir, 'config.json'), JSON.stringify({ vocab_size: 22, decoder_start_token_id: 2, pad_token_id: 2, eos_token_id: 0 }));
   await writeFile(join(dir, 'spm-pieces.json'), JSON.stringify({ pieces: PIECES }));
   for (const f of ['encoder_model', 'decoder_model', 'decoder_with_past_model']) await writeFile(join(dir, `${f}.onnx`), '');
-  return dir;
+}
+
+/**
+ * Raiz falsa com dois modelos: um multilíngue com tokens >>xxx<< (como o itc-itc) e um de par sem
+ * token (como o en-it). Pasta incompleta e pasta oculta (.venv) ficam de fora.
+ */
+async function fakeModelRoot() {
+  const root = await mkdtemp(join(tmpdir(), 'lingoblend-mt-'));
+  await writeFakeModel(join(root, 'a-multi'), { model: 'Helsinki-NLP/fake', revision: 'abc', sourceLanguages: ['it', 'es', 'pt', 'ast'] }, { ...VOCAB, '>>por<<': 4, '>>spa<<': 5, '>>ita<<': 6 });
+  const { '>>pob<<': _, ...plain } = VOCAB;
+  await writeFakeModel(join(root, 'b-pair'), { model: 'Helsinki-NLP/fake-en-it', revision: 'def', sourceLanguages: ['en'], targetLanguages: ['it'] }, plain);
+  await mkdir(join(root, 'incompleto'));
+  await writeFile(join(root, 'incompleto', 'linguetta-mt.json'), '{}');
+  await writeFakeModel(join(root, '.venv'), { model: 'nao/carrega', sourceLanguages: ['de'], targetLanguages: ['it'] }, plain);
+  return root;
 }
 
 /** onnxruntime falso: gera "ciao fine" e depois </s>; o pad tem o maior logit e precisa ser banido. */
@@ -148,59 +161,72 @@ function fakeOrt(calls) {
 }
 
 test('tradutor sem modelo: indisponível, com a dica do setup', () => {
-  const t = createOpusMtTranslator({ dir: join(tmpdir(), 'nao-existe-lingoblend'), log: {} });
+  const t = createOpusMtTranslator({ root: join(tmpdir(), 'nao-existe-lingoblend'), log: {} });
   assert.equal(t.available, false);
   assert.match(t.reason, /setup-mt\.sh/);
+  assert.deepEqual(t.models, []);
   assert.equal(t.route('it', 'pt'), null);
 });
 
-test('tradutor: rota pelo idioma de origem do manifesto e token de destino no vocab', async () => {
-  const dir = await fakeModelDir();
+test('tradutor: um modelo por subpasta; rota pela origem do manifesto e pelo token (ou destino) do modelo', async () => {
+  const root = await fakeModelRoot();
   try {
-    const t = createOpusMtTranslator({ dir, log: {} });
+    const t = createOpusMtTranslator({ root, log: {} });
     assert.equal(t.available, true);
-    assert.equal(t.model, 'Helsinki-NLP/fake');
-    assert.deepEqual(t.route('it', 'pt'), { token: '>>pob<<' });
-    assert.deepEqual(t.route('it-CH', 'pt-PT'), { token: '>>por<<' });
-    assert.deepEqual(t.route('ast', 'es'), { token: '>>spa<<' });
-    assert.equal(t.route('en', 'pt'), null); // origem fora do modelo
+    assert.deepEqual(t.models.map((m) => m.model), ['Helsinki-NLP/fake', 'Helsinki-NLP/fake-en-it']);
+    assert.deepEqual(t.models[1].targetLanguages, ['it']);
+    assert.deepEqual(t.languages, ['ast', 'en', 'es', 'it', 'pt']);
+    const multi = 'Helsinki-NLP/fake@abc';
+    assert.deepEqual(t.route('it', 'pt'), { token: '>>pob<<', model: multi });
+    assert.deepEqual(t.route('it-CH', 'pt-PT'), { token: '>>por<<', model: multi });
+    assert.deepEqual(t.route('ast', 'es'), { token: '>>spa<<', model: multi });
+    assert.deepEqual(t.route('en', 'it'), { token: null, model: 'Helsinki-NLP/fake-en-it@def' }); // modelo de par
+    assert.deepEqual(t.route('en-GB', 'it-CH'), { token: null, model: 'Helsinki-NLP/fake-en-it@def' });
+    assert.equal(t.route('en', 'pt'), null); // destino fora do modelo de par
+    assert.equal(t.route('de', 'it'), null); // pasta oculta não carrega
     assert.equal(t.route('it', 'en'), null); // destino sem token
     assert.equal(t.route('it', 'fr'), null); // destino com código, mas fora deste vocab
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   }
 });
 
-test('tradutor: carrega uma vez, prefixa o token de idioma, bane o pad e para no </s>', async () => {
-  const dir = await fakeModelDir();
+test('tradutor: carrega cada modelo uma vez, prefixa o token (ou nada), bane o pad e para no </s>', async () => {
+  const root = await fakeModelRoot();
   try {
     const calls = [];
-    const t = createOpusMtTranslator({ dir, threads: 3, log: {}, loadOrt: async () => fakeOrt(calls) });
+    const t = createOpusMtTranslator({ root, threads: 3, log: {}, loadOrt: async () => fakeOrt(calls) });
     const out = await t.translate({ sourceLang: 'it', nativeLanguage: 'pt-BR', text: 'ciao' });
     assert.equal(out, 'ciao fine');
-    const creates = calls.filter((c) => c.create);
-    assert.equal(creates.length, 3);
-    assert.equal(creates[0].opts.intraOpNumThreads, 3);
+    const creates = () => calls.filter((c) => c.create);
+    assert.equal(creates().length, 3); // só o modelo usado
+    assert.equal(creates()[0].opts.intraOpNumThreads, 3);
     assert.deepEqual(calls.find((c) => c.enc).enc, [3, 10, 0]); // >>pob<< ▁ciao </s>
     assert.deepEqual(calls.find((c) => c.past).past, ['encoder_attention_mask', 'input_ids', 'past_key_values.0.decoder.key', 'past_key_values.0.encoder.key']);
     // segunda fala: não recarrega
     await t.translate({ sourceLang: 'it', nativeLanguage: 'pt-PT', text: 'ciao' }).catch(() => {});
-    assert.equal(calls.filter((c) => c.create).length, 3);
+    assert.equal(creates().length, 3);
+    // modelo de par: carrega o seu, texto sem token
+    calls.length = 0;
+    assert.equal(await t.translate({ sourceLang: 'en', nativeLanguage: 'it', text: 'ciao' }), 'ciao fine');
+    assert.equal(creates().length, 3);
+    assert.match(creates()[0].create, /encoder_model\.onnx/);
+    assert.deepEqual(calls.find((c) => c.enc).enc, [10, 0]); // ▁ciao </s>
     await assert.rejects(t.translate({ sourceLang: 'en', nativeLanguage: 'pt', text: 'hi' }), /sem rota local/);
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   }
 });
 
-test('selectTranslator: LINGOBLEND_MT_DIR, LINGOBLEND_MT_THREADS', async () => {
-  const dir = await fakeModelDir();
+test('selectTranslator: LINGOBLEND_MT_DIR (raiz dos modelos), LINGOBLEND_MT_THREADS', async () => {
+  const root = await fakeModelRoot();
   try {
-    assert.equal(selectTranslator({ LINGOBLEND_MT_DIR: dir }, { defaultDir: '/nada', log: {} }).available, true);
+    assert.equal(selectTranslator({ LINGOBLEND_MT_DIR: root }, { defaultDir: '/nada', log: {} }).models.length, 2);
     assert.equal(selectTranslator({}, { defaultDir: join(tmpdir(), 'nao-existe-lingoblend'), log: {} }).available, false);
-    assert.throws(() => selectTranslator({ LINGOBLEND_MT_THREADS: '0' }, { defaultDir: dir, log: {} }), /LINGOBLEND_MT_THREADS/);
-    assert.throws(() => selectTranslator({ LINGOBLEND_MT_THREADS: 'x' }, { defaultDir: dir, log: {} }), /LINGOBLEND_MT_THREADS/);
+    assert.throws(() => selectTranslator({ LINGOBLEND_MT_THREADS: '0' }, { defaultDir: root, log: {} }), /LINGOBLEND_MT_THREADS/);
+    assert.throws(() => selectTranslator({ LINGOBLEND_MT_THREADS: 'x' }, { defaultDir: root, log: {} }), /LINGOBLEND_MT_THREADS/);
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   }
 });
 
@@ -210,10 +236,10 @@ function fakes() {
   const n = { local: 0, ai: 0 };
   const translator = {
     name: 'opus-mt',
-    model: 'Helsinki-NLP/fake',
-    revision: 'abc',
     available: true,
-    route: (src, native) => (src === 'it' && native.startsWith('pt') ? { token: '>>pob<<' } : null),
+    models: [{ model: 'Helsinki-NLP/fake', revision: 'abc', dir: '/x', sourceLanguages: ['it'] }],
+    languages: ['it'],
+    route: (src, native) => (src === 'it' && native.startsWith('pt') ? { token: '>>pob<<', model: 'Helsinki-NLP/fake@abc' } : null),
     translate: async ({ text }) => (n.local++, text === 'boom' ? Promise.reject(new Error('onnx caiu')) : `local: ${text}`),
   };
   const provider = { name: 'fake-ai', model: 'm', translate: async ({ text }) => (n.ai++, `ia: ${text}`) };
@@ -246,8 +272,9 @@ test('translate: cache separado por engine (e pelo modelo local)', async () => {
     assert.deepEqual(await translate({ provider, translator, cache }, { ...req, engine: 'local' }), { translation: 'local: Ciao', engine: 'local', cached: true });
     assert.equal((await translate({ provider, translator, cache }, { ...req, engine: 'ai' })).cached, true);
     assert.deepEqual(n, { local: 1, ai: 1 });
-    // outra revisão do modelo local não reaproveita
-    assert.equal((await translate({ provider, translator: { ...translator, revision: 'def' }, cache }, req)).cached, false);
+    // outra revisão do modelo da rota não reaproveita
+    const other = { ...translator, route: (...a) => translator.route(...a) && { token: '>>pob<<', model: 'Helsinki-NLP/fake@def' } };
+    assert.equal((await translate({ provider, translator: other, cache }, req)).cached, false);
     assert.equal(n.local, 2);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -273,7 +300,11 @@ test('HTTP: /translate com engine, 422 local_unavailable, 400 invalid_engine, /h
     assert.equal(r.status, 400);
     assert.equal((await r.json()).code, 'invalid_engine');
     r = await fetch(`${base}/health`);
-    assert.deepEqual((await r.json()).mt, { available: true, model: 'Helsinki-NLP/fake' });
+    assert.deepEqual((await r.json()).mt, {
+      available: true,
+      models: [{ model: 'Helsinki-NLP/fake', revision: 'abc', sourceLanguages: ['it'] }],
+      languages: ['it'],
+    });
   } finally {
     await new Promise((r) => server.close(r));
   }
@@ -281,22 +312,35 @@ test('HTTP: /translate com engine, 422 local_unavailable, 400 invalid_engine, /h
 
 // ------------------------------------------------------------------ paridade com o modelo real
 
-const hasModel = existsSync(join(MODEL_DIR, 'tokenizer-fixture.json'));
+// Cada modelo instalado com fixture: rota pela primeira origem do manifesto e destino PT-BR
+// (>>pob<<) ou o destino do modelo de par.
+const realModels = existsSync(MODELS_ROOT)
+  ? readdirSync(MODELS_ROOT)
+      .filter((n) => !n.startsWith('.') && existsSync(join(MODELS_ROOT, n, 'tokenizer-fixture.json')))
+      .sort()
+  : [];
+if (!realModels.length) test('modelo real', { skip: `sem modelo em ${MODELS_ROOT} (rode scripts/setup-mt.sh)` }, () => {});
 
-test('modelo real: ids do tokenizador JS = MarianTokenizer e traduções = ONNX int8 em Python', { skip: !hasModel && `sem modelo em ${MODEL_DIR} (rode scripts/setup-mt.sh)` }, async () => {
-  const fixture = JSON.parse(readFileSync(join(MODEL_DIR, 'tokenizer-fixture.json'), 'utf8'));
-  const t = createOpusMtTranslator({ dir: MODEL_DIR, log: {} });
-  assert.equal(t.available, true);
-  const spm = createSpmTokenizer({
-    pieces: JSON.parse(readFileSync(join(MODEL_DIR, 'spm-pieces.json'), 'utf8')).pieces,
-    vocab: JSON.parse(readFileSync(join(MODEL_DIR, 'vocab.json'), 'utf8')),
+for (const name of realModels) {
+  const dir = join(MODELS_ROOT, name);
+  test(`modelo real ${name}: ids do tokenizador JS = MarianTokenizer e traduções = ONNX int8 em Python`, async () => {
+    const fixture = JSON.parse(readFileSync(join(dir, 'tokenizer-fixture.json'), 'utf8'));
+    const manifest = JSON.parse(readFileSync(join(dir, 'linguetta-mt.json'), 'utf8'));
+    const t = createOpusMtTranslator({ root: MODELS_ROOT, log: {} });
+    const spm = createSpmTokenizer({
+      pieces: JSON.parse(readFileSync(join(dir, 'spm-pieces.json'), 'utf8')).pieces,
+      vocab: JSON.parse(readFileSync(join(dir, 'vocab.json'), 'utf8')),
+    });
+    for (const c of fixture.cases) {
+      assert.deepEqual(spm.encode(c.text), c.encoded, `ids: ${c.text}`);
+      assert.equal(spm.decode(c.output), c.translation, `decode: ${c.text}`);
+    }
+    const sourceLang = manifest.sourceLanguages[0];
+    const nativeLanguage = fixture.cases[0].langToken ? 'pt-BR' : manifest.targetLanguages[0];
+    const route = t.route(sourceLang, nativeLanguage);
+    assert.deepEqual(route, { token: fixture.cases[0].langToken, model: `${manifest.model}@${manifest.revision}` });
+    for (const c of fixture.cases) {
+      assert.equal(await t.translate({ sourceLang, nativeLanguage, text: c.text }), c.translation, `tradução: ${c.text}`);
+    }
   });
-  for (const c of fixture.cases) {
-    assert.deepEqual(spm.encode(c.text), c.encoded, `ids: ${c.text}`);
-    assert.equal(spm.decode(c.output), c.translation, `decode: ${c.text}`);
-  }
-  for (const c of fixture.cases) {
-    assert.equal(c.langToken, '>>pob<<');
-    assert.equal(await t.translate({ sourceLang: 'it', nativeLanguage: 'pt-BR', text: c.text }), c.translation, `tradução: ${c.text}`);
-  }
-});
+}

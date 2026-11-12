@@ -1,14 +1,15 @@
 import { createServer } from 'node:http';
 import { cacheKey } from './cache.js';
 import { HttpError } from './errors.js';
-import { lookup, parseLookupRequest, parseTranslateRequest, translate } from './lookup.js';
+import { ENGINES, lookup, parseLookupRequest, parseTranslateRequest, translate } from './lookup.js';
+import { createLocalAnnotator } from './blend/local.js';
+import { DEFAULT_WORD_COVERAGE, MAX_WORD_COVERAGE, selectSwaps } from './blend/select.js';
 import { lemmaKey } from '@linguetta/language';
 import { requireLanguage, sameLanguage } from './lang.js';
 import { validateBatch } from './validate.js';
 
 export const MAX_BODY = 2 * 1024 * 1024;
 export const MAX_CUES = 500;
-export const DEFAULT_DENSITY = 0.1;
 export const MAX_PREFER_WORDS = 1000;
 
 export { HttpError };
@@ -62,9 +63,15 @@ export function parseAnnotateRequest(body) {
   const sourceLang = requireLanguage(body.sourceLang, 'sourceLang');
   const targetLang = requireLanguage(body.targetLang, 'targetLang');
   const nativeLanguage = requireLanguage(body.nativeLanguage, 'nativeLanguage');
-  let density = body.density === undefined ? DEFAULT_DENSITY : Number(body.density);
-  if (!Number.isFinite(density) || density < 0 || density > 1) throw new HttpError(400, 'invalid_density', 'density deve estar entre 0 e 1');
-  density = Math.round(density * 1000) / 1000;
+  // wordCoverage: parte das palavras da legenda trocadas (src/blend/select.js). cueOffset: posição da
+  // primeira cue do lote na legenda, para o espaçamento continuar entre os lotes.
+  let wordCoverage = body.wordCoverage === undefined ? DEFAULT_WORD_COVERAGE : Number(body.wordCoverage);
+  if (!Number.isFinite(wordCoverage) || wordCoverage < 0 || wordCoverage > MAX_WORD_COVERAGE) {
+    throw new HttpError(400, 'invalid_word_coverage', `wordCoverage deve estar entre 0 e ${MAX_WORD_COVERAGE}`);
+  }
+  wordCoverage = Math.round(wordCoverage * 100) / 100;
+  const cueOffset = body.cueOffset === undefined ? 0 : body.cueOffset;
+  if (!Number.isInteger(cueOffset) || cueOffset < 0) throw new HttpError(400, 'invalid_cue_offset', 'cueOffset deve ser um inteiro ≥ 0');
   if (!Array.isArray(body.cues)) throw new HttpError(400, 'invalid_cues', 'cues deve ser uma lista');
   if (body.cues.length > MAX_CUES) throw new HttpError(400, 'too_many_cues', `no máximo ${MAX_CUES} cues por requisição`);
   const cues = body.cues.map((c, i) => {
@@ -74,7 +81,10 @@ export function parseAnnotateRequest(body) {
     return { id, text: c.text };
   });
   const preferWords = parsePreferWords(body.preferWords, targetLang);
-  return { sourceLang, targetLang, nativeLanguage, density, cues, preferWords };
+  // engine: "ai" (o provider) ou "local" (OPUS-MT + dicionários, src/blend/local.js).
+  const engine = body.engine;
+  if (!ENGINES.includes(engine)) throw new HttpError(400, 'invalid_engine', `engine deve ser ${ENGINES.map((e) => `"${e}"`).join(' ou ')}`);
+  return { sourceLang, targetLang, nativeLanguage, wordCoverage, cueOffset, cues, preferWords, engine };
 }
 
 /**
@@ -97,28 +107,66 @@ function parsePreferWords(raw, lang) {
 }
 
 /**
- * Lógica de anotação, independente de HTTP.
- * provider: { name, model, annotate({ sourceLang, targetLang, nativeLanguage, density, texts, preferWords }) -> Array<raw[]> }
- * cache: { get(key), set(key, annotationsByIndex) } ou null
+ * Lógica de anotação, independente de HTTP: o motor entrega candidatas por fala (em cache) e
+ * selectSwaps escolhe quais falas e palavras vão para a tela.
+ * provider: { name, model, annotate({ sourceLang, targetLang, nativeLanguage, wordCoverage, texts, preferWords }) -> Array<raw[]> }
+ * cache: { get(key), set(key, candidatasPorIndice) } ou null
+ * local: createLocalAnnotator() ou null; com req.engine "local" ele faz o papel do provider.
+ * dictionaries: openDictionaries() ou null; dá a lista de frequência da língua de estudo.
+ * inflight: Map chave → promessa das candidatas em cálculo, ou null. O mesmo lote pedido de novo
+ * antes de o primeiro terminar (o cliente trocou de legenda e voltou; abortar o fetch não para o
+ * motor) espera pelo primeiro em vez de pagar a IA duas vezes.
  */
-export async function annotate({ provider, cache }, req) {
-  const { sourceLang, targetLang, nativeLanguage, density, cues, preferWords = [] } = req;
+export async function annotate({ provider, cache, local = null, dictionaries = null, inflight = null }, req) {
+  const { sourceLang, targetLang, nativeLanguage, wordCoverage, cueOffset = 0, cues, preferWords = [] } = req;
+  let request = wordCoverage;
+  if (req.engine === 'local') {
+    const why = local ? local.unavailable(req) : 'Blend local desligado';
+    if (why) throw new HttpError(422, 'local_unavailable', why);
+    const engine = local;
+    request = null;
+    provider = {
+      name: engine.name,
+      model: engine.model(req),
+      annotate: async (r) => {
+        try {
+          return await engine.annotate(r);
+        } catch (e) {
+          throw new HttpError(500, 'local_error', `Blend local falhou: ${e.message}`);
+        }
+      },
+    };
+  }
   const texts = cues.map((c) => c.text);
-  let byIndex = null;
+  let byIndex = texts.map(() => []);
   let cached = false;
 
-  if (sameLanguage(sourceLang, targetLang) || density === 0 || texts.every((t) => !t.trim())) {
-    byIndex = texts.map(() => []);
-  } else {
-    const key = cacheKey({ provider: provider.name, model: provider.model, sourceLang, targetLang, nativeLanguage, density, texts, preferWords });
-    byIndex = cache ? await cache.get(key) : null;
-    if (Array.isArray(byIndex) && byIndex.length === texts.length) {
+  if (!sameLanguage(sourceLang, targetLang) && wordCoverage > 0 && texts.some((t) => t.trim())) {
+    // O motor local ignora o banco nas candidatas (o banco só pesa na escolha): fora da chave.
+    const keyWords = request === null ? [] : preferWords;
+    const key = cacheKey({ provider: provider.name, model: provider.model, sourceLang, targetLang, nativeLanguage, request, texts, preferWords: keyWords });
+    let candidates = cache ? await cache.get(key) : null;
+    if (Array.isArray(candidates) && candidates.length === texts.length) {
+      cached = true;
+    } else if (inflight?.has(key)) {
+      candidates = await inflight.get(key);
       cached = true;
     } else {
-      const raw = await provider.annotate({ sourceLang, targetLang, nativeLanguage, density, texts, preferWords });
-      byIndex = validateBatch(texts, raw, { sourceLang, targetLang });
-      if (cache) await cache.set(key, byIndex).catch((e) => console.warn('[cache] falha ao gravar:', e.message));
+      const run = (async () => {
+        const raw = await provider.annotate({ sourceLang, targetLang, nativeLanguage, wordCoverage, texts, preferWords });
+        const valid = validateBatch(texts, raw, { sourceLang, targetLang });
+        if (cache) await cache.set(key, valid).catch((e) => console.warn('[cache] falha ao gravar:', e.message));
+        return valid;
+      })();
+      inflight?.set(key, run);
+      try {
+        candidates = await run;
+      } finally {
+        inflight?.delete(key);
+      }
     }
+    const frequency = dictionaries?.get(targetLang)?.frequency ?? null;
+    byIndex = selectSwaps({ texts, candidates, sourceLang, targetLang, wordCoverage, cueOffset, preferWords, frequency });
   }
 
   const annotations = {};
@@ -141,6 +189,8 @@ function errorCode(err, status) {
  * responde found: false (só com as traduções locais).
  */
 export function createApp({ provider, translator = null, dictionaries = null, cache = null, log = console }) {
+  const local = createLocalAnnotator({ translator, dictionaries });
+  const inflight = new Map();
   return createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     try {
@@ -148,8 +198,8 @@ export function createApp({ provider, translator = null, dictionaries = null, ca
       if (url.pathname === '/health') {
         if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method_not_allowed', 'use GET');
         const mt = translator?.available
-          ? { available: true, model: translator.model }
-          : { available: false, model: null, ...(translator?.reason ? { reason: translator.reason } : {}) };
+          ? { available: true, models: translator.models.map(({ dir, ...m }) => m), languages: translator.languages }
+          : { available: false, models: [], ...(translator?.reason ? { reason: translator.reason } : {}) };
         const dict = { languages: dictionaries?.status() ?? {}, ...(dictionaries?.reason ? { reason: dictionaries.reason } : {}) };
         return send(res, 200, { ok: true, provider: provider.name, model: provider.model, mt, dict });
       }
@@ -175,11 +225,11 @@ export function createApp({ provider, translator = null, dictionaries = null, ca
         const body = await readJson(req);
         const parsed = parseAnnotateRequest(body);
         const t0 = Date.now();
-        const out = await annotate({ provider, cache }, parsed);
+        const out = await annotate({ provider, cache, local, dictionaries, inflight }, parsed);
         const n = Object.values(out.annotations).reduce((s, a) => s + a.length, 0);
         log.info?.(
-          `[annotate] ${parsed.sourceLang}->${parsed.targetLang} ${parsed.cues.length} cues, ${n} anotações, ` +
-            `${out.cached ? 'cache' : provider.name} ${Date.now() - t0}ms`,
+          `[annotate] ${parsed.sourceLang}->${parsed.targetLang} ${parsed.engine} ${parsed.cues.length} cues, ${n} anotações, ` +
+            `${out.cached ? 'cache' : out.provider} ${Date.now() - t0}ms`,
         );
         return send(res, 200, { provider: out.provider, annotations: out.annotations });
       }

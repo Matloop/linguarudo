@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { PT_IT } from '../dictionary.js';
-import { countWords, lemmaKey, segmentWords } from '@linguetta/language';
+import { lemmaKey, segmentWords } from '@linguetta/language';
 import { baseOf, cleanLemma } from '../lang.js';
-import { MAX_PER_CUE } from '../validate.js';
+import { MAX_CANDIDATES } from '../validate.js';
 
 // O dicionário embutido é só PT → IT, com sentidos em português: o mock só atende
 // legenda em português trocada por italiano (blend) ou consulta em italiano, para quem tem
@@ -58,7 +58,8 @@ export function findHits(text) {
           ipa: entry.ipa,
           pos: entry.pos,
           meaning: entry.meaning,
-          example: entry.example,
+          // sem tradutor: o mock não traduz a fala inteira
+          translatedLine: '',
         },
       });
       i += found.n;
@@ -95,33 +96,19 @@ export function createMockProvider() {
     async translate() {
       return '';
     },
-    async annotate({ sourceLang, targetLang, nativeLanguage, density, texts, preferWords = [] }) {
-      const result = texts.map(() => []);
-      if (!isPt(sourceLang) || !isIt(targetLang) || !isPt(nativeLanguage) || !(density > 0)) return result;
-
-      const totalWords = texts.reduce((n, t) => n + countWords(t, sourceLang), 0);
-      let quota = Math.max(1, Math.round(density * totalWords));
+    // Candidatas por fala (até MAX_CANDIDATES), na ordem de preferência: palavras do banco primeiro,
+    // depois pelo hash. A escolha é do servidor.
+    async annotate({ sourceLang, targetLang, nativeLanguage, wordCoverage, texts, preferWords = [] }) {
+      if (!isPt(sourceLang) || !isIt(targetLang) || !isPt(nativeLanguage) || !(wordCoverage > 0)) return texts.map(() => []);
       const prefer = new Set(preferWords.map((w) => lemmaKey(w, targetLang)));
+      const bank = (h) => (prefer.has(lemmaKey(h.annotation.lemma, targetLang)) ? 0 : 1);
       // por cue: candidatos ordenados pelo hash (determinístico, mas "aleatório")
-      const perCue = texts.map((t) => findHits(t).sort((a, b) => a.score - b.score));
-
-      // 1º as palavras do banco do usuário, depois as novas completam a cota.
-      // Em cada fase, rodadas: 1ª escolhe o melhor de cada cue, 2ª o segundo melhor... para espalhar.
-      for (const preferred of [true, false]) {
-        const pools = perCue.map((hits) => hits.filter((h) => prefer.has(lemmaKey(h.annotation.lemma, targetLang)) === preferred));
-        for (let round = 0; round < MAX_PER_CUE && quota > 0; round++) {
-          const picks = [];
-          pools.forEach((hits, idx) => {
-            const hit = hits[round];
-            if (hit && result[idx].length < MAX_PER_CUE) picks.push({ idx, hit });
-          });
-          picks.sort((a, b) => a.hit.score - b.hit.score);
-          for (const { idx, hit } of picks.slice(0, quota)) result[idx].push(hit);
-          quota -= Math.min(quota, picks.length);
-        }
-      }
-      // ordem de leitura dentro da cue
-      return result.map((hits) => hits.sort((a, b) => a.start - b.start).map((h) => h.annotation));
+      return texts.map((t) =>
+        findHits(t)
+          .sort((a, b) => bank(a) - bank(b) || a.score - b.score)
+          .slice(0, MAX_CANDIDATES)
+          .map((h) => h.annotation),
+      );
     },
   };
 }

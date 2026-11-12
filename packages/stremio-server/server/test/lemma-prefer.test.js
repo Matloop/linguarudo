@@ -35,38 +35,25 @@ test('dicionário mock: toda entrada tem lemma; flexões apontam para a forma ba
 
 test('mock devolve lemma em cada anotação', async () => {
   const mock = createMockProvider();
-  const [[a]] = await mock.annotate({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', density: 1, texts: ['Eu não quero festas.'] });
+  const [[a]] = await mock.annotate({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', wordCoverage: 0.5, texts: ['Eu não quero festas.'] });
   assert.ok(a.lemma);
-  const all = (await mock.annotate({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', density: 1, texts: ['Eu não quero ir às festas.'] }))[0];
-  assert.deepEqual(all.map((x) => [x.target, x.lemma]), [['voglio', 'volere'], ['feste', 'festa']]);
+  const all = (await mock.annotate({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', wordCoverage: 0.5, texts: ['Eu não quero ir às festas.'] }))[0];
+  assert.deepEqual(all.map((x) => [x.target, x.lemma]).sort(), [['feste', 'festa'], ['voglio', 'volere']]);
 });
 
-test('mock: preferWords entra primeiro e conta na densidade; o resto completa com palavras novas', async () => {
+test('mock: as palavras do banco vêm primeiro entre as candidatas da fala', async () => {
   const mock = createMockProvider();
-  const texts = [
-    'Eu não quero só ir às festas.',
-    'Agora preciso de dinheiro para o carro.',
-    'Meu irmão comprou um livro novo.',
-    'Vamos para a praia hoje com os amigos.',
-  ];
-  const req = { sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', density: 0.1, texts };
-  const base = (await mock.annotate(req)).flat();
-  // escolhe lemas que o mock NÃO pegaria sozinho
-  const notPicked = ['festa', 'libro', 'spiaggia', 'soldi'].filter((l) => !base.some((a) => a.lemma === l));
-  assert.ok(notPicked.length >= 2, `base pegou ${base.map((a) => a.lemma)}`);
-  const prefer = notPicked.slice(0, 2);
-
-  const out = (await mock.annotate({ ...req, preferWords: prefer })).flat();
-  assert.equal(out.length, base.length, 'mesma densidade');
-  for (const l of prefer) assert.ok(out.some((a) => a.lemma === l), `faltou ${l}`);
-
-  // densidade maior: além das preferidas, completa com outras
-  const dense = (await mock.annotate({ ...req, density: 0.3, preferWords: prefer })).flat();
-  assert.ok(dense.some((a) => !prefer.includes(a.lemma)));
+  const req = { sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', wordCoverage: 0.3, texts: ['Eu não quero só ir às festas com o meu irmão agora.'] };
+  const [base] = await mock.annotate(req);
+  assert.ok(base.length >= 3);
+  const last = base[base.length - 1].lemma;
+  const [out] = await mock.annotate({ ...req, preferWords: [last] });
+  assert.equal(out[0].lemma, last);
+  assert.equal(out.length, base.length);
 });
 
 test('parseAnnotateRequest: preferWords opcional, normalizado (caixa mantida, sem duplicatas pela lemmaKey, ordenado)', () => {
-  const base = { sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', cues: [] };
+  const base = { sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', engine: 'ai', cues: [] };
   assert.deepEqual(parseAnnotateRequest(base).preferWords, []);
   assert.deepEqual(parseAnnotateRequest({ ...base, preferWords: [' Festa', 'giorno', 'festa', '', 42] }).preferWords, ['Festa', 'giorno']);
   assert.deepEqual(parseAnnotateRequest({ ...base, targetLang: 'de', preferWords: ['Haus', 'gehen', 'haus'] }).preferWords, ['gehen', 'Haus']);
@@ -75,7 +62,7 @@ test('parseAnnotateRequest: preferWords opcional, normalizado (caixa mantida, se
 });
 
 test('cacheKey muda com preferWords', () => {
-  const base = { provider: 'mock', model: 'm', sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', density: 0.1, texts: ['a'] };
+  const base = { provider: 'mock', model: 'm', sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', request: 0.3, texts: ['a'] };
   assert.equal(cacheKey(base), cacheKey({ ...base, preferWords: [] }));
   assert.notEqual(cacheKey(base), cacheKey({ ...base, preferWords: ['festa'] }));
 });
@@ -83,33 +70,33 @@ test('cacheKey muda com preferWords', () => {
 test('annotate repassa preferWords ao provider', async () => {
   let seen = null;
   const provider = { name: 'fake', model: 'x', annotate: async (r) => ((seen = r.preferWords), r.texts.map(() => [])) };
-  await annotate({ provider, cache: null }, { sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', density: 0.1, preferWords: ['festa'], cues: [{ id: '1', text: 'oi festas' }] });
+  await annotate({ provider, cache: null }, { sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', wordCoverage: 0.1, preferWords: ['festa'], cues: [{ id: '1', text: 'oi festas' }] });
   assert.deepEqual(seen, ['festa']);
 });
 
 test('claude: schema pede lemma e a mensagem lista as palavras preferidas', async () => {
   const item = OUTPUT_SCHEMA.properties.annotations.items;
   assert.ok(item.properties.lemma && item.required.includes('lemma'));
-  const msg = buildUserMessage({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', density: 0.1, texts: ['Vamos às festas.'], preferWords: ['festa', 'giorno'] });
+  const msg = buildUserMessage({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', wordCoverage: 0.1, texts: ['Vamos às festas.'], preferWords: ['festa', 'giorno'] });
   assert.match(msg, /festa, giorno/);
-  assert.doesNotMatch(buildUserMessage({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', density: 0.1, texts: ['x'] }), /studying/i);
+  assert.doesNotMatch(buildUserMessage({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', wordCoverage: 0.1, texts: ['x'] }), /studying/i);
 
   const client = {
     beta: {
       messages: {
         create: async () => ({
           stop_reason: 'end_turn',
-          content: [{ type: 'text', text: JSON.stringify({ annotations: [{ cue: 1, source: 'festas', target: 'feste', lemma: 'festa', ipa: '', pos: '', meaning: '', example: '' }] }) }],
+          content: [{ type: 'text', text: JSON.stringify({ annotations: [{ cue: 1, source: 'festas', target: 'feste', lemma: 'festa', ipa: '', pos: '', meaning: '', translatedLine: '' }] }) }],
         }),
       },
     },
   };
-  const out = await createClaudeProvider({ client }).annotate({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', density: 0.1, texts: ['Vamos às festas.'] });
+  const out = await createClaudeProvider({ client }).annotate({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'pt', wordCoverage: 0.1, texts: ['Vamos às festas.'] });
   assert.equal(out[0][0].lemma, 'festa');
 });
 
 test('parseAnnotateRequest: tags BCP 47 canônicas e nativeLanguage obrigatório', () => {
-  const r = parseAnnotateRequest({ sourceLang: 'pob', targetLang: 'zht', nativeLanguage: 'PT_br', cues: [] });
+  const r = parseAnnotateRequest({ sourceLang: 'pob', targetLang: 'zht', nativeLanguage: 'PT_br', engine: 'ai', cues: [] });
   assert.deepEqual([r.sourceLang, r.targetLang, r.nativeLanguage], ['pt-BR', 'zh-Hant', 'pt-BR']);
   assert.throws(() => parseAnnotateRequest({ sourceLang: 'pt', targetLang: 'it', cues: [] }), (e) => e.status === 400 && e.code === 'missing_native_language');
   assert.throws(() => parseAnnotateRequest({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: '??', cues: [] }), (e) => e.code === 'invalid_native_language');
@@ -122,7 +109,7 @@ test('claude: prompt do blend é neutro e usa a língua nativa; schema pede read
   const client = {
     beta: { messages: { create: async (p) => (calls.push(p), { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"annotations":[]}' }] }) } },
   };
-  await createClaudeProvider({ client }).annotate({ sourceLang: 'en', targetLang: 'ja', nativeLanguage: 'de', density: 0.1, texts: ['I eat bread every morning.'] });
+  await createClaudeProvider({ client }).annotate({ sourceLang: 'en', targetLang: 'ja', nativeLanguage: 'de', wordCoverage: 0.1, texts: ['I eat bread every morning.'] });
   const prompt = calls[0].system[0].text + calls[0].messages[0].content;
   assert.match(prompt, /speaker of German/);
   assert.match(prompt, /meaning in German/);
@@ -131,8 +118,8 @@ test('claude: prompt do blend é neutro e usa a língua nativa; schema pede read
   assert.doesNotMatch(annotateSystem({ sourceLang: 'pt', targetLang: 'it', nativeLanguage: 'en' }), /Brazilian|Portuguese speaker/);
 });
 
-test('densidade conta palavras pelo segmentador do idioma da cue (japonês sem espaços)', () => {
-  const msg = buildUserMessage({ sourceLang: 'ja', targetLang: 'it', nativeLanguage: 'pt', density: 0.5, texts: ['私は毎朝パンを食べます'] });
+test('a mensagem conta palavras pelo segmentador do idioma da cue (japonês sem espaços)', () => {
+  const msg = buildUserMessage({ sourceLang: 'ja', targetLang: 'it', nativeLanguage: 'pt', wordCoverage: 0.5, texts: ['私は毎朝パンを食べます'] });
   const words = Number(msg.match(/and (\d+) words/)[1]);
   assert.ok(words > 1, `contou ${words}`);
 });

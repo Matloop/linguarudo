@@ -178,10 +178,10 @@ test('expressões: verbete exato, lemas por palavra, verbete dentro da seleção
 function fakeTranslator(calls = []) {
   return {
     name: 'opus-mt',
-    model: 'fake-mt',
-    revision: 'r1',
     available: true,
-    route: (src, dst) => (src.startsWith('it') && dst.startsWith('pt') ? { token: '>>pob<<' } : null),
+    models: [{ model: 'fake-mt', revision: 'r1', dir: '/x', sourceLanguages: ['it'] }],
+    languages: ['it'],
+    route: (src, dst) => (src.startsWith('it') && dst.startsWith('pt') ? { token: '>>pob<<', model: 'fake-mt@r1' } : null),
     translate: async ({ text }) => (calls.push(text), text === 'pulito' ? 'Limpo.' : `[${text}]`),
   };
 }

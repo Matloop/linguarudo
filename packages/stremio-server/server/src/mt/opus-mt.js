@@ -1,19 +1,23 @@
 // Tradução local de falas: OPUS-MT (MarianMT) em ONNX int8 com onnxruntime-node, dentro do servidor.
 //
-// Modelo: Helsinki-NLP/opus-mt-tc-big-itc-itc (CC-BY-4.0, Helsinki-NLP / OPUS-MT), exportado pelo
-// scripts/setup-mt.sh. Entre línguas românicas (itálicas) em qualquer direção; o idioma de
-// destino vai num token >>xxx<< antes do texto (>>pob<< = português do Brasil, >>por<< = europeu).
+// Modelos (CC-BY-4.0, Helsinki-NLP / OPUS-MT), exportados pelo scripts/setup-mt.sh, cada um numa
+// subpasta da raiz (LINGOBLEND_MT_DIR, padrão server/.models):
+//   opus-mt-tc-big-itc-itc  românicas (itálicas) entre si; destino num token >>xxx<< antes do texto
+//                           (>>pob<< = português do Brasil, >>por<< = europeu);
+//   opus-mt-tc-big-en-it    inglês → italiano, modelo de par sem token (destino no manifesto);
+//   opus-mt-tc-big-en-pt    inglês → português, com >>pob<< / >>por<<.
+// O servidor carrega toda subpasta com os arquivos do export; a rota de um par é o primeiro modelo
+// (ordem alfabética das pastas) que tem a origem e o destino.
 //
-// O modelo carrega no primeiro uso (≈1–2 s) e as execuções vão em fila: uma fala por vez, com
-// intraOpNumThreads fixo (4 por padrão; todos os núcleos mediu 2–3x mais lento). Decodificação
-// gulosa (≈50 ms por fala).
-import { existsSync, readFileSync } from 'node:fs';
+// Cada modelo carrega no primeiro uso (≈1–2 s) e as execuções vão numa fila só, comum a todos: uma
+// fala por vez, com intraOpNumThreads fixo (4 por padrão; todos os núcleos mediu 2–3x mais lento).
+// Decodificação gulosa (≈50 ms por fala).
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { languageProfile } from '@linguetta/language';
 import { createSpmTokenizer } from './spm.js';
 
-export const MT_MODEL_DIRNAME = 'opus-mt-tc-big-itc-itc';
 export const DEFAULT_MT_THREADS = 4;
 const FILES = ['linguetta-mt.json', 'config.json', 'vocab.json', 'spm-pieces.json', 'encoder_model.onnx', 'decoder_model.onnx', 'decoder_with_past_model.onnx'];
 
@@ -47,32 +51,41 @@ export function opusTargetToken(tag) {
   return code ? `>>${code}<<` : null;
 }
 
-/** Instruções para instalar o modelo (log do servidor e /health). */
-export function setupHint(dir) {
-  return `tradução local indisponível: modelo ausente em ${dir} (rode server/scripts/setup-mt.sh)`;
+/** Instruções para instalar os modelos (log do servidor e /health). */
+export function setupHint(root) {
+  return `tradução local indisponível: nenhum modelo em ${root} (rode server/scripts/setup-mt.sh)`;
 }
 
-/**
- * Tradutor local. Sem o modelo instalado fica `available: false` e o servidor sobe normalmente.
- *   route(sourceLang, nativeLanguage) → { token } | null
- *   translate({ sourceLang, nativeLanguage, text }) → Promise<string>  (rota precisa existir)
- * opts.loadOrt: injeta o onnxruntime (testes).
- */
-export function createOpusMtTranslator({ dir, threads = DEFAULT_MT_THREADS, log = console, loadOrt } = {}) {
-  const missing = FILES.filter((f) => !existsSync(join(dir, f)));
-  if (missing.length) {
-    return { name: 'opus-mt', model: null, available: false, reason: setupHint(dir), dir, route: () => null, translate: unavailable };
+/** Subpastas da raiz com todos os arquivos do export, em ordem alfabética. */
+function modelDirs(root) {
+  let names;
+  try {
+    names = readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith('.')).map((d) => d.name);
+  } catch {
+    return [];
   }
+  return names
+    .sort()
+    .map((n) => join(root, n))
+    .filter((dir) => FILES.every((f) => existsSync(join(dir, f))));
+}
+
+/** Um modelo exportado: manifesto, vocab e config já lidos; as sessões ONNX no primeiro uso. */
+function openModel(dir, { threads, log, loadOrt }) {
   const manifest = JSON.parse(readFileSync(join(dir, 'linguetta-mt.json'), 'utf8'));
   const vocab = JSON.parse(readFileSync(join(dir, 'vocab.json'), 'utf8'));
   const config = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'));
   const sources = new Set(manifest.sourceLanguages ?? []);
-  const model = manifest.model;
+  // Modelo de par sem token: o destino vem do manifesto e o texto entra sem prefixo.
+  const targets = manifest.targetLanguages?.length ? new Set(manifest.targetLanguages) : null;
+  const key = manifest.revision ? `${manifest.model}@${manifest.revision}` : manifest.model;
 
-  function route(sourceLang, nativeLanguage) {
-    if (!sources.has(languageProfile(sourceLang).base)) return null;
+  /** Token de destino (null em modelo sem token) ou undefined quando o par não é deste modelo. */
+  function tokenFor(sourceLang, nativeLanguage) {
+    if (!sources.has(languageProfile(sourceLang).base)) return undefined;
+    if (targets) return targets.has(languageProfile(nativeLanguage).base) ? null : undefined;
     const token = opusTargetToken(nativeLanguage);
-    return token && vocab[token] !== undefined ? { token } : null;
+    return token && vocab[token] !== undefined ? token : undefined;
   }
 
   let loading = null;
@@ -85,11 +98,54 @@ export function createOpusMtTranslator({ dir, threads = DEFAULT_MT_THREADS, log 
     const [enc, dec0, decP] = await Promise.all(
       ['encoder_model', 'decoder_model', 'decoder_with_past_model'].map((n) => ort.InferenceSession.create(join(dir, `${n}.onnx`), opts)),
     );
-    log.info?.(`[mt] ${model} carregado em ${Math.round(performance.now() - t0)} ms (threads=${threads})`);
+    log.info?.(`[mt] ${manifest.model} carregado em ${Math.round(performance.now() - t0)} ms (threads=${threads})`);
     return { ort, tokenizer, enc, dec0, decP };
   }
+  const engine = () =>
+    (loading ??= load().catch((e) => {
+      loading = null;
+      throw e;
+    }));
 
-  // Uma execução por vez: o onnxruntime já usa `threads` núcleos por fala.
+  return {
+    key,
+    info: { model: manifest.model, revision: manifest.revision ?? null, dir, sourceLanguages: [...sources].sort(), ...(targets ? { targetLanguages: [...targets].sort() } : {}) },
+    sources,
+    tokenFor,
+    engine,
+    langId: (token) => (token ? vocab[token] : null),
+    config,
+  };
+}
+
+/**
+ * Tradutor local: todos os modelos da raiz. Sem nenhum fica `available: false` e o servidor sobe
+ * normalmente.
+ *   route(sourceLang, nativeLanguage) → { token, model: 'id@revisão' } | null  (token null: modelo sem token)
+ *   translate({ sourceLang, nativeLanguage, text }) → Promise<string>  (rota precisa existir)
+ *   models: [{ model, revision, dir, sourceLanguages, targetLanguages? }]; languages: origens de todos.
+ * opts.loadOrt: injeta o onnxruntime (testes).
+ */
+export function createOpusMtTranslator({ root, threads = DEFAULT_MT_THREADS, log = console, loadOrt } = {}) {
+  const models = modelDirs(root).map((dir) => openModel(dir, { threads, log, loadOrt }));
+  if (!models.length) {
+    return { name: 'opus-mt', available: false, reason: setupHint(root), root, models: [], languages: [], route: () => null, translate: unavailable };
+  }
+
+  function pick(sourceLang, nativeLanguage) {
+    for (const m of models) {
+      const token = m.tokenFor(sourceLang, nativeLanguage);
+      if (token !== undefined) return { m, token };
+    }
+    return null;
+  }
+
+  function route(sourceLang, nativeLanguage) {
+    const p = pick(sourceLang, nativeLanguage);
+    return p ? { token: p.token, model: p.m.key } : null;
+  }
+
+  // Uma execução por vez, em todos os modelos: o onnxruntime já usa `threads` núcleos por fala.
   let queue = Promise.resolve();
   function serial(fn) {
     const run = queue.then(fn, fn);
@@ -98,17 +154,14 @@ export function createOpusMtTranslator({ dir, threads = DEFAULT_MT_THREADS, log 
   }
 
   async function translate({ sourceLang, nativeLanguage, text }) {
-    const r = route(sourceLang, nativeLanguage);
-    if (!r) throw new Error(`sem rota local ${sourceLang}->${nativeLanguage}`);
-    loading ??= load().catch((e) => {
-      loading = null;
-      throw e;
-    });
-    const engine = await loading;
-    return serial(() => greedy(engine, config, vocab[r.token], text));
+    const p = pick(sourceLang, nativeLanguage);
+    if (!p) throw new Error(`sem rota local ${sourceLang}->${nativeLanguage}`);
+    const engine = await p.m.engine();
+    return serial(() => greedy(engine, p.m.config, p.m.langId(p.token), text));
   }
 
-  return { name: 'opus-mt', model, revision: manifest.revision, available: true, dir, route, translate };
+  const languages = [...new Set(models.flatMap((m) => [...m.sources]))].sort();
+  return { name: 'opus-mt', available: true, root, models: models.map((m) => m.info), languages, route, translate };
 }
 
 async function unavailable() {
@@ -117,9 +170,10 @@ async function unavailable() {
 
 /** Decodificação gulosa: encoder uma vez, decoder no passo 0, decoder_with_past nos seguintes. */
 async function greedy({ ort, tokenizer, enc, dec0, decP }, cfg, langId, text) {
-  // " / " marca quebra de linha da legenda; para o modelo, a fala é uma frase só.
+  // " / " marca quebra de linha da legenda; para o modelo, a fala é uma frase só. Modelo sem token
+  // de destino (langId null): o texto entra sem prefixo.
   const src = joinLines(text);
-  const ids = [langId, ...tokenizer.encode(src)];
+  const ids = langId === null ? tokenizer.encode(src) : [langId, ...tokenizer.encode(src)];
   const i64 = (arr, dims) => new ort.Tensor('int64', BigInt64Array.from(arr, BigInt), dims);
   const mask = i64(ids.map(() => 1), [1, ids.length]);
   const { last_hidden_state } = await enc.run({ input_ids: i64(ids, [1, ids.length]), attention_mask: mask });

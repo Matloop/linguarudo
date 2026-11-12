@@ -22,9 +22,11 @@ Escopo: só legendas renderizadas por `withHTMLSubtitles` (legendas de addons/Op
   ipa: "/ˈfɛs.te/",          // opcional
   pos: "subst. fem. plural", // opcional, classe gramatical escrita na língua nativa (nativeLanguage)
   meaning: "festas, celebrações", // opcional, significado curto na língua nativa
-  example: "Andiamo alle feste di Roma." // opcional, frase curta na língua alvo
+  translatedLine: "Non voglio andare di nuovo alle feste." // opcional, a fala inteira na língua alvo
 }
 ```
+
+`translatedLine` é a cue inteira traduzida para a língua alvo (não uma frase de exemplo inventada), numa linha só, sem as quebras " / ", e contendo o `target`. É a mesma em todas as trocas da cue: o servidor repete a da primeira troca que a tiver. O cartão da palavra mostra como citação; o mock não traduz e não manda.
 
 `source` sempre corresponde a palavras inteiras do texto da cue (não pedaço de palavra), pelas fronteiras de palavra do idioma da cue (`segmentWords`/`findWord` de `@linguetta/language`, sobre `Intl.Segmenter`). Pode ter mais de uma palavra ("de novo"). Em idiomas sem espaço (ja, zh, th...) vale a palavra do segmentador e, se ela não coincidir, a primeira ocorrência como trecho ("食べ" em "私は毎朝パンを食べます").
 
@@ -53,6 +55,8 @@ lingoBlend.off('status', fn);
 lingoBlend.on('shown', fn);     // fn({ requestId, cueId, annotations }) a cada render de uma cue anotada
 lingoBlend.off('shown', fn);
 ```
+
+O fork web liga `setAutoStart(false)`: cada legenda só é traduzida depois de `lingoBlend.start()` (botão do menu). Uma legenda já iniciada fica lembrada (id da faixa + texto das falas) e, ao voltar para ela, o provider é chamado sem novo clique. O provider guarda por legenda e configurações (servidor, idiomas, cobertura, motor, banco) o que cada motor já respondeu: a volta mostra as trocas na hora, sem `/annotate`, e uma tradução interrompida pela troca só pede os lotes que faltam.
 
 `shown` sai toda vez que a cue é desenhada (pode repetir). Quem escuta deduplica por `(requestId, cueId, lemma)`. O `stremio-web` usa isso para o "visto" (seção 5).
 
@@ -89,20 +93,32 @@ O `stremio-web` escuta `lingoblend:word` no container do vídeo.
 Requisição:
 
 ```json
-{ "sourceLang": "pt-BR", "targetLang": "it", "nativeLanguage": "pt-BR", "density": 0.1,
+{ "sourceLang": "pt-BR", "targetLang": "it", "nativeLanguage": "pt-BR", "engine": "local",
+  "wordCoverage": 0.1, "cueOffset": 80,
   "preferWords": ["festa", "giorno"],
   "cues": [{ "id": "c12", "text": "Eu não quero só ir às festas." }] }
 ```
 
 - `sourceLang`: idioma da legenda. `targetLang`: idioma que a pessoa estuda (o das trocas). `nativeLanguage` (**obrigatório**, sem padrão): língua nativa da pessoa; `meaning` e `pos` vêm escritos nela. Em geral é igual a `sourceLang`, mas não precisa ser. O `stremio-web` tira o valor de `GET /api/v1/me` (seção 5); sem token, pede no menu.
 - **Códigos de idioma** (aqui, em `/lookup` e em `/translate`): qualquer tag BCP 47. O servidor canoniza com `canonicalLanguage` de `@linguetta/language` (`Intl.getCanonicalLocales` + apelidos): `PT_br` → `pt-BR`, `iw` → `he`, `ita` → `it`, e os códigos do OpenSubtitles `pob` → `pt-BR`, `zht` → `zh-Hant`. Escrita e região são preservadas (`zh-Hant` continua `zh-Hant`). Nomes de idioma ("português") não valem. Mesmo idioma = mesma subtag base e mesma escrita (`pt-BR` = `pt-PT`, `zh-Hans` ≠ `zh-Hant`): aí não há troca.
-- `preferWords` (opcional, até 1000): lemas do banco do usuário (em `targetLang`) para trocar primeiro. São as palavras aprendendo, reaprendendo ou com revisão vencida. Elas entram quando aparecem no texto e contam na densidade. O resto da densidade sai de palavras novas. O servidor mantém a caixa ("Haus"), tira duplicatas pela `lemmaKey` (fica a primeira), ordena pela chave e a lista entra na chave do cache.
-- `density` é a fração aproximada de palavras do lote trocadas. As palavras são contadas pelo segmentador do idioma da legenda (`countWords(texto, sourceLang)`), então funciona em idiomas sem espaço.
+- `preferWords` (opcional, até 1000): lemas do banco do usuário (em `targetLang`) para trocar primeiro. São as palavras aprendendo, reaprendendo ou com revisão vencida. Na escolha, uma palavra do banco vence qualquer outra da mesma janela (volta depois de 20 falas, como qualquer lema: regra 6 da escolha). O servidor mantém a caixa ("Haus"), tira duplicatas pela `lemmaKey` (fica a primeira), ordena pela chave e a lista entra na chave do cache.
+- `engine` (**obrigatório**): `"ai"` (o provider) ou `"local"`: sem IA, com o OPUS-MT e os dicionários locais (`server/src/blend/local.js`). O local traduz a fala inteira, acha no resultado a palavra que a original vira sozinha (pelo lema); quando ela não está na frase, alinha pelas glosas em inglês dos dois dicionários: o único token da frase com uma leitura da mesma classe e uma glosa em comum nas duas primeiras acepções dos dois lados ("primo" → "cugino", *male cousin*; token que é lema da classe não casa por remissão dela, "tavolino" não vale por "tavolo"). Depois confere nos dicionários das duas línguas a classe, o número, o gênero do adjetivo, a forma verbal e a primeira pessoa. Na dúvida não troca. Cobre as línguas românicas do modelo (ast, ca, es, fr, gl, it, lad, oc, pms, pt, ro), em qualquer combinação, e legenda em inglês com estudo em italiano e nativa portuguesa (modelos `en-it` e `en-pt`, seção 6). Em inglês o lema não marca gênero e número do adjetivo nem a forma do verbo ("married" casa com "sposate"; "spend" é infinitivo e presente), e o `meaning` de verbo sai no infinitivo (tradução de "to talk" sem a do "to": "falar"). Precisa de rota local `sourceLang`→`targetLang` e dos dicionários das duas línguas. O `meaning` é o lema original (o mais frequente entre as leituras da classe); com a legenda fora da língua nativa, é a tradução local dele para `nativeLanguage` (precisa da rota `sourceLang`→`nativeLanguage`). Não viram troca, sem lista por idioma: palavra com leitura de classe fechada no dicionário da legenda (pronome, determinante, preposição, conjunção, artigo, partícula, contração) e, entre as 150 mais frequentes da língua da legenda, a que não tem leitura de substantivo, tem uma de advérbio ou é verbo de acepção principal auxiliar ("should", "can"). Faltando algo: 422 `local_unavailable`, com a mensagem dizendo o par sem rota e as línguas cobertas. O cache separa os motores (`provider: "local"`, com os modelos das rotas usadas e as versões dos dicionários na chave).
+- O `stremio-web` tem dois modos ("Quem escolhe" no menu): **Híbrido** (padrão: passa o local na legenda toda e depois a IA refaz lote por lote, substituindo as trocas do local; com 422 vira só IA, com a prévia; IA fora deixa o local) e **Só local**. Não há modo só IA no menu: o híbrido termina com o resultado da IA.
+- `wordCoverage` (0–0.5, padrão 0.1; o menu manda 0–50 %): parte das **palavras** da legenda trocadas pela língua de estudo; fora disso, 400 `invalid_word_coverage`. Embaixo do slider o menu mostra a estimativa ("≈ 1 em cada 10 palavras") e, depois de traduzir, a medida das trocas na tela ("1 em cada 9 palavras (412 trocas)", palavras pelo `countWords`; uma troca de várias palavras conta todas). `cueOffset` (inteiro ≥ 0, padrão 0): posição da primeira cue do lote na legenda, para o espaçamento continuar entre os lotes.
+- **Escolha das trocas** (`server/src/blend/select.js`, a mesma para os dois motores). O motor entrega candidatas por fala (até 12, já validadas) e o servidor escolhe:
+  1. Cota do lote: `round(wordCoverage × palavras do lote)` (`countWords`), contando todas as palavras de cada troca ("de novo" vale 2).
+  2. Curva: enquanto a cota cabe em uma troca por fala (cota ≤ falas do lote; ≈ 16 % com 6,3 palavras por fala), mais falas ganham uma troca: a legenda vira janelas de `falas/cota` falas pela posição global (`cueOffset` + índice), no máximo uma troca por janela, e a janela pertence ao lote em que começa. Acima disso toda fala ganha uma e o teto de cada fala é `round(wordCoverage × palavras da fala)`, no mínimo 1 e no máximo metade das palavras. Mais ou menos: 5 % → 1 em cada 3 falas, 10 % → 2 em cada 3, 15 % → todas com uma, 25 % → 1–2 por fala, 33 % → ~2, 50 % → metade das palavras.
+  3. O teto é limite, não obrigação: uma troca extra na mesma fala só entra se o lema estiver na lista de frequência (não rara; o desempate pela ordem do motor não conta). Trocas vizinhas na mesma fala valem ("coppie sposate").
+  4. Na janela vence a fala com a melhor candidata. Nota: banco (`preferWords`) acima de tudo, depois a frequência do lema na língua de estudo (`<idioma>.freq.txt`, legendas do OpenSubtitles): posições 300–5000 valem mais, as 300 mais comuns menos, as que estão além menos ainda, as que estão fora da lista por último. Empate: a ordem do motor.
+  5. Compensação: o que não coube (janela ou fala sem candidata, lote começando no meio de uma janela) vai, enquanto faltar cota e houver candidata, para a fala sem troca mais longe das já escolhidas; sem fala livre, para a fala com menos palavras trocadas em proporção ao tamanho (as abaixo do teto antes), até metade das palavras dela.
+  6. O mesmo lema (do banco ou não) só volta a 20 falas de distância da última vez.
+  - Limite conhecido: o motor local acha candidatas em ~60 % das falas; numa legenda típica chega a ~13 % das palavras (Breaking Bad pt→it), e acima disso o menu mostra o que foi alcançado.
+- **Cache**: o mesmo lote pedido de novo enquanto o primeiro ainda roda (abortar o fetch não para o motor) espera por ele, sem chamar a IA de novo. Guarda as candidatas, não a escolha. No local a chave não tem cobertura nem banco, então mudar o slider não roda o motor de novo. Na IA `wordCoverage` entra na chave, porque o prompt pede o mesmo alvo com folga de 1,5 × (abaixo de uma troca por fala: uma palavra em 1,5 × cota falas; acima: 1,5 × `wordCoverage` das palavras de cada fala), para sobrar escolha.
 
 Resposta:
 
 ```json
-{ "provider": "claude", "annotations": { "c12": [ { "source": "festas", "target": "feste", "lemma": "festa", "ipa": "...", "pos": "...", "meaning": "...", "example": "..." } ] } }
+{ "provider": "claude", "annotations": { "c12": [ { "source": "festas", "target": "feste", "lemma": "festa", "ipa": "...", "pos": "...", "meaning": "...", "translatedLine": "..." } ] } }
 ```
 
 Cues sem anotação podem ficar fora do mapa. O cliente manda lotes de até ~80 cues. A chave do cache inclui os três idiomas.
@@ -111,18 +127,18 @@ Cues sem anotação podem ficar fora do mapa. O cliente manda lotes de até ~80 
 
 | Status | `code` |
 |---|---|
-| 400 | `invalid_json`, `invalid_body`, `missing_source_lang`, `invalid_source_lang`, `missing_target_lang`, `invalid_target_lang`, `missing_native_language`, `invalid_native_language`, `missing_lang`, `invalid_lang` (`/lookup`), `empty_text`, `text_too_long`, `invalid_density`, `invalid_cues`, `too_many_cues`, `invalid_prefer_words`, `too_many_prefer_words`, `invalid_engine` (`/translate`, `/lookup`) |
+| 400 | `invalid_json`, `invalid_body`, `missing_source_lang`, `invalid_source_lang`, `missing_target_lang`, `invalid_target_lang`, `missing_native_language`, `invalid_native_language`, `missing_lang`, `invalid_lang` (`/lookup`), `empty_text`, `text_too_long`, `invalid_cue_coverage`, `invalid_cue_offset`, `invalid_cues`, `too_many_cues`, `invalid_prefer_words`, `too_many_prefer_words`, `invalid_engine` (`/translate`, `/lookup`, `/annotate`) |
 | 404 | `not_found` |
 | 405 | `method_not_allowed` |
 | 413 | `body_too_large` (corpo > 2 MB; 64 KB em `/lookup` e `/translate`) |
-| 422 | `local_unavailable` (`/translate` com `engine: "local"` sem rota local ou sem o modelo) |
+| 422 | `local_unavailable` (`/translate` ou `/annotate` com `engine: "local"` sem rota local, sem o modelo ou sem o dicionário) |
 | 501 | `not_supported` (provider sem `lookup`/`translate`) |
 | 502 | `provider_error` (falha no provider/Claude) |
-| 500 | `internal`, `local_error` (falha da tradução local) |
+| 500 | `internal`, `local_error` (falha da tradução local ou do Blend local) |
 
 `missing_*` = campo ausente ou vazio; `invalid_*` = não é uma tag BCP 47 válida.
 
-`GET /health` → `{ ok: true, provider: "claude"|"claude-code"|"mock", model, mt: { available, model, reason? } }` (`mt` = tradução local da seção 6; `reason` diz como instalar o modelo). CORS liberado para qualquer origem local.
+`GET /health` → `{ ok: true, provider: "claude"|"claude-code"|"mock", model, mt: { available, models, languages?, reason? } }` (`mt` = tradução local da seção 6; `models` = `[{ model, revision, sourceLanguages, targetLanguages? }]`, um por modelo instalado; `languages` = línguas de origem de todos; `reason` diz como instalar os modelos). CORS liberado para qualquer origem local.
 
 ## 5. Linguetta: `/api/v1` com token
 
@@ -286,7 +302,7 @@ lingoBlend.getVisibleCues();        // [{ id, text }] das falas na tela
 - `pos`, `meaning` e `translation` vêm na língua nativa (no motor local, `pos` sai em português quando a nativa é `pt` e em inglês nos outros casos).
 - `text` até 80 caracteres, `sentence` até 500.
 
-**Motor local.** Um dicionário por idioma em `server/.dict/<base>.sqlite` (ou `LINGOBLEND_DICT_DIR`), gerado por `server/scripts/setup-dict.sh <idioma>` a partir do Wiktionary em inglês extraído pelo Wiktextract (kaikki.org). Escolhido pela subtag base (`it-CH` usa `it`). Hoje só o italiano está instalado; outro idioma é só rodar o script.
+**Motor local.** Um dicionário por idioma em `server/.dict/<base>.sqlite` (ou `LINGOBLEND_DICT_DIR`), gerado por `server/scripts/setup-dict.sh <idioma>` a partir do Wiktionary em inglês extraído pelo Wiktextract (kaikki.org). Escolhido pela subtag base (`it-CH` usa `it`). Instale as línguas que vai usar (para o Blend local, a de estudo e a da legenda).
 
 - Lema: o verbete da seleção; se ele é forma flexionada ("form of", "alt of"), segue a remissão até o lema (no máximo 5 saltos, sem ciclos), e cada salto vira uma nota em `grammar`. Também procura na tabela de formas dos lemas. Maiúscula de começo de fala vale como minúscula ("Facevo" → fare); no meio da fala, casa a caixa ("Roma" → Roma, nome). Quando a mesma forma tem verbetes de classes diferentes, a palavra anterior desempata (artigo → substantivo: "la porta" → porta; pronome → verbo: "lui porta" → portare).
 - Expressão: primeiro o verbete exato ("in bocca al lupo"); senão os lemas de cada palavra juntos, se formarem um verbete ("facevo finta" → fare finta); senão um verbete dentro da seleção com as pontas que já são lema ("facevo finta di" → "fare finta di", acepções de "fare finta"). Senão, `found: false`.
@@ -310,10 +326,10 @@ lingoBlend.getVisibleCues();        // [{ id, text }] das falas na tela
 
 `engine` escolhe quem traduz:
 
-- `"local"` (padrão): OPUS-MT `Helsinki-NLP/opus-mt-tc-big-itc-itc` em ONNX int8, dentro do servidor (onnxruntime-node, sem rede, ~50–100 ms por fala). Só entre línguas românicas: origem no conjunto do modelo (ast, ca, es, fr, gl, it, lad, oc, pms, pt, ro) e destino com token `>>xxx<<` no vocabulário (`pt` e `pt-BR` → `>>pob<<`, outras regiões de `pt` → `>>por<<`). Sem rota ou sem o modelo instalado → **422 `local_unavailable`**; falha do modelo → 500 `local_error`. `" / "` (quebra de linha da legenda) vira espaço antes de traduzir.
+- `"local"` (padrão): modelos OPUS-MT em ONNX int8, dentro do servidor (onnxruntime-node, sem rede, ~50–100 ms por fala), cada um numa subpasta de `server/.models` (`setup-mt.sh`): `Helsinki-NLP/opus-mt-tc-big-itc-itc` entre línguas românicas (origem ast, ca, es, fr, gl, it, lad, oc, pms, pt, ro; destino com token `>>xxx<<` no vocabulário: `pt` e `pt-BR` → `>>pob<<`, outras regiões de `pt` → `>>por<<`), `opus-mt-tc-big-en-it` (inglês → italiano, sem token) e `opus-mt-tc-big-en-pt` (inglês → português, `>>pob<<`/`>>por<<`). A rota de um par é o primeiro modelo instalado (ordem das pastas) que cobre a origem e o destino. Sem rota ou sem o modelo instalado → **422 `local_unavailable`**; falha do modelo → 500 `local_error`. `" / "` (quebra de linha da legenda) vira espaço antes de traduzir.
 - `"ai"`: o provider (Claude), como antes.
 
-Outro valor → 400 `invalid_engine`. Cache em disco por motor e modelo (local: modelo + revisão; IA: provider + modelo), idioma de origem, língua nativa e texto; no cliente, por motor.
+Outro valor → 400 `invalid_engine`. Cache em disco por motor e modelo (local: modelo + revisão da rota; IA: provider + modelo), idioma de origem, língua nativa e texto; no cliente, por motor.
 
 ### No `stremio-web`
 

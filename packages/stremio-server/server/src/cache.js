@@ -2,11 +2,17 @@ import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-/** Chave estável: depende só do provider/modelo/idiomas (incl. nativa)/densidade/preferências e dos textos (não dos ids). */
-export function cacheKey({ provider, model, sourceLang, targetLang, nativeLanguage, density, texts, preferWords = [] }) {
-  // v3: tags BCP 47, nativeLanguage, `reading` e lema com a caixa do dicionário.
+/**
+ * Chave das candidatas do Blend: provider/modelo/idiomas (incl. nativa)/pedido/preferências e os
+ * textos (não os ids). `request` é o que muda a resposta do motor: a cobertura (wordCoverage) pedida à IA; null no
+ * motor local, que devolve as mesmas candidatas para qualquer cobertura.
+ */
+export function cacheKey({ provider, model, sourceLang, targetLang, nativeLanguage, request = null, texts, preferWords = [] }) {
+  // v6: cobertura por parte das palavras (wordCoverage); até 12 candidatas por fala.
+  // v5: translatedLine (a fala inteira na língua-alvo) no lugar do exemplo inventado.
+  // v4: candidatas antes da escolha (src/blend/select.js); a escolha não entra no cache.
   // preferWords só entra na chave quando não está vazio.
-  const parts = ['v3', provider, model ?? '', sourceLang, targetLang, nativeLanguage ?? '', Number(density), texts];
+  const parts = ['v6', provider, model ?? '', sourceLang, targetLang, nativeLanguage ?? '', request, texts];
   if (preferWords.length > 0) parts.push(preferWords);
   const payload = JSON.stringify(parts);
   return createHash('sha256').update(payload).digest('hex');

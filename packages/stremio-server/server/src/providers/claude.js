@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { langName } from '../lang.js';
 import { countWords } from '@linguetta/language';
-import { MAX_PER_CUE } from '../validate.js';
+import { blendPlan } from '../blend/select.js';
 
 export const DEFAULT_MODEL = 'claude-haiku-5-5';
 // effort só é enviado quando definido em LINGOBLEND_EFFORT (ex.: 'low' para Opus/Sonnet).
@@ -25,8 +25,8 @@ export const OUTPUT_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { cue: { type: 'integer' }, source: STR, target: STR, lemma: STR, reading: STR, ipa: STR, pos: STR, meaning: STR, example: STR },
-        required: ['cue', 'source', 'target', 'lemma', 'reading', 'ipa', 'pos', 'meaning', 'example'],
+        properties: { cue: { type: 'integer' }, source: STR, target: STR, lemma: STR, reading: STR, ipa: STR, pos: STR, meaning: STR, translatedLine: STR },
+        required: ['cue', 'source', 'target', 'lemma', 'reading', 'ipa', 'pos', 'meaning', 'translatedLine'],
         additionalProperties: false,
       },
     },
@@ -51,10 +51,10 @@ export function annotateSystem({ sourceLang, targetLang, nativeLanguage }) {
   return `You help a speaker of ${native} learn ${target} while watching films. You receive a batch of numbered subtitle cues in ${source}. Some words in the cues will be replaced on screen by their ${target} translation, and the viewer can click them to see what they mean. Your job is to choose those words and translate them.
 
 How to choose:
-- Pick roughly the number of words requested for the batch (it is a target, not a hard rule; fewer is fine if the cues have little useful vocabulary).
+- The request says how many words to pick and in how many cues. The app later keeps only some of your picks, spread evenly through the film, so cover cues all over the batch (it is a target, not a hard rule; fewer is fine if the cues have little useful vocabulary).
 - Prefer vocabulary a learner benefits from: nouns, verbs, adjectives, adverbs, and common multi-word expressions (Portuguese "de novo", English "give up", Spanish "por favor").
 - Skip proper names, interjections and filler ("uh", "hum", "ah"), numbers, and words that are spelled the same in both languages (they teach nothing).
-- Spread choices across the batch. At most ${MAX_PER_CUE} per cue; many cues should have none.
+- Follow the request for how many words per cue. Several words of the same cue may be picked, even next to each other (Portuguese "casais casados" -> Italian "coppie sposate" is two annotations), as long as each one is worth learning.
 - Do not pick overlapping spans in the same cue.
 - The request may list words the viewer is studying (${target} dictionary forms). When a cue contains a word whose translation is one of them, pick it first; those picks count toward the requested number, and new words fill the rest.
 
@@ -67,18 +67,35 @@ How to fill each annotation:
 - ipa: IPA pronunciation of target, between slashes.
 - pos: part of speech of target, written in ${native} and abbreviated the way ${native} dictionaries do (noun with gender and number, verb with person and tense, adjective, adverb, expression).
 - meaning: short meaning in ${native} (2 to 6 words).
-- example: one short, natural ${target} sentence using target (or its base form).`;
+- translatedLine: the whole cue translated into natural ${target}, as a ${target} subtitle of the same scene would read, containing target. Translate the entire cue, not just the part around the word, and do not invent a new sentence. Write it on one line (drop the " / " line-break marks). Every annotation of the same cue has the same translatedLine.`;
 }
 
-export function buildUserMessage({ sourceLang, targetLang, nativeLanguage, density, texts, preferWords = [] }) {
+// A IA propõe mais do que a cobertura pede (falas e palavras por fala): a escolha final
+// (src/blend/select.js) precisa de alternativas para espaçar e preferir as melhores.
+const OFFER = 1.5;
+
+/** O pedido do lote: o mesmo alvo da escolha (blendPlan), com folga de OFFER. */
+export function coverageRequest({ texts, sourceLang, wordCoverage }) {
+  const plan = blendPlan({ texts, sourceLang, wordCoverage });
+  const shown = `The app will show about ${plan.quota} of them (${Math.round(wordCoverage * 100)}% of the words) and keeps the best ones.`;
+  if (!plan.perCue) {
+    const cues = Math.min(texts.length, Math.max(1, Math.ceil(plan.quota * OFFER)));
+    return `Pick one word in about ${cues} of the cues, spread over the whole batch. ${shown}`;
+  }
+  const share = Math.min(0.75, wordCoverage * OFFER);
+  const total = Math.min(plan.words, Math.ceil(plan.quota * OFFER));
+  const ten = Math.max(1, Math.round(10 * share));
+  return `Pick words in every cue, in proportion to its length: about ${Math.round(share * 100)}% of each cue's words (a 10-word cue gets about ${ten}, a short cue at least 1), about ${total} words in total. ${shown}`;
+}
+
+export function buildUserMessage({ sourceLang, targetLang, nativeLanguage, wordCoverage, texts, preferWords = [] }) {
   const words = texts.reduce((n, t) => n + countWords(t, sourceLang), 0);
-  const want = Math.max(1, Math.round(density * words));
   const lines = texts.map((t, i) => `[${i + 1}] ${t.replace(/\s*\n\s*/g, ' / ')}`);
   const studying = preferWords.length > 0 ? `Words the viewer is studying (pick these first when they fit): ${preferWords.join(', ')}\n` : '';
   return `Source language: ${langName(sourceLang)} (${sourceLang})
 Target language: ${langName(targetLang)} (${targetLang})
 Viewer's native language: ${langName(nativeLanguage)} (${nativeLanguage})
-The batch has ${texts.length} cues and ${words} words. Pick about ${want} words (density ${density}).
+The batch has ${texts.length} cues and ${words} words. ${coverageRequest({ texts, sourceLang, wordCoverage })}
 ${studying}
 Cues:
 ${lines.join('\n')}`;

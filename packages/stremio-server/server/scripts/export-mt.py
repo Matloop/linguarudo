@@ -1,6 +1,11 @@
-"""Exporta o Helsinki-NLP/opus-mt-tc-big-itc-itc oficial para ONNX int8 (uso: setup-mt.sh).
+"""Exporta um modelo OPUS-MT oficial (MarianMT) para ONNX int8 (uso: setup-mt.sh).
 
-    python export-mt.py <pasta-do-modelo> [--lines lines.json] [--keep-fp32]
+    python export-mt.py <pasta-do-modelo> --model <id no HF> --sources a,b,c [--targets x,y]
+                        [--lines lines.json] [--keep-fp32]
+
+--sources: idiomas de origem do card oficial (campo `language`). Modelo multilíngue escolhe o
+destino por um token >>xxx<< no vocab.json (o servidor lê o vocab); modelo de par sem esses tokens
+(p.ex. opus-mt-tc-big-en-it) precisa de --targets, gravado no manifesto.
 
 Gera em <pasta-do-modelo>:
   encoder_model.onnx            input_ids, attention_mask -> last_hidden_state
@@ -11,7 +16,8 @@ Gera em <pasta-do-modelo>:
   config.json, vocab.json       do repositório oficial
   spm-pieces.json               peças + scores do source.spm (tokenizador Unigram em JS)
   tokenizer-fixture.json        ids do MarianTokenizer e traduções gulosas do ONNX int8 (teste de paridade)
-  linguetta-mt.json             manifesto: modelo, revisão, idiomas de origem, data
+  linguetta-mt.json             manifesto: modelo, revisão, idiomas de origem (e de destino, se o
+                                modelo não tem tokens >>xxx<<), verificação, data
 
 O optimum não exporta aqui (optimum 2.x + optimum-onnx 0.1 quebram com o transformers 4.57 e o
 optimum-cli quebra no Python 3.14), então o export é direto com torch.onnx.export (exportador
@@ -31,9 +37,6 @@ import numpy as np
 import torch
 from torch import nn
 
-MODEL_ID = "Helsinki-NLP/opus-mt-tc-big-itc-itc"
-# Idiomas de origem do card oficial (campo `language`). O alvo vem dos tokens >>xxx<< do vocab.json.
-SOURCE_LANGUAGES = ["ast", "ca", "es", "fr", "gl", "it", "lad", "oc", "pms", "pt", "ro"]
 MAX_NEW_TOKENS = 128
 
 # Falas extras da fixture: acentos, apóstrofos, números, espaços repetidos, NFKC, caractere sem peça.
@@ -290,23 +293,34 @@ def torch_greedy(model, ids):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
+    ap.add_argument("--model", required=True, help="id no Hugging Face, p.ex. Helsinki-NLP/opus-mt-tc-big-itc-itc")
+    ap.add_argument("--sources", required=True, help="idiomas de origem, separados por vírgula")
+    ap.add_argument("--targets", help="idiomas de destino (só para modelo sem tokens >>xxx<<)")
     ap.add_argument("--lines", help="JSON com uma lista de falas para verificar e para a fixture")
     ap.add_argument("--keep-fp32", action="store_true")
     ap.add_argument("--revision", default="main")
     a = ap.parse_args()
+    model_id = a.model
+    sources = [x.strip() for x in a.sources.split(",") if x.strip()]
+    targets = [x.strip() for x in (a.targets or "").split(",") if x.strip()]
 
     from huggingface_hub import snapshot_download
     from transformers import MarianMTModel, MarianTokenizer
 
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
-    log(f"baixando {MODEL_ID}@{a.revision}…")
-    snap = snapshot_download(MODEL_ID, revision=a.revision,
+    log(f"baixando {model_id}@{a.revision}…")
+    snap = snapshot_download(model_id, revision=a.revision,
                              allow_patterns=["*.json", "*.spm", "model.safetensors", "README.md"])
     revision = os.path.basename(snap.rstrip("/"))
     tok = MarianTokenizer.from_pretrained(snap)
     model = MarianMTModel.from_pretrained(snap, attn_implementation="eager").eval()
     cfg = model.config
+    lang_tokens = [t for t in tok.get_vocab() if re.fullmatch(r">>\w+<<", t)]
+    if lang_tokens and targets:
+        raise SystemExit(f"{model_id} escolhe o destino por token ({len(lang_tokens)} no vocab): tire o --targets")
+    if not lang_tokens and not targets:
+        raise SystemExit(f"{model_id} não tem tokens >>xxx<< no vocab: diga o destino com --targets")
 
     fp32 = os.path.join(out, "fp32")
     os.makedirs(fp32, exist_ok=True)
@@ -325,15 +339,17 @@ def main():
 
     lines = json.load(open(a.lines)) if a.lines else []
     lines = lines + EXTRA_LINES
-    # Verificação: ONNX fp32 e int8 (guloso) contra o PyTorch (guloso) nas mesmas falas, alvo PT-BR.
-    lang_tok = ">>pob<<"
+    # Verificação: ONNX fp32 e int8 (guloso) contra o PyTorch (guloso) nas mesmas falas. Destino:
+    # PT-BR (>>pob<<) se o vocab tem o token; senão o primeiro do --targets ou o primeiro token.
+    lang_tok = ">>pob<<" if ">>pob<<" in lang_tokens else (sorted(lang_tokens)[0] if lang_tokens else None)
     runs = {"fp32": OrtGreedy(fp32, cfg), "int8": OrtGreedy(out, cfg)}
-    fixture = {"model": MODEL_ID, "revision": revision, "cases": []}
+    fixture = {"model": model_id, "revision": revision, "cases": []}
     same = {"fp32": 0, "int8": 0}
     times = []
     for line in lines:
         # Como o src/mt/opus-mt.js: " / " (quebra de linha da legenda) vira espaço antes de traduzir.
-        ids = tok(f"{lang_tok} {re.sub(r'\s+/\s+', ' ', line)}").input_ids
+        text = re.sub(r"\s+/\s+", " ", line)
+        ids = tok(f"{lang_tok} {text}" if lang_tok else text).input_ids
         ref = torch_greedy(model, ids)
         res = {}
         for k, run in runs.items():
@@ -362,9 +378,10 @@ def main():
         raise SystemExit("ONNX fp32 diverge do PyTorch: o export está errado")
     json.dump(fixture, open(f"{out}/tokenizer-fixture.json", "w"), ensure_ascii=False, indent=1)
     json.dump({
-        "model": MODEL_ID, "revision": revision, "license": "CC-BY-4.0",
+        "model": model_id, "revision": revision, "license": "CC-BY-4.0",
         "credit": "Helsinki-NLP / OPUS-MT (University of Helsinki)",
-        "sourceLanguages": SOURCE_LANGUAGES, "quantization": "int8 dinâmico (QInt8)",
+        "sourceLanguages": sources, **({"targetLanguages": targets} if targets else {}),
+        "quantization": "int8 dinâmico (QInt8)",
         "verification": report, "exportedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }, open(f"{out}/linguetta-mt.json", "w"), ensure_ascii=False, indent=1)
     if not a.keep_fp32:

@@ -149,9 +149,10 @@ function echoedPronoun(entry, source, out) {
 
 async function lookupLocal({ provider, translator, dictionaries, cache }, req) {
   const dict = dictionaries?.get(req.lang) ?? null;
-  const mt = translator?.available && translator.route(req.lang, req.nativeLanguage) ? translator : null;
+  const route = translator?.available ? translator.route(req.lang, req.nativeLanguage) : null;
+  const mt = route ? translator : null;
   const same = sameLanguage(req.lang, req.nativeLanguage);
-  const mtModel = mt ? (mt.revision ? `${mt.model}@${mt.revision}` : mt.model) : same ? 'same' : 'none';
+  const mtModel = route ? route.model : same ? 'same' : 'none';
   const key = lookupKey('lookup-local', dict ? dict.version : 'none', mtModel, [req.lang, req.nativeLanguage, req.text, req.sentence]);
   const hit = cache ? await cache.get(key) : null;
   if (hit && typeof hit === 'object' && !Array.isArray(hit)) return { result: hit, cached: true };
@@ -195,7 +196,8 @@ async function lookupLocal({ provider, translator, dictionaries, cache }, req) {
 
 /**
  * Tradução da fala inteira para a língua nativa.
- * translator: tradutor local (src/mt/opus-mt.js) ou null; { name, model, revision?, available, route, translate }.
+ * translator: tradutor local (src/mt/opus-mt.js) ou null; { name, available, route, translate }. A chave
+ * do cache leva o modelo da rota (id@revisão).
  */
 export async function translate({ provider, translator = null, cache }, req) {
   const engine = req.engine ?? 'local';
@@ -204,11 +206,9 @@ export async function translate({ provider, translator = null, cache }, req) {
   let key;
   let compute;
   if (engine === 'local') {
-    if (!translator?.available || !translator.route(req.sourceLang, req.nativeLanguage)) {
-      throw new HttpError(422, 'local_unavailable', `sem tradução local ${req.sourceLang}->${req.nativeLanguage}`);
-    }
-    const model = translator.revision ? `${translator.model}@${translator.revision}` : translator.model;
-    key = lookupKey('translate-local', translator.name, model, parts);
+    const route = translator?.available ? translator.route(req.sourceLang, req.nativeLanguage) : null;
+    if (!route) throw new HttpError(422, 'local_unavailable', `sem tradução local ${req.sourceLang}->${req.nativeLanguage}`);
+    key = lookupKey('translate-local', translator.name, route.model, parts);
     compute = async () => {
       try {
         return { translation: str(await translator.translate(req), MAX_SENTENCE * 2) };

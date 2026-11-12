@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { findWord, languageName, languageProfile, segmentWords } from '@linguetta/language';
 import { DICT_SCHEMA } from './build.js';
+import { openFrequency } from './frequency.js';
 
 // Versão da escolha de verbete (pontuação, acepções); entra na chave de cache do /lookup.
 const RESOLVER_VERSION = 4;
@@ -36,7 +37,8 @@ export function setupHint(dir) {
 
 /**
  * Abre os dicionários instalados em `dir` (um <base>.sqlite por idioma).
- *   get(lang) → dicionário ou null;  status() → { [base]: { entries, builtAt } }
+ *   get(lang) → dicionário ou null;  status() → { [base]: { entries, builtAt, frequency } }
+ * Ao lado de <base>.sqlite pode haver <base>.freq.txt (src/dict/frequency.js): vira d.frequency.
  */
 export function openDictionaries({ dir, log = console } = {}) {
   const byBase = new Map();
@@ -44,6 +46,7 @@ export function openDictionaries({ dir, log = console } = {}) {
   for (const f of files) {
     try {
       const d = openDictionary(join(dir, f));
+      d.frequency = openFrequency(join(dir, f.replace(/\.sqlite$/, '.freq.txt')), d.lang);
       byBase.set(d.lang, d);
     } catch (e) {
       log.warn?.(`[dict] ${f} ignorado: ${e.message}`);
@@ -52,7 +55,7 @@ export function openDictionaries({ dir, log = console } = {}) {
   return {
     dir,
     get: (lang) => byBase.get(languageProfile(lang).base) ?? null,
-    status: () => Object.fromEntries([...byBase].map(([base, d]) => [base, { entries: d.entries, builtAt: d.builtAt }])),
+    status: () => Object.fromEntries([...byBase].map(([base, d]) => [base, { entries: d.entries, builtAt: d.builtAt, frequency: d.frequency?.size ?? 0 }])),
     reason: byBase.size ? null : setupHint(dir),
     close: () => byBase.forEach((d) => d.close()),
   };
