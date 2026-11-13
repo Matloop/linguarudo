@@ -4,8 +4,8 @@ O lar do vocabulário do usuário: recolhe itens de tudo que ele lê, assiste e 
 
 ## Banco
 
-- **Banco**: o conjunto de itens e fichas de um usuário, em todos os decks. _Evite_: baralho, lista.
-- **Deck**: grupo de itens e fichas de um idioma de estudo, com ordem de novas e teto próprios. Cada item e cada ficha está em exatamente um deck. Um nível só (Pai › Filho). O padrão de cada idioma, "Minhas palavras", recebe tudo que é capturado. Decks do Anki e CSVs importados viram decks. _Evite_: baralho, coleção, pasta.
+- **Banco**: o conjunto de itens e fichas de um usuário, em todos os decks. _Evite_: lista.
+- **Deck**: grupo de itens e fichas de um idioma de estudo, com ordem de novas e limites diários próprios. Na interface se chama **Baralho** (hub "Baralhos"); no código e no banco, `deck`. Cada item e cada ficha está em exatamente um deck. Um nível só (Pai › Filho). O padrão de cada idioma, "Minhas palavras", recebe tudo que é capturado. Decks do Anki e CSVs importados viram decks. _Evite_: coleção, pasta.
 - **Item**: palavra ou expressão de um idioma de estudo, identificada pelo lema. Frase inteira, gramática ou conteúdo livre não é item: vira Ficha. _Evite_: palavra (como conceito), termo, vocábulo, nota.
 - **Lema**: forma de dicionário que identifica o item ("run", "to figure out"). _Evite_: headword, termo, raiz.
 - **Encontro**: uma vez em que o item apareceu ao usuário, com forma, frase, obra, posição e data. _Evite_: contexto, ocorrência, captura.
@@ -27,12 +27,13 @@ O lar do vocabulário do usuário: recolhe itens de tudo que ele lê, assiste e 
 
 - **Flashcard**: uma direção de prática de um item ou de uma ficha, com cronograma FSRS próprio. No item: Reconhecer (lema → sentido) ou Produzir (sentido → lema). Na ficha: frente → verso, o inverso, ou uma lacuna. _Evite_: cartão, card, nota.
 - **Ficha**: conteúdo livre de frente e verso (texto, imagem, áudio) que não é item: frase, regra, conjugação, nota não vocabular vinda do Anki. Pertence a um idioma de estudo e gera um ou mais flashcards. É revisada na tela Flashcards e, em versão só texto, no e-reader; fica fora das atividades. _Evite_: cartão livre, nota, flashcard livre.
-- **Tag**: rótulo livre num item ou numa ficha, que cruza os decks e serve para filtrar a revisão. Tags do Anki chegam como tags; decks do Anki chegam como decks. _Evite_: baralho, coleção, pasta.
+- **Tag**: rótulo livre num item ou numa ficha, que cruza os decks e serve para filtrar a revisão. Tags do Anki chegam como tags; decks do Anki chegam como decks. _Evite_: coleção, pasta.
 - **Mídia**: imagem ou áudio guardado com o usuário. O item tem no máximo uma imagem e uma pronúncia; a ficha tem mídia em cada lado. _Evite_: anexo, arquivo.
 - **Revisão**: uma resposta do usuário a um flashcard (Errei, Difícil, Bom, Fácil), feita em qualquer aparelho. _Evite_: repetição, estudo.
 - **Dia de estudo**: o dia que conta para o orçamento de novas, o "vence hoje" e as estatísticas. Vira na hora escolhida pelo usuário (padrão 4 h), no fuso dele. _Evite_: dia, data, 24 h.
 - **Irmãos**: os flashcards do mesmo item. Um irmão revisado no dia de estudo deixa o outro para amanhã, exceto em aprendizado. _Evite_: par, gêmeo.
-- **Orçamento de novas**: quantos flashcards novos ainda podem começar no dia de estudo, num idioma, somando todos os decks e aparelhos: novas por dia + extras do dia ("+5 hoje") − novas já começadas. Revisões nunca são recusadas pelo orçamento. Quem decide é o servidor (ADR 0005). _Evite_: limite diário, cota.
+- **Orçamento de novas**: quantos flashcards novos ainda podem começar no dia de estudo, num idioma, somando todos os decks e aparelhos: novas por dia (Geral) + extras do dia ("+5 hoje") − novas já começadas. Revisões nunca são recusadas pelo orçamento. Quem decide é o servidor (ADR 0005). _Evite_: cota.
+- **Limites diários**: "Novas por dia" e "Revisões máximas por dia" de um deck, cada um vindo do Geral (a conta), de Este baralho ou de Só hoje (vale até o fim do dia de estudo). Só hoje > Este baralho > Geral; o subdeck conta também no pai. O limite de revisões só decide quantas vencidas a fila serve hoje (ADR 0005).
 - **Teimosa**: item ou ficha com um flashcard errado várias vezes depois de aprendido (8 por padrão, configurável). O que acontece depende da configuração: entra em espera (padrão), só ganha uma marca, ou é suspensa. _Evite_: sanguessuga, leech, difícil.
 - **Teimosa em espera**: teimosa que saiu da fila até o usuário ter um encontro novo com frase, ou até tocar em "Voltar para a fila". A frase nova aparece no cartão quando ela volta. _Evite_: suspensa, pausada.
 - **Atividade**: prática dentro do app que lê e escreve no banco (música, blend). _Evite_: módulo, jogo, modo.

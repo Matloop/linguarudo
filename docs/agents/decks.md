@@ -1,5 +1,7 @@
 # Decks e fila do dia — especificação (2026-11-11)
 
+> 2026-11-13: na tela, deck se chama **baralho** (hub "Baralhos", "Novo baralho", "N baralhos · N cartas"); rotas e banco continuam `decks`/`/flashcards`. `new_cap` virou limites diários por deck (Geral / Este baralho / Só hoje, novas e revisões); ver ADR 0005. O "Palavras novas por dia" saiu do /perfil: o Geral se edita na engrenagem de qualquer baralho.
+
 Fonte da verdade para a implementação em fatias. Protótipos: `prototypes/decks.html` (proposta completa) e `prototypes/decks-v2.html` (tela Flashcards aprovada, versão enxuta). Ninguém usa o app ainda: sem compatibilidade com dados ou campos antigos (remover o que sobrar), mas o leitor já instalado deve continuar a funcionar lendo campos opcionais.
 
 ## Regra geral
@@ -8,7 +10,7 @@ Fonte da verdade para a implementação em fatias. Protótipos: `prototypes/deck
 - Revisão enviada nunca é recusada por limite (offline pode passar um pouco do orçamento; aceito).
 
 ## Modelo
-- `decks`: id uuid, user_id, language (BCP 47, mesmo campo dos itens), name, parent_id (um nível só: Pai › Filho), is_default bool (exatamente um por usuário+idioma), paused bool, new_order `importance|deck|random` (padrão importance; decks vindos do Anki/CSV = deck), new_cap int null (teto próprio dentro do orçamento do idioma), on_reader bool default true, position int, created_at. RLS por user_id.
+- `decks`: id uuid, user_id, language (BCP 47, mesmo campo dos itens), name, parent_id (um nível só: Pai › Filho), is_default bool (exatamente um por usuário+idioma), paused bool, new_order `importance|deck|random` (padrão importance; decks vindos do Anki/CSV = deck), new_per_day/reviews_per_day int null (Este baralho; null = Geral), new_today/reviews_today + limits_day (Só hoje), on_reader bool default true, position int, created_at. RLS por user_id.
 - Cada item e cada ficha pertence a exatamente um deck: `items.deck_id`, `fichas.deck_id` NOT NULL. Reconhecer/Produzir da mesma palavra ficam juntos (o deck é do item/ficha, não do flashcard).
 - Deck padrão do idioma se chama "Minhas palavras", criado automaticamente (trigger ou função ao criar o primeiro item/idioma), não pode ser apagado; pode-se trocar qual é o padrão.
 - Captura (save do leitor, Stremio, música, web "Guardar palavra") sempre cai no deck padrão.
@@ -22,7 +24,7 @@ Fonte da verdade para a implementação em fatias. Protótipos: `prototypes/deck
 - newDoneToday = novas começadas hoje em qualquer cliente (pelo review_logs).
 - newAllowance = max(0, perDay + extraNew − newDoneToday).
 - Ordem das novas, "importância": score = encontros + 2×obras distintas + bônus se a obra do encontro mais recente é a obra ativa (último encontro do usuário nas últimas 48h); empate por created_at. Decks com new_order=deck usam a ordem do deck (created_at/posição de import); random usa hash estável por dia.
-- "Estudar tudo": vencidas de todos os decks não pausados + novas até newAllowance, intercalando decks pela regra acima respeitando new_cap de cada deck.
+- "Estudar tudo": vencidas de todos os decks não pausados + novas até newAllowance, intercalando decks pela regra acima respeitando os limites diários de cada deck (e do pai).
 - Estudar um deck: mesma regra restrita ao deck (e subdecks).
 - Extras: "+5 hoje" (incrementa extra_new) e "Desta obra" (sessão filtrada por work_id: novas daquela obra, conta como extra automaticamente) — oferecidos só no fim da sessão quando as novas acabam.
 - Irmãos ocultos: já existe para itens; manter.
@@ -37,7 +39,7 @@ Header do snapshot:
 ```
 "settings":{"newCardsPerDay":10,"newOrder":"importance","desiredRetention":0.9,"buryRelated":true,"leech":{"lapses":8,"action":"wait"}},
 "today":{"newDoneToday":6,"extraNew":0,"newAllowance":4},
-"decks":[{"id":"…","name":"Minhas palavras","default":true,"parentId":null,"newOrder":"importance","newCap":null}]
+"decks":[{"id":"…","name":"Minhas palavras","default":true,"parentId":null,"newOrder":"importance","newPerDay":20,"reviewsPerDay":200}]
 ```
 Só decks com on_reader=true e paused=false. Cada item: `"deckId"`, `"queueRank"` (inteiro, 1 = primeira nova; null para não-novas), `"leechWaiting": bool`. Fichas: passam a ir no snapshot em versão só texto (frente/verso renderizados em texto, sem mídia) como `{"t":"ficha","id","deckId","front","back","queueRank","flashcard":{…}}`.
 Ops novas: `extraNew {n}`; `deckImport {name, hash, rows:[{front,back}]}` (idempotente por hash). Review de ficha usa `flashcardId` como hoje.

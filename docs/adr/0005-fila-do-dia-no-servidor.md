@@ -13,14 +13,18 @@ O banco tinha um baralho só por idioma. A fila era "vencidas + novas por ordem 
 ## Decisão
 
 - **O servidor decide a fila do dia; os clientes só executam.** O ADR 0001 já dá ao servidor o cronograma de cada flashcard. Este ADR dá a ele também o que entra hoje e em que ordem.
-- **Capturar não tem limite, começar novas tem orçamento, revisar não tem limite.**
-  - O orçamento é por idioma e dia de estudo: `newAllowance = max(0, perDay + extraNew − newDoneToday)`.
+- **Capturar não tem limite; novas e revisões servidas por dia têm limites, como no Anki** (2026-11-13).
+  - Cada deck tem "Novas por dia" e "Revisões máximas por dia". Vale o "Só hoje" do deck (`decks.new_today`/`reviews_today` com `limits_day` = dia de estudo), senão o do deck (`decks.new_per_day`/`reviews_per_day`), senão o Geral (`user_settings.new_flashcards_per_day`, padrão 20, e `reviews_per_day`, padrão 200). A engrenagem do hub grava pela RPC `set_deck_limits`.
+  - O feito hoje num subdeck conta também no pai. Um flashcard só entra se o deck dele e o pai ainda têm vaga.
+  - "Estudar tudo" (e vários decks) fica também no Geral do idioma. Estudar um deck usa só os limites dele e do pai.
+  - Revisões contadas por `review_done_by_deck` (log com `state_before = 2`). Aprendendo e reaprendendo nunca têm limite.
+  - O orçamento do idioma ("Estudar tudo") é: `newAllowance = max(0, perDay + extraNew − newDoneToday)`.
   - `newDoneToday` conta, pelo log, as novas começadas hoje em qualquer cliente e deck.
-  - `extraNew` é o "+N hoje" do dia (tabela `extra_new`). Ele não passa para o dia seguinte.
-- **Revisão nunca é recusada por orçamento.** Offline, dois aparelhos podem passar um pouco do limite. Isso é aceito, e a revisão excedente conta no dia como as outras.
+  - `extraNew` é o "+N hoje" do dia (tabela `extra_new`). Soma no Geral e em cada deck. Ele não passa para o dia seguinte.
+- **Revisão nunca é recusada por orçamento.** O limite de revisões só decide quantas vencidas a fila serve hoje. Offline, dois aparelhos podem passar um pouco do limite. Isso é aceito, e a revisão excedente conta no dia como as outras.
 - **A ordem das novas é uma função pura** (`apps/web/src/lib/server/queue.ts`) sobre o estado que o banco entrega (`queue_state_for`).
   - Cada deck ordena as suas novas por `importance` (encontros + 2 × obras distintas + bônus da obra ativa), por `deck` (ordem de criação ou importação) ou por `random` (hash estável no dia).
-  - Cada deck é cortado pelo seu `new_cap`.
+  - Cada deck é cortado pelos limites de hoje (dele e do pai).
   - "Estudar tudo" intercala os decks não pausados pela ordem da conta (`user_settings.new_order`) e corta no orçamento.
   - Um deck estuda ele mesmo e os subdecks. "Desta obra" fica fora do orçamento.
 - **O e-reader recebe a fila pronta** no snapshot:
@@ -48,4 +52,4 @@ O banco tinha um baralho só por idioma. A fila era "vencidas + novas por ordem 
 
 - **Cada cliente calcula a fila:** três implementações da mesma regra (TS, C++, Stremio) e filas diferentes em cada aparelho.
 - **Recusar revisão acima do orçamento:** perderia estudo feito offline, contra o ADR 0001.
-- **Orçamento por deck em vez de por idioma:** com vários decks, a pessoa começaria novas demais por dia. O teto do deck (`new_cap`) existe, mas dentro do orçamento do idioma.
+- **Só limites por deck, sem o Geral no "Estudar tudo":** com vários decks, a pessoa começaria novas demais por dia. Os limites do deck valem dentro do Geral quando se estuda tudo; clicando num deck, valem sozinhos (como no Anki).
