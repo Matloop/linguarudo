@@ -1,6 +1,9 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { DECK_LIMITS, deckErrorMessage } from '#lib/decks.ts';
+import { fichaHtmlToText } from '#lib/fichas.ts';
 import { parseLanguage } from '#lib/languages.ts';
+import { signMedia } from '#lib/server/media.ts';
+import { fichaMediaUrls } from '#lib/server/fichas.ts';
 import { isGrade, leechAlert } from '#lib/review.ts';
 import { addExtraNew, itemsOfWork, loadQueueState } from '#lib/server/decks.ts';
 import {
@@ -22,6 +25,8 @@ import {
 import { loadReviewSettings } from '#lib/server/settings.ts';
 import { loadTags, nextDueText } from '#lib/server/summary.ts';
 import type { Actions, PageServerLoad } from './$types';
+
+const FICHA_MEDIA = 'front_image, front_audio, back_image, back_audio' as const;
 
 async function requireUser(locals: App.Locals) {
 	const user = await locals.getUser();
@@ -131,6 +136,85 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 };
 
 export const actions: Actions = {
+	/** Dados para o modal de edição dentro da revisão (palavra ou ficha do flashcard atual). */
+	editLoad: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		const form = await request.formData();
+		const row = await loadReviewFlashcard(
+			locals.supabase,
+			user.id,
+			form.get('flashcardId')?.toString() ?? ''
+		);
+		if (!row) return fail(404, { message: 'Flashcard não encontrado.' });
+		if ('fichas' in row) {
+			const { data: f } = await locals.supabase
+				.from('fichas')
+				.select(`id, language, front, back, reverse, cloze_count, tags, ${FICHA_MEDIA}`)
+				.eq('id', row.fichas.id)
+				.eq('user_id', user.id)
+				.is('deleted_at', null)
+				.maybeSingle();
+			if (!f) return fail(404, { message: 'Ficha não encontrada.' });
+			const media = {
+				front_image: f.front_image,
+				front_audio: f.front_audio,
+				back_image: f.back_image,
+				back_audio: f.back_audio
+			};
+			return {
+				kind: 'ficha' as const,
+				id: f.id,
+				cloze: f.cloze_count > 0,
+				values: {
+					language: f.language,
+					front: fichaHtmlToText(f.front),
+					back: fichaHtmlToText(f.back),
+					reverse: f.reverse,
+					tags: f.tags.join(', '),
+					media
+				},
+				mediaUrls: await fichaMediaUrls(locals.supabase, media)
+			};
+		}
+		const { data: it } = await locals.supabase
+			.from('items')
+			.select('id, lemma, reading, sense, note, tags, image, audio')
+			.eq('id', row.item_id)
+			.eq('user_id', user.id)
+			.is('deleted_at', null)
+			.maybeSingle();
+		if (!it) return fail(404, { message: 'Palavra não encontrada.' });
+		const urls = await signMedia(locals.supabase, [it.image, it.audio]).catch(
+			() => new Map<string, string>()
+		);
+		return {
+			kind: 'item' as const,
+			id: it.id,
+			item: it,
+			mediaUrls: {
+				image: it.image ? (urls.get(it.image) ?? null) : null,
+				audio: it.audio ? (urls.get(it.audio) ?? null) : null
+			}
+		};
+	},
+
+	/** O flashcard como a revisão o mostra, depois de uma edição. */
+	refresh: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		const form = await request.formData();
+		const row = await loadReviewFlashcard(
+			locals.supabase,
+			user.id,
+			form.get('flashcardId')?.toString() ?? ''
+		);
+		if (!row) return fail(404, { message: 'Flashcard não encontrado.' });
+		const { retention } = await loadReviewSettings(locals.supabase, user.id);
+		const [item] = await attachMediaUrls(locals.supabase, [
+			await toReviewItem(row, new Date(), retention)
+		]);
+		return { item };
+	},
+
 	rate: async ({ locals, request }) => {
 		const user = await requireUser(locals);
 		const form = await request.formData();

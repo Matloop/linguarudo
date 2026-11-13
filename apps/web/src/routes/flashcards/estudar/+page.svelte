@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { onMount, tick, untrack } from 'svelte';
+	import { onMount, tick, untrack, type ComponentProps } from 'svelte';
 	import { applyAction, deserialize, enhance, type SubmitFunction } from '$app/forms';
 	import { invalidate, invalidateAll } from '$app/navigation';
 	import {
@@ -15,14 +15,18 @@
 		undoLast,
 		type FichaReview,
 		type Grade,
-		type ItemReview
+		type ItemReview,
+		type ReviewItem
 	} from '#lib/review.ts';
 	import { FICHA_KIND_LABELS, renderCloze } from '#lib/fichas.ts';
 	import { playWord } from '#lib/audio.ts';
 	import { langAttrs, languageInline } from '#lib/languages.ts';
 	import { isTypingTarget, shortcutFor } from '#lib/shortcuts.ts';
 	import { toast } from '#lib/ui/app-state.svelte.ts';
+	import FichaForm from '#lib/ui/FichaForm.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
+	import MediaField from '#lib/ui/MediaField.svelte';
+	import { LIMITS } from '#lib/items.ts';
 	import Mark from '#lib/ui/Mark.svelte';
 	import { ORIGIN_ICONS, WORK_ICONS } from '#lib/ui/origins.ts';
 	import { deckDisplayName, quotaDoneText, tomorrowText } from '#lib/decks-ui.ts';
@@ -306,6 +310,97 @@
 		};
 	};
 
+	// Edição no lugar: a palavra ou a ficha do flashcard atual, sem sair da sessão.
+	type EditData =
+		| {
+				kind: 'item';
+				id: string;
+				item: {
+					lemma: string;
+					reading: string;
+					sense: string;
+					note: string;
+					tags: string[];
+					image: string | null;
+					audio: string | null;
+				};
+				mediaUrls: { image: string | null; audio: string | null };
+		  }
+		| {
+				kind: 'ficha';
+				id: string;
+				cloze: boolean;
+				values: ComponentProps<typeof FichaForm>['values'];
+				mediaUrls: ComponentProps<typeof FichaForm>['mediaUrls'];
+		  };
+	let editDialog: HTMLDialogElement | undefined = $state();
+	let editFor = $state<{ flashcardId: string; data: EditData | null } | null>(null);
+	let editErrors = $state<Record<string, string>>({});
+	let editBusy = $state(false);
+
+	async function post(url: string, body: FormData) {
+		const res = await fetch(url, {
+			method: 'POST',
+			body,
+			headers: { 'x-sveltekit-action': 'true' }
+		}).catch(() => null);
+		return res ? deserialize(await res.text()) : null;
+	}
+
+	async function openEdit() {
+		if (!current) return;
+		const flashcardId = current.flashcardId;
+		editFor = { flashcardId, data: null };
+		editErrors = {};
+		editDialog?.showModal();
+		const body = new FormData();
+		body.set('flashcardId', flashcardId);
+		const r = await post('?/editLoad', body);
+		if (r?.type !== 'success' || !r.data) {
+			editDialog?.close();
+			toast('Não deu para abrir a edição agora.');
+			return;
+		}
+		if (editFor?.flashcardId === flashcardId) editFor.data = r.data as unknown as EditData;
+	}
+
+	/** Depois de salvar, o flashcard da fila volta do servidor já com o texto novo. */
+	async function editSaved() {
+		const flashcardId = editFor?.flashcardId;
+		if (!flashcardId) return;
+		const body = new FormData();
+		body.set('flashcardId', flashcardId);
+		const r = await post('?/refresh', body);
+		if (r?.type === 'success' && r.data?.item) {
+			const fresh = r.data.item as ReviewItem;
+			session.queue = session.queue.map((i) => (i.flashcardId === flashcardId ? fresh : i));
+		}
+		editDialog?.close();
+		toast('Salvo');
+	}
+
+	async function submitItemEdit(e: SubmitEvent) {
+		e.preventDefault();
+		if (editBusy) return;
+		editBusy = true;
+		editErrors = {};
+		const r = await post('/palavras?/edit', new FormData(e.currentTarget as HTMLFormElement));
+		editBusy = false;
+		if (r?.type === 'success') return editSaved();
+		const errors = (r?.type === 'failure' ? (r.data as { errors?: Record<string, string> }) : null)
+			?.errors;
+		editErrors = errors ?? { form: 'Não deu para salvar agora. Tente de novo.' };
+	}
+
+	function onFichaResult(result: { type: string; data?: unknown }) {
+		// A action da ficha termina em redirect: é o sinal de que salvou.
+		if (result.type === 'redirect' || result.type === 'success') return void editSaved();
+		const data = (result.type === 'failure' ? result.data : null) as {
+			errors?: Record<string, string>;
+		} | null;
+		editErrors = data?.errors ?? { form: 'Não deu para salvar agora. Tente de novo.' };
+	}
+
 	async function continueReviewing() {
 		await invalidateAll();
 		session = startSession(data.queue);
@@ -449,6 +544,15 @@
 			>
 			<span class="r">
 				<span data-testid="contador">{current ? session.answered + 1 : total} de {total}</span>
+				{#if current}
+					<button
+						class="icon-btn"
+						type="button"
+						onclick={openEdit}
+						aria-label="Editar este flashcard"
+						title="Editar"><Icon name="pencil" size="sm" /></button
+					>
+				{/if}
 				<details class="rv-prefs">
 					<summary class="icon-btn" aria-label="Preferências da revisão" title="Preferências"
 						><Icon name="settings" /></summary
@@ -687,6 +791,95 @@
 	</form>
 </dialog>
 
+<dialog class="editor" bind:this={editDialog} aria-label="Editar flashcard" onclose={() => (editFor = null)}>
+	<div class="ed-in">
+		<div class="ed-h">
+			<h2>{editFor?.data?.kind === 'ficha' ? 'Editar ficha' : 'Editar palavra'}</h2>
+			<button class="icon-btn" type="button" aria-label="Fechar" onclick={() => editDialog?.close()}
+				><Icon name="x" /></button
+			>
+		</div>
+		{#if editFor?.data?.kind === 'item'}
+			{@const d = editFor.data}
+			<form class="edit" onsubmit={submitItemEdit}>
+				<input type="hidden" name="id" value={d.id} />
+				<label
+					>Palavra<input
+						name="lemma"
+						{...study}
+						value={d.item.lemma}
+						maxlength={LIMITS.lemma}
+						required
+					/></label
+				>
+				{#if editErrors.lemma}<p class="err" role="alert">{editErrors.lemma}</p>{/if}
+				<label
+					>Leitura <i class="opt">· opcional, como furigana ou pinyin</i><input
+						name="reading"
+						{...study}
+						value={d.item.reading}
+						maxlength={LIMITS.reading}
+					/></label
+				>
+				{#if editErrors.reading}<p class="err" role="alert">{editErrors.reading}</p>{/if}
+				<label>Tradução<input name="sense" value={d.item.sense} maxlength={LIMITS.sense} /></label>
+				<label
+					>Nota<textarea name="note" rows="3" maxlength={LIMITS.note} value={d.item.note}
+					></textarea></label
+				>
+				<label
+					>Tags <i class="opt">· separadas por vírgula</i><input
+						name="tags"
+						value={d.item.tags.join(', ')}
+						placeholder="viagem, A2"
+						autocomplete="off"
+					/></label
+				>
+				{#if editErrors.tags}<p class="err" role="alert">{editErrors.tags}</p>{/if}
+				<div class="media-row">
+					<MediaField
+						name="image"
+						kind="image"
+						label="Imagem"
+						path={d.item.image}
+						url={d.mediaUrls.image}
+					/>
+					<MediaField
+						name="audio"
+						kind="audio"
+						label="Áudio"
+						path={d.item.audio}
+						url={d.mediaUrls.audio}
+					/>
+				</div>
+				{#if editErrors.image}<p class="err" role="alert">{editErrors.image}</p>{/if}
+				{#if editErrors.audio}<p class="err" role="alert">{editErrors.audio}</p>{/if}
+				{#if editErrors.form}<p class="err" role="alert">{editErrors.form}</p>{/if}
+				<div class="edit-acts">
+					<button class="btn btn-primary" disabled={editBusy}>Salvar</button>
+					<button type="button" class="btn btn-ghost" onclick={() => editDialog?.close()}
+						>Cancelar</button
+					>
+				</div>
+			</form>
+		{:else if editFor?.data?.kind === 'ficha'}
+			{@const d = editFor.data}
+			<FichaForm
+				values={d.values}
+				mediaUrls={d.mediaUrls}
+				errors={editErrors}
+				languages={[d.values.language]}
+				ui={data.uiLanguage}
+				action="/flashcards/fichas/{d.id}?/save"
+				cloze={d.cloze}
+				onresult={onFichaResult}
+			/>
+		{:else}
+			<p class="ed-wait">Carregando…</p>
+		{/if}
+	</div>
+</dialog>
+
 {#if message}<p class="aviso" role="alert">{message}</p>{/if}
 
 {#if session.last && current}
@@ -724,6 +917,63 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.editor {
+		width: min(640px, calc(100vw - 32px));
+		max-height: calc(100dvh - 48px);
+		padding: 0;
+		border: 0;
+		border-radius: var(--r-l);
+		background: var(--raise);
+		color: var(--ink);
+		box-shadow: var(--sh-pop);
+	}
+	.editor::backdrop {
+		background: var(--scrim);
+	}
+	.ed-in {
+		padding: 22px 24px 20px;
+	}
+	.ed-h {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 14px;
+	}
+	.ed-h h2 {
+		font: 600 20px/1.25 var(--f-head);
+		margin: 0;
+	}
+	.ed-wait {
+		color: var(--ink-3);
+	}
+	.edit {
+		display: grid;
+		gap: 12px;
+	}
+	.edit label {
+		display: grid;
+		gap: 6px;
+		font-size: 14.5px;
+		color: var(--ink-2);
+	}
+	.edit .err {
+		margin: 0;
+		color: var(--danger, #c0392b);
+		font-size: 14px;
+	}
+	.edit .media-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 12px;
+	}
+	.edit-acts {
+		display: flex;
+		gap: 8px;
+	}
+	.opt {
+		font-style: normal;
+		color: var(--ink-3);
 	}
 	.quota {
 		width: min(440px, calc(100vw - 32px));

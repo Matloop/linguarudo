@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance, type SubmitFunction } from '$app/forms';
+	type ActionResult = Parameters<
+		ReturnType<SubmitFunction> extends infer R ? Extract<R, (...a: never[]) => unknown> : never
+	>[0]['result'];
 	import { resolve } from '$app/paths';
 	import {
 		FICHA_LIMITS,
@@ -24,8 +27,11 @@
 		ui,
 		action = undefined,
 		cloze = false,
-		submitLabel = 'Salvar ficha'
+		submitLabel = 'Salvar ficha',
+		onresult = undefined
 	}: {
+		/** Com ele, o resultado do envio fica com quem chamou (modal) em vez de navegar. */
+		onresult?: (result: ActionResult) => void;
 		values: {
 			language: Language;
 			front: string;
@@ -135,8 +141,9 @@
 	{action}
 	use:enhance={() => {
 		busy = true;
-		return async ({ update }) => {
-			await update({ reset: false });
+		return async ({ update, result }) => {
+			if (onresult) onresult(result);
+			else await update({ reset: false });
 			busy = false;
 		};
 	}}
