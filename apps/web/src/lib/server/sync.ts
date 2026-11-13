@@ -22,6 +22,7 @@ import {
 	type OpResult,
 	type DeckImportOp,
 	type ExtraNewOp,
+	type ProgressOp,
 	type ReviewOp,
 	type SyncOp
 } from '#lib/sync.ts';
@@ -256,6 +257,21 @@ async function applyDeckImport(token: string, op: DeckImportOp): Promise<OpResul
 	return toOpResult(op.clientId, asStored(data));
 }
 
+/** Posição de leitura: o banco acha o livro pelo koHash e fica com a de maior `at`. */
+async function applyProgress(token: string, op: ProgressOp): Promise<OpResult> {
+	const { data, error } = await apiClient().rpc('api_sync_progress', {
+		p_token: token,
+		p_client_id: op.clientId,
+		p_at: op.at,
+		p_ko_hash: op.koHash,
+		p_spine: op.spine,
+		p_chapter_percent: op.chapterPercent,
+		p_percent: op.percent
+	});
+	if (error) syncRpcFailure(error);
+	return toOpResult(op.clientId, asStored(data));
+}
+
 async function storeRejection(
 	token: string,
 	result: OpResult,
@@ -288,6 +304,7 @@ export async function processOps(token: string, ops: readonly unknown[], now = (
 		else if (op.type === 'seen') results.push(await applySeen(token, op));
 		else if (op.type === 'extraNew') results.push(await applyExtraNew(token, op));
 		else if (op.type === 'deckImport') results.push(await applyDeckImport(token, op));
+		else if (op.type === 'progress') results.push(await applyProgress(token, op));
 		else results.push(await applyReview(token, op, now()));
 	}
 	return results;

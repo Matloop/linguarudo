@@ -27,6 +27,7 @@ describe('isProtectedPath', () => {
 
 	test('/inicio e /perfil exigem login', () => {
 		expect(isProtectedPath('/inicio')).toBe(true);
+		expect(isProtectedPath('/livros/abc')).toBe(true);
 		expect(isProtectedPath('/perfil')).toBe(true);
 	});
 

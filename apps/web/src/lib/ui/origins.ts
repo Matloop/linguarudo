@@ -9,7 +9,8 @@ export const ORIGIN_ICONS: Record<Origin, IconName> = {
 	musica: 'music',
 	ereader: 'bookmark',
 	anki: 'archive',
-	blend: 'tv'
+	blend: 'tv',
+	leitor: 'bookmark'
 };
 
 /** Ícone de cada tipo de obra (livro, episódio...). */

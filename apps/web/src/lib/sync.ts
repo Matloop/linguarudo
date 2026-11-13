@@ -106,7 +106,11 @@ export function parseDeviceText(raw: unknown, max: number): string {
 
 export type OpResult =
 	| ({ clientId: string; status: 'applied' | 'duplicate' } & Record<string, unknown>)
-	| { clientId: string; status: 'dropped'; reason: 'item_deleted' | 'not_found' | 'unknown_target' }
+	| {
+			clientId: string;
+			status: 'dropped';
+			reason: 'item_deleted' | 'not_found' | 'unknown_target' | 'unknown_book';
+	  }
 	| {
 			clientId: string;
 			status: 'rejected';
@@ -114,8 +118,8 @@ export type OpResult =
 			errors?: Record<string, string>;
 	  };
 
-export type OpType = 'save' | 'review' | 'seen' | 'extraNew' | 'deckImport';
-const OP_TYPES: readonly string[] = ['save', 'review', 'seen', 'extraNew', 'deckImport'];
+export type OpType = 'save' | 'review' | 'seen' | 'extraNew' | 'deckImport' | 'progress';
+const OP_TYPES: readonly string[] = ['save', 'review', 'seen', 'extraNew', 'deckImport', 'progress'];
 const isOpType = (t: unknown): t is OpType => typeof t === 'string' && OP_TYPES.includes(t);
 
 export type SaveOp = {
@@ -162,7 +166,18 @@ export type DeckImportOp = {
 	hash: string;
 	rows: { front: string; back: string }[];
 };
-export type SyncOp = SaveOp | ReviewOp | SeenOp | ExtraNewOp | DeckImportOp;
+/** Posição de leitura de um livro com blend, achado pelo koHash do arquivo (§13). */
+export type ProgressOp = {
+	type: 'progress';
+	clientId: string;
+	at: string;
+	language: Language;
+	koHash: string;
+	spine: number;
+	chapterPercent: number;
+	percent: number;
+};
+export type SyncOp = SaveOp | ReviewOp | SeenOp | ExtraNewOp | DeckImportOp | ProgressOp;
 
 /**
  * Resultado da validação de uma operação. Inválida: o resultado já pronto e, se der
@@ -205,6 +220,12 @@ function lemmaError(lemma: string): string | null {
 	if (lemma === '') return 'lema vazio';
 	if (charLength(lemma) > LIMITS.lemma) return 'lema longo demais';
 	return null;
+}
+
+/** 0–100 com uma casa; fora da faixa ou não número: null. */
+function percentOf(v: unknown): number | null {
+	if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 100) return null;
+	return Math.round(v * 10) / 10;
 }
 
 function bookPosition(raw: unknown): Position {
@@ -291,6 +312,33 @@ export function parseOp(raw: unknown): ParsedOp {
 		}
 		if (Object.keys(errors).length) return invalid(errors, type);
 		return { ok: true, op: { type, clientId, at: at!, language, name: name!, hash, rows } };
+	}
+
+	if (type === 'progress') {
+		const koHash = str(r.koHash).toLowerCase();
+		if (!KO_HASH.test(koHash)) errors.koHash = 'hash de 32 hex';
+		const spine = r.spine;
+		if (typeof spine !== 'number' || !Number.isInteger(spine) || spine < 0 || spine > 1_000_000) {
+			errors.spine = 'inteiro de 0 a 1000000';
+		}
+		const chapterPercent = percentOf(r.chapterPercent);
+		if (chapterPercent === null) errors.chapterPercent = 'número de 0 a 100';
+		const percent = percentOf(r.percent);
+		if (percent === null) errors.percent = 'número de 0 a 100';
+		if (Object.keys(errors).length) return invalid(errors, type);
+		return {
+			ok: true,
+			op: {
+				type,
+				clientId,
+				at: at!,
+				language,
+				koHash,
+				spine: spine as number,
+				chapterPercent: chapterPercent!,
+				percent: percent!
+			}
+		};
 	}
 
 	if (type === 'seen') {

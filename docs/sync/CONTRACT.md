@@ -598,7 +598,7 @@ hash = md5 em hex minúsculo (32 caracteres)
 | `pair/poll` | 1 a cada `interval` s por `deviceCode` (`slow_down`) |
 | Validade do `userCode` | 10 min |
 | Pareamentos pendentes por IP | 5 |
-| push + snapshot | 60 pedidos por minuto por token (`429`) |
+| push + snapshot + books | 60 pedidos por minuto por token, somados (`429`) |
 | Registro de `clientId` | ≥ 180 dias |
 | `extraNew.n` | 1–1000 |
 | Linhas por `deckImport` | 1–500 |
@@ -736,4 +736,5 @@ O que o banco atual (`supabase/migrations/`) ainda não tem e o contrato pede. O
 - **Delta:** `updatedAt` precisa subir também quando o Reconhecer ou um encontro muda (hoje `items.updated_at` só sobe em update do item). Um contador monotônico (sequence) por mudança dá um cursor seguro contra transações concorrentes; enquanto não houver, responder sempre `mode: "full"` cumpre o contrato.
 - **`today.newDoneToday`:** a mesma conta de `review_counts` com `dayStart` de `review.ts`.
 - **Livros:** bucket privado `books` (`<user_id>/<book_id>/original.epub` e `<user_id>/<book_id>/v<N>.epub`); tabelas `books` (título, autor, `book_language`, `language`, `coverage`, `on_device`, `work_id`, versão atual), `book_chapters` (por `spine`: título, palavras, estado, candidatas da IA em jsonb), `book_versions` (`version`, caminho, `ko_hash`, `size`) e `book_progress` (uma linha por livro: `spine`, `chapter_percent`, `percent`, `at`, `source`). `work_for` consulta `book_versions.ko_hash` antes do ramo `kosync:`.
+- **Livros, como está feito** (`supabase/migrations/20261113120000_livros.sql`, `apps/web/src/lib/server/books.ts`): o navegador sobe o original direto no Storage e o servidor abre, conta os capítulos e chama `create_book`. O blend corre por pedaço de capítulo (umas 40 candidatas por chamada da IA, `POST /livros/[id]/blend`); `book_chapters.candidates` guarda `{ parts, done, coverage, byPart: { "<i>": Candidate[] } }` e mudar língua ou `%` zera. `POST /livros/[id]/gerar` monta a versão com os capítulos prontos do intervalo, sobe `v<N>.epub`, grava a linha em `book_versions` e apaga os arquivos das versões antigas (as linhas ficam, para o `koHash` de um arquivo velho no SD ainda achar o livro). Sem chave de serviço no servidor, a assinatura do `downloadUrl` passa por `book_signing`: `api_sync_books` libera os caminhos da lista por 2 minutos e uma política anônima de `storage.objects` (`book_signable`) deixa a rota assinar só esses. Encontros salvos no leitor web usam `origin = "leitor"`.
 - **Fila:** `api_sync_snapshot` devolve o estado da fila (`queue_state_for`) em toda página; a rota calcula `queueRank` com `readerRanks` e o cabeçalho com `readerDecks` (`apps/web/src/lib/server/queue.ts`). Decks: `supabase/migrations/20261112080000_decks.sql`.

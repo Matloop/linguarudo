@@ -51,6 +51,203 @@ export type Database = {
         }
         Relationships: []
       }
+      book_chapters: {
+        Row: {
+          book_id: string
+          candidates: Json | null
+          error: string | null
+          spine: number
+          status: string
+          title: string
+          updated_at: string
+          words: number
+        }
+        Insert: {
+          book_id: string
+          candidates?: Json | null
+          error?: string | null
+          spine: number
+          status?: string
+          title?: string
+          updated_at?: string
+          words?: number
+        }
+        Update: {
+          book_id?: string
+          candidates?: Json | null
+          error?: string | null
+          spine?: number
+          status?: string
+          title?: string
+          updated_at?: string
+          words?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "book_chapters_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      book_progress: {
+        Row: {
+          at: string
+          book_id: string
+          chapter_percent: number
+          percent: number
+          source: string
+          spine: number
+          user_id: string
+        }
+        Insert: {
+          at: string
+          book_id: string
+          chapter_percent?: number
+          percent?: number
+          source: string
+          spine: number
+          user_id: string
+        }
+        Update: {
+          at?: string
+          book_id?: string
+          chapter_percent?: number
+          percent?: number
+          source?: string
+          spine?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "book_progress_book_id_user_id_fkey"
+            columns: ["book_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      book_signing: {
+        Row: {
+          path: string
+          until: string
+        }
+        Insert: {
+          path: string
+          until: string
+        }
+        Update: {
+          path?: string
+          until?: string
+        }
+        Relationships: []
+      }
+      book_versions: {
+        Row: {
+          book_id: string
+          created_at: string
+          ko_hash: string
+          path: string
+          size: number
+          user_id: string
+          version: number
+        }
+        Insert: {
+          book_id: string
+          created_at?: string
+          ko_hash: string
+          path: string
+          size: number
+          user_id: string
+          version: number
+        }
+        Update: {
+          book_id?: string
+          created_at?: string
+          ko_hash?: string
+          path?: string
+          size?: number
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "book_versions_book_id_user_id_fkey"
+            columns: ["book_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      books: {
+        Row: {
+          author: string
+          book_language: string
+          coverage: number
+          created_at: string
+          current_version: number | null
+          id: string
+          language: string
+          on_device: boolean
+          original_path: string
+          original_size: number
+          range_from: number
+          range_to: number
+          title: string
+          updated_at: string
+          user_id: string
+          work_id: string | null
+        }
+        Insert: {
+          author?: string
+          book_language: string
+          coverage?: number
+          created_at?: string
+          current_version?: number | null
+          id?: string
+          language: string
+          on_device?: boolean
+          original_path: string
+          original_size: number
+          range_from?: number
+          range_to?: number
+          title: string
+          updated_at?: string
+          user_id: string
+          work_id?: string | null
+        }
+        Update: {
+          author?: string
+          book_language?: string
+          coverage?: number
+          created_at?: string
+          current_version?: number | null
+          id?: string
+          language?: string
+          on_device?: boolean
+          original_path?: string
+          original_size?: number
+          range_from?: number
+          range_to?: number
+          title?: string
+          updated_at?: string
+          user_id?: string
+          work_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "books_work_id_user_id_fkey"
+            columns: ["work_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "works"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       decks: {
         Row: {
           created_at: string
@@ -821,6 +1018,7 @@ export type Database = {
         }[]
       }
       api_sync_begin: { Args: { p_token: string }; Returns: number }
+      api_sync_books: { Args: { p_token: string }; Returns: Json }
       api_sync_deck_import: {
         Args: {
           p_client_id: string
@@ -838,6 +1036,18 @@ export type Database = {
           p_client_id: string
           p_language: string
           p_n: number
+          p_token: string
+        }
+        Returns: Json
+      }
+      api_sync_progress: {
+        Args: {
+          p_at: string
+          p_chapter_percent: number
+          p_client_id: string
+          p_ko_hash: string
+          p_percent: number
+          p_spine: number
           p_token: string
         }
         Returns: Json
@@ -915,6 +1125,19 @@ export type Database = {
         }
         Returns: undefined
       }
+      book_signable: { Args: { p_path: string }; Returns: boolean }
+      create_book: {
+        Args: {
+          p_author: string
+          p_book_language: string
+          p_chapters: Json
+          p_id: string
+          p_language: string
+          p_original_size: number
+          p_title: string
+        }
+        Returns: string
+      }
       deck_for_path: {
         Args: { p_language: unknown; p_path: string; p_user: string }
         Returns: string
@@ -957,6 +1180,13 @@ export type Database = {
         }[]
       }
       import_anki_reviews: { Args: { p_flashcards: Json }; Returns: number }
+      mark_seen: {
+        Args: { p_language: string; p_lemma_key: string }
+        Returns: {
+          item_id: string
+          seen_count: number
+        }[]
+      }
       media_in_use: { Args: { p_paths: string[] }; Returns: string[] }
       media_quota: { Args: never; Returns: Record<string, unknown> }
       media_quota_bytes: { Args: never; Returns: number }
@@ -1036,6 +1266,16 @@ export type Database = {
           language: unknown
           n: number
         }[]
+      }
+      save_book_progress: {
+        Args: {
+          p_at: string
+          p_book: string
+          p_chapter_percent: number
+          p_percent: number
+          p_spine: number
+        }
+        Returns: boolean
       }
       save_items: {
         Args: { p_items: Json }
@@ -1142,6 +1382,10 @@ export type Database = {
           p_next: Json
         }
         Returns: string
+      }
+      valid_book_path: {
+        Args: { p_path: string; p_user: string }
+        Returns: boolean
       }
       valid_media_path: {
         Args: { p_kind: string; p_path: string; p_user: string }
