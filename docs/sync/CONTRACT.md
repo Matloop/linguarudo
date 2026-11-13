@@ -555,9 +555,9 @@ O que o aparelho mostra entre um sync e outro é `bank.jsonl` + o outbox:
 1. Acerta o relógio (NTP).
 2. **Push:** envia o outbox em lotes de até 200, na ordem do arquivo, até mandar tudo. Guarda na memória o `clientId` de cada operação resolvida. Erro de pedido (sem resposta, 5xx, 429): para o sync e mantém o outbox inteiro.
 3. **Snapshot:** com `since = cursor` (ou sem, se `null`), baixa todas as páginas e atualiza `bank.jsonl`.
-3b. **Livros:** `GET /api/v1/sync/books` e espelha `/Linguetta/` (seção 13). Falha aqui não desfaz os passos anteriores: o sync conta como `ok` e o livro tenta de novo no próximo.
 4. Só então reescreve o outbox sem as operações resolvidas no passo 2 e grava o `cursor` novo em `state.json`. Operações feitas durante o sync (se a interface permitir) ficam.
 5. Se o snapshot falhar, o outbox não muda: no próximo sync as operações voltam e dão `duplicate`. Assim a visão local nunca perde uma revisão que o banco ainda não mostra.
+6. **Livros:** depois de tudo acima, `GET /api/v1/sync/books` e espelha `/Linguetta/` (seção 13). Falha aqui não desfaz os passos anteriores: o sync conta como `ok` e o livro tenta de novo no próximo.
 
 - Resultados `rejected` podem ir para `/.linguetta/rejected.jsonl` (a operação + o resultado, até 100 linhas) para diagnóstico.
 - `401` em qualquer passo: para, apaga o token, mantém banco e outbox.
@@ -700,7 +700,8 @@ A pessoa envia um EPUB em `/livros` no app, escolhe a língua do blend, os capí
 - Livro no manifesto e fora da lista: apaga o arquivo e a entrada. O aparelho **nunca** apaga em `/Linguetta/` um arquivo que não está no manifesto (é da pessoa).
 - Ao trocar a versão de um livro aberto, o aparelho fecha o livro antes de substituir.
 - Grava `/.linguetta/books.json` (a escolha de idioma por livro) com `language` do livro, pelo caminho novo.
-- Cache de seção do CrossPoint é por caminho + tamanho; arquivo novo invalida sozinho.
+- O cache de seções do CrossPoint é só por caminho: o aparelho **deve** limpar o cache do livro antes de substituir, renomear ou apagar o arquivo.
+- Arquivo da pessoa com o mesmo `file` (fora do manifesto): o aparelho só o assume se o `koHash` bater; senão não mexe nele, não baixa o livro e mostra o conflito no resultado do sync.
 
 ### Obra do livro
 
