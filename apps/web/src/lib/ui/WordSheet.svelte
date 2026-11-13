@@ -154,6 +154,7 @@
 	let menuOpen = $state(false);
 	let menuView = $state<'menu' | 'decks'>('menu');
 	let moving = $state(false);
+	let deckOpen = $state(false);
 	let histOpen = $state(false);
 
 	// Trocar de palavra: foco no painel, histórico fechado, rolagem no topo. O id derivado
@@ -519,8 +520,32 @@
 
 		<section class="sec">
 			<h3>
-				Flashcards gerados{#if deck}<span class="aside">Baralho {deckDisplayName(deck.name)}</span
-					>{/if}
+				Flashcards gerados
+				<Popover label="Trocar baralho" bind:open={deckOpen} align="end" width={300}>
+					{#snippet trigger({ toggle, expanded, id })}
+						<button
+							type="button"
+							class="aside deck-btn"
+							aria-label="Baralho: {deck ? deckDisplayName(deck.name) : 'Minhas palavras'}. Trocar baralho"
+							aria-haspopup="dialog"
+							aria-expanded={expanded}
+							aria-controls={id}
+							onclick={toggle}
+							><Icon name="cards" size="sm" />{deck
+								? deckDisplayName(deck.name)
+								: 'Minhas palavras'}<Icon name="down" size="sm" /></button
+						>
+					{/snippet}
+					<DeckPicker
+						decks={decks.map((d) => ({ id: d.id, name: d.name, depth: d.depth }))}
+						current={deck?.id ?? null}
+						pending={moving}
+						onpick={async (choice) => {
+							await moveTo(choice);
+							deckOpen = false;
+						}}
+					/>
+				</Popover>
 			</h3>
 			{#if cards.length === 0}
 				<p class="faint small">Nenhum flashcard ainda.</p>
@@ -911,6 +936,32 @@
 		color: var(--ink-3);
 		letter-spacing: 0.05em;
 		text-transform: uppercase;
+	}
+	.deck-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		max-width: 220px;
+		margin: -3px -6px -3px auto;
+		padding: 3px 6px;
+		border: 0;
+		border-radius: var(--r-s);
+		background: none;
+		font: inherit;
+		cursor: pointer;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.deck-btn:hover,
+	.deck-btn[aria-expanded='true'] {
+		background: var(--hover);
+		color: var(--ink);
+	}
+	.deck-btn :global(.ic) {
+		flex: none;
+		width: 13px;
+		height: 13px;
 	}
 	.aside {
 		text-transform: none;

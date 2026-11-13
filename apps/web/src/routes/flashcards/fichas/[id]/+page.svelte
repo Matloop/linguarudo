@@ -1,42 +1,26 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
-	import FichaForm from '#lib/ui/FichaForm.svelte';
-	import Icon from '#lib/ui/Icon.svelte';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import FichaDialog from '#lib/ui/FichaDialog.svelte';
 	import type { PageProps } from './$types';
 
-	let { data, form }: PageProps = $props();
+	// Link direto para a ficha (ex.: tela do baralho): o mesmo diálogo da lista, já aberto.
+	// Fechar (salvando, apagando ou não) volta para a lista de fichas.
 
-	const values = $derived(form?.values ?? data.values);
+	let { data }: PageProps = $props();
 </script>
 
 <svelte:head>
 	<title>Editar ficha · Linguetta</title>
 </svelte:head>
 
-<div class="ph">
-	<div>
-		<h1>Editar ficha</h1>
-		{#if data.cloze}
-			<p>Ficha de lacunas: cada <code>{'{{c1::…}}'}</code> é um flashcard.</p>
-		{/if}
-	</div>
-	<form
-		method="POST"
-		action="?/delete"
-		use:enhance={({ cancel }) => {
-			if (!confirm('Apagar esta ficha e os flashcards dela?')) cancel();
-		}}
-	>
-		<button class="btn btn-ghost"><Icon name="x" size="sm" />Apagar ficha</button>
-	</form>
-</div>
-
-<FichaForm
-	{values}
-	mediaUrls={form?.mediaUrls ?? data.mediaUrls}
-	errors={form?.errors}
-	languages={data.languages}
-	ui={data.ui}
-	action="?/save"
-	cloze={data.cloze}
+<FichaDialog
+	mode="edit"
+	open
+	ssrOpen
+	edit={data.ficha}
+	language={data.ficha.language}
+	uiLanguage={data.ui}
+	ondeleted={() => {}}
+	onclose={() => goto(resolve('/flashcards/fichas'))}
 />

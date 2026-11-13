@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '#lib/database.types.ts';
+import type { FichaEdit } from '#lib/fichas.ts';
 
 declare global {
 	namespace App {
@@ -10,7 +11,10 @@ declare global {
 		}
 		// interface Error {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			/** Ficha aberta no diálogo por cima da lista de fichas (pushState). */
+			ficha?: FichaEdit;
+		}
 		// interface Platform {}
 	}
 

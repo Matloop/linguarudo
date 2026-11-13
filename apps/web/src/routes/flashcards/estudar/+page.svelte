@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { onMount, tick, untrack, type ComponentProps } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { applyAction, deserialize, enhance, type SubmitFunction } from '$app/forms';
 	import { invalidate, invalidateAll } from '$app/navigation';
 	import {
@@ -18,12 +18,12 @@
 		type ItemReview,
 		type ReviewItem
 	} from '#lib/review.ts';
-	import { FICHA_KIND_LABELS, renderCloze } from '#lib/fichas.ts';
+	import { FICHA_KIND_LABELS, renderCloze, type FichaEdit } from '#lib/fichas.ts';
 	import { playWord } from '#lib/audio.ts';
 	import { langAttrs, languageInline } from '#lib/languages.ts';
 	import { isTypingTarget, shortcutFor } from '#lib/shortcuts.ts';
-	import { toast } from '#lib/ui/app-state.svelte.ts';
-	import FichaForm from '#lib/ui/FichaForm.svelte';
+	import { openFicha, toast } from '#lib/ui/app-state.svelte.ts';
+	import FichaDialog from '#lib/ui/FichaDialog.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import SaveDialog from '#lib/ui/SaveDialog.svelte';
 	import type { WordEdit } from '#lib/word-fields.ts';
@@ -312,24 +312,17 @@
 	};
 
 	// Edição no lugar: a palavra ou a ficha do flashcard atual, sem sair da sessão. A palavra
-	// abre no mesmo diálogo do Guardar (SaveDialog em modo edit); a ficha, no FichaForm.
+	// abre no mesmo diálogo do Guardar (SaveDialog em modo edit); a ficha, no da Nova ficha
+	// (FichaDialog em modo edit).
 	type EditData =
-		| { kind: 'item'; id: string; word: WordEdit }
-		| {
-				kind: 'ficha';
-				id: string;
-				cloze: boolean;
-				values: ComponentProps<typeof FichaForm>['values'];
-				mediaUrls: ComponentProps<typeof FichaForm>['mediaUrls'];
-		  };
-	let editDialog: HTMLDialogElement | undefined = $state();
-	/** Ficha em edição (o diálogo do FichaForm). */
-	let editFor = $state<{ flashcardId: string; data: EditData | null } | null>(null);
-	let editErrors = $state<Record<string, string>>({});
+		{ kind: 'item'; id: string; word: WordEdit } | { kind: 'ficha'; ficha: FichaEdit };
 	/** Palavra em edição (o diálogo Guardar em modo edit). */
 	let word = $state<{ flashcardId: string; data: WordEdit } | null>(null);
 	let wordOpen = $state(false);
-	let wordLoading = $state(false);
+	/** Ficha em edição (o diálogo da ficha em modo edit). */
+	let ficha = $state<{ flashcardId: string; data: FichaEdit } | null>(null);
+	let fichaOpen = $state(false);
+	let editLoading = $state(false);
 
 	async function post(url: string, body: FormData) {
 		const res = await fetch(url, {
@@ -341,34 +334,26 @@
 	}
 
 	async function openEdit() {
-		if (!current || wordLoading) return;
+		if (!current || editLoading) return;
 		const flashcardId = current.flashcardId;
-		// A ficha mostra "Carregando…" no próprio diálogo; a palavra abre já com os dados.
-		if (current.source === 'item') wordLoading = true;
-		else {
-			editFor = { flashcardId, data: null };
-			editErrors = {};
-			editDialog?.showModal();
-		}
+		editLoading = true;
 		const body = new FormData();
 		body.set('flashcardId', flashcardId);
 		const r = await post('?/editLoad', body);
-		wordLoading = false;
+		editLoading = false;
 		if (r?.type !== 'success' || !r.data) {
-			editDialog?.close();
 			toast('Não deu para abrir a edição agora.');
 			return;
 		}
+		if (current?.flashcardId !== flashcardId) return;
 		const loaded = r.data as unknown as EditData;
 		if (loaded.kind === 'item') {
-			editDialog?.close();
-			if (current?.flashcardId !== flashcardId) return;
 			word = { flashcardId, data: loaded.word };
 			wordOpen = true;
-			return;
+		} else {
+			ficha = { flashcardId, data: loaded.ficha };
+			fichaOpen = true;
 		}
-		if (editFor?.flashcardId !== flashcardId) return;
-		editFor.data = loaded;
 	}
 
 	/** Depois de salvar, o flashcard da fila volta do servidor já com o texto novo. */
@@ -380,23 +365,6 @@
 			const fresh = r.data.item as ReviewItem;
 			session.queue = session.queue.map((i) => (i.flashcardId === flashcardId ? fresh : i));
 		}
-	}
-
-	async function fichaSaved() {
-		const flashcardId = editFor?.flashcardId;
-		if (!flashcardId) return;
-		await refreshCard(flashcardId);
-		editDialog?.close();
-		toast('Salvo');
-	}
-
-	function onFichaResult(result: { type: string; data?: unknown }) {
-		// A action da ficha termina em redirect: é o sinal de que salvou.
-		if (result.type === 'redirect' || result.type === 'success') return void fichaSaved();
-		const data = (result.type === 'failure' ? result.data : null) as {
-			errors?: Record<string, string>;
-		} | null;
-		editErrors = data?.errors ?? { form: 'Não deu para salvar agora. Tente de novo.' };
 	}
 
 	async function continueReviewing() {
@@ -528,8 +496,8 @@
 					href={resolve('/flashcards/estudar?guardar')}
 					data-sveltekit-noscroll><Icon name="plus" />Guardar palavra</a
 				>
-				<a class="btn btn-soft btn-lg" href={resolve('/flashcards/fichas/nova')}
-					><Icon name="cards" />Nova ficha</a
+				<button class="btn btn-soft btn-lg" type="button" onclick={openFicha}
+					><Icon name="cards" />Nova ficha</button
 				>
 			</div>
 		</div>
@@ -556,7 +524,7 @@
 						class="icon-btn"
 						type="button"
 						onclick={openEdit}
-						aria-busy={wordLoading}
+						aria-busy={editLoading}
 						aria-label="Editar este flashcard"
 						title="Editar"><Icon name="pencil" size="sm" /></button
 					>
@@ -800,36 +768,14 @@
 	</form>
 </dialog>
 
-<dialog
-	class="editor"
-	bind:this={editDialog}
-	aria-label="Editar flashcard"
-	onclose={() => (editFor = null)}
->
-	<div class="ed-in">
-		<div class="ed-h">
-			<h2>Editar ficha</h2>
-			<button class="icon-btn" type="button" aria-label="Fechar" onclick={() => editDialog?.close()}
-				><Icon name="x" /></button
-			>
-		</div>
-		{#if editFor?.data?.kind === 'ficha'}
-			{@const d = editFor.data}
-			<FichaForm
-				values={d.values}
-				mediaUrls={d.mediaUrls}
-				errors={editErrors}
-				languages={[d.values.language]}
-				ui={data.uiLanguage}
-				action="/flashcards/fichas/{d.id}?/save"
-				cloze={d.cloze}
-				onresult={onFichaResult}
-			/>
-		{:else}
-			<p class="ed-wait">Carregando…</p>
-		{/if}
-	</div>
-</dialog>
+<FichaDialog
+	mode="edit"
+	bind:open={fichaOpen}
+	edit={ficha?.data ?? null}
+	language={data.language}
+	uiLanguage={data.uiLanguage}
+	onsaved={() => (ficha ? refreshCard(ficha.flashcardId) : undefined)}
+/>
 
 <SaveDialog
 	mode="edit"
@@ -878,35 +824,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.editor {
-		width: min(640px, calc(100vw - 32px));
-		max-height: calc(100dvh - 48px);
-		padding: 0;
-		border: 0;
-		border-radius: var(--r-l);
-		background: var(--raise);
-		color: var(--ink);
-		box-shadow: var(--sh-pop);
-	}
-	.editor::backdrop {
-		background: var(--scrim);
-	}
-	.ed-in {
-		padding: 22px 24px 20px;
-	}
-	.ed-h {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 14px;
-	}
-	.ed-h h2 {
-		font: 600 20px/1.25 var(--f-head);
-		margin: 0;
-	}
-	.ed-wait {
-		color: var(--ink-3);
 	}
 	.quota {
 		width: min(440px, calc(100vw - 32px));

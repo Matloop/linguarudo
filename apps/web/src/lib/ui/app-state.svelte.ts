@@ -1,9 +1,11 @@
-// Estado do shell que várias telas tocam: diálogo Guardar e aviso (toast).
+// Estado do shell que várias telas tocam: diálogos Guardar e Nova ficha e aviso (toast).
 
 import { THEME_COOKIE, cookieString, type Theme } from '#lib/prefs.ts';
 
 export const ui = $state({
 	saveOpen: false,
+	/** Diálogo Nova ficha (FichaDialog no layout). */
+	fichaOpen: false,
 	toast: '',
 	/** Muda a cada aviso, para o mesmo texto aparecer de novo. */
 	toastId: 0
@@ -20,6 +22,10 @@ export function toast(message: string) {
 
 export function openSave() {
 	ui.saveOpen = true;
+}
+
+export function openFicha() {
+	ui.fichaOpen = true;
 }
 
 /** Aplica o tema na hora (classe na raiz) e guarda no cookie para o SSR. */

@@ -9,6 +9,7 @@
 	import { SIDEBAR_COOKIE, cookieString, nextTheme, type Theme } from '#lib/prefs.ts';
 	import { deckDisplayName } from '#lib/decks-ui.ts';
 	import { isTypingTarget, shortcutFor, type Screen } from '#lib/shortcuts.ts';
+	import FichaDialog from '#lib/ui/FichaDialog.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import LangMenu from '#lib/ui/LangMenu.svelte';
 	import Mark from '#lib/ui/Mark.svelte';
@@ -198,7 +199,7 @@
 						>{/if}</a
 				>
 				{#if !collapsed && shellDecks.length}
-					<ul class="sub" aria-label="Baralhos com algo para hoje">
+					<ul class="sub" aria-label="Baralhos">
 						{#each shellDecks as d (d.id)}
 							<li>
 								<a
@@ -208,9 +209,10 @@
 										? 'page'
 										: undefined}
 									title={deckDisplayName(d.name)}
-									><span class="sub-name">{deckDisplayName(d.name)}</span><span class="sub-n"
-										>{d.forToday}<span class="visually-hidden">&nbsp;para hoje</span></span
-									></a
+									><span class="sub-name">{deckDisplayName(d.name)}</span
+									>{#if d.forToday > 0}<span class="sub-n"
+											>{d.forToday}<span class="visually-hidden">&nbsp;para hoje</span></span
+										>{/if}</a
 								>
 							</li>
 						{/each}
@@ -321,6 +323,14 @@
 			summaries={shell.summary?.languages ?? null}
 			uiLanguage={shell.uiLanguage}
 			ssrOpen={page.url.searchParams.has('guardar')}
+		/>
+		<FichaDialog
+			language={shell.active}
+			study={shell.studyLanguages}
+			native={shell.nativeLanguage}
+			summaries={shell.summary?.languages ?? null}
+			uiLanguage={shell.uiLanguage}
+			ssrOpen={page.url.searchParams.has('ficha')}
 		/>
 	{/if}
 	<Toast />

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { tick } from 'svelte';
 	import { isPausedIn, type DeckSummary } from '#lib/decks.ts';
 	import {
 		DECK_NAME_UI_MAX,
@@ -85,18 +84,8 @@
 	}
 
 	// ---------- Barra de seleção ----------
-	let renameOpen = $state(false);
-	let renameName = $state('');
-	let renameError = $state('');
 	let moveOpen = $state(false);
 	let busy = $state(false);
-
-	$effect(() => {
-		if (renameOpen && chosen.length === 1) {
-			renameName = chosen[0].name;
-			renameError = '';
-		}
-	});
 
 	async function togglePause() {
 		const paused = !allPaused;
@@ -109,20 +98,6 @@
 				? `${plural(chosen.length, 'baralho pausado', 'baralhos pausados')}: fora do Estudar tudo`
 				: `${plural(chosen.length, 'baralho retomado', 'baralhos retomados')}`
 		);
-	}
-
-	async function rename(e: SubmitEvent) {
-		e.preventDefault();
-		if (busy || chosen.length !== 1) return;
-		busy = true;
-		const r = await postAction('rename', { id: chosen[0].id, name: renameName });
-		busy = false;
-		if (!r.ok) {
-			renameError = r.message;
-			return;
-		}
-		renameOpen = false;
-		toast('Baralho renomeado');
 	}
 
 	const nestTargets = $derived([
@@ -146,13 +121,6 @@
 
 	function onkeydown(e: KeyboardEvent) {
 		sel.onkeydown(e);
-	}
-
-	function focusName(node: HTMLInputElement) {
-		void tick().then(() => {
-			node.focus();
-			node.select();
-		});
 	}
 
 	const cell = (n: number) => (n === 0 ? 'zero' : '');
@@ -335,7 +303,7 @@
 				<th scope="col" class="c-n">Revisar</th>
 				<th scope="col" class="c-today">Hoje</th>
 				<th scope="col" class="c-n c-total">Cartas</th>
-				<th scope="col" class="c-set"><span class="visually-hidden">Limites</span></th>
+				<th scope="col" class="c-set"><span class="visually-hidden">Opções</span></th>
 			</tr>
 		</thead>
 		<tbody>
@@ -396,7 +364,7 @@
 							>&nbsp;{c.flashcards === 1 ? 'carta' : 'cartas'}</span
 						></td
 					>
-					<td class="c-set"><DeckLimits deck={d} /></td>
+					<td class="c-set"><DeckLimits deck={d} rename /></td>
 				</tr>
 			{/each}
 		</tbody>
@@ -414,41 +382,6 @@
 				? 'Retomar'
 				: 'Pausar'}</button
 		>
-		{#if chosen.length === 1}
-			<Popover label="Renomear baralho" bind:open={renameOpen} align="start" placement="above">
-				{#snippet trigger({ toggle, expanded, id })}
-					<button
-						class="btn btn-ghost"
-						type="button"
-						aria-haspopup="dialog"
-						aria-expanded={expanded}
-						aria-controls={id}
-						onclick={toggle}><Icon name="pencil" size="sm" />Renomear</button
-					>
-				{/snippet}
-				{#snippet children({ close })}
-					<form class="pop-form" onsubmit={rename}>
-						<label for="renomear-deck">Nome do baralho</label>
-						<input
-							id="renomear-deck"
-							class="input"
-							maxlength={DECK_NAME_UI_MAX}
-							autocomplete="off"
-							aria-invalid={renameError ? 'true' : undefined}
-							bind:value={renameName}
-							use:focusName
-							oninput={() => (renameError = '')}
-						/>
-						{#if renameError}<p class="err" role="alert">{renameError}</p>{/if}
-						<div class="pop-row">
-							<span class="sp"></span>
-							<button class="btn btn-ghost" type="button" onclick={close}>Cancelar</button>
-							<button class="btn btn-primary" disabled={!renameName.trim() || busy}>Salvar</button>
-						</div>
-					</form>
-				{/snippet}
-			</Popover>
-		{/if}
 		<Popover label="Mover baralho" bind:open={moveOpen} align="start" placement="above">
 			{#snippet trigger({ toggle, expanded, id })}
 				<button
@@ -710,20 +643,6 @@
 	}
 	.c-set:has(:global([aria-expanded='true'])) {
 		z-index: 5;
-	}
-	.c-set :global(.gear) {
-		opacity: 0;
-		transition: opacity 0.15s;
-	}
-	tr:hover .c-set :global(.gear),
-	.c-set:focus-within :global(.gear),
-	.c-set :global(.gear[aria-expanded='true']) {
-		opacity: 1;
-	}
-	@media (hover: none) {
-		.c-set :global(.gear) {
-			opacity: 1;
-		}
 	}
 	.zero {
 		color: var(--ink-3);

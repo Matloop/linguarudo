@@ -1,9 +1,8 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { DECK_LIMITS, deckErrorMessage } from '#lib/decks.ts';
-import { fichaHtmlToText } from '#lib/fichas.ts';
 import { parseLanguage } from '#lib/languages.ts';
 import { signMedia } from '#lib/server/media.ts';
-import { fichaMediaUrls } from '#lib/server/fichas.ts';
+import { loadFichaEdit } from '#lib/server/fichas.ts';
 import { isGrade, leechAlert } from '#lib/review.ts';
 import { addExtraNew, itemsOfWork, loadQueueState } from '#lib/server/decks.ts';
 import {
@@ -26,8 +25,6 @@ import { loadReviewSettings } from '#lib/server/settings.ts';
 import { loadTags, nextDueText } from '#lib/server/summary.ts';
 import type { WordEdit } from '#lib/word-fields.ts';
 import type { Actions, PageServerLoad } from './$types';
-
-const FICHA_MEDIA = 'front_image, front_audio, back_image, back_audio' as const;
 
 async function requireUser(locals: App.Locals) {
 	const user = await locals.getUser();
@@ -148,34 +145,9 @@ export const actions: Actions = {
 		);
 		if (!row) return fail(404, { message: 'Flashcard não encontrado.' });
 		if ('fichas' in row) {
-			const { data: f } = await locals.supabase
-				.from('fichas')
-				.select(`id, language, front, back, reverse, cloze_count, tags, ${FICHA_MEDIA}`)
-				.eq('id', row.fichas.id)
-				.eq('user_id', user.id)
-				.is('deleted_at', null)
-				.maybeSingle();
-			if (!f) return fail(404, { message: 'Ficha não encontrada.' });
-			const media = {
-				front_image: f.front_image,
-				front_audio: f.front_audio,
-				back_image: f.back_image,
-				back_audio: f.back_audio
-			};
-			return {
-				kind: 'ficha' as const,
-				id: f.id,
-				cloze: f.cloze_count > 0,
-				values: {
-					language: f.language,
-					front: fichaHtmlToText(f.front),
-					back: fichaHtmlToText(f.back),
-					reverse: f.reverse,
-					tags: f.tags.join(', '),
-					media
-				},
-				mediaUrls: await fichaMediaUrls(locals.supabase, media)
-			};
+			const ficha = await loadFichaEdit(locals.supabase, user.id, row.fichas.id);
+			if (!ficha) return fail(404, { message: 'Ficha não encontrada.' });
+			return { kind: 'ficha' as const, ficha };
 		}
 		const { data: it } = await locals.supabase
 			.from('items')

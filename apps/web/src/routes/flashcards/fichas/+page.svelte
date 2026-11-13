@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { replaceState } from '$app/navigation';
+	import { goto, invalidateAll, preloadData, pushState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { onMount } from 'svelte';
 	import { languageInline } from '#lib/languages.ts';
-	import { toast } from '#lib/ui/app-state.svelte.ts';
+	import { openFicha } from '#lib/ui/app-state.svelte.ts';
+	import FichaDialog from '#lib/ui/FichaDialog.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import type { PageProps } from './$types';
 
@@ -23,17 +23,36 @@
 	const tagQuery = (tag: string | null): `?${string}` | '' =>
 		tag ? `?tag=${encodeURIComponent(tag)}` : '';
 
-	onMount(() => {
-		const params = page.url.searchParams;
-		if (params.has('criada')) toast('Ficha criada');
-		else if (params.has('salva')) toast('Ficha salva');
-		else if (params.has('apagada')) toast('Ficha apagada');
-		if (params.has('criada') || params.has('salva') || params.has('apagada')) {
-			const url = new URL(page.url.href);
-			for (const k of ['criada', 'salva', 'apagada']) url.searchParams.delete(k);
-			replaceState(resolve(`/flashcards/fichas${url.search as `?${string}` | ''}`), page.state);
+	const plainClick = (e: MouseEvent) =>
+		!(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0);
+
+	function onNew(e: MouseEvent) {
+		if (!plainClick(e)) return;
+		e.preventDefault();
+		openFicha();
+	}
+
+	// Editar abre o diálogo por cima da lista (a URL vira a da ficha; Voltar fecha).
+	async function onEdit(e: MouseEvent, href: string) {
+		if (!plainClick(e)) return;
+		e.preventDefault();
+		const r = await preloadData(href);
+		if (r.type === 'loaded' && r.status === 200) {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- href já veio do resolve()
+			pushState(href, { ficha: (r.data as { ficha: App.PageState['ficha'] }).ficha });
+		} else {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- href já veio do resolve()
+			goto(href);
 		}
-	});
+	}
+
+	/** Fechar volta à URL da lista (só se o diálogo ainda está no histórico). */
+	// A URL da ficha só chega aqui pelo pushState (o link direto é outra página): volta.
+	// Olha a barra de endereço: o invalidateAll do salvar refaz page.url e page.state com a
+	// URL de antes do pushState, e o voltar do navegador já tirou a ficha da barra.
+	function closeEdit() {
+		if (location.pathname !== resolve('/flashcards/fichas')) history.back();
+	}
 </script>
 
 <svelte:head>
@@ -50,7 +69,7 @@
 		<a class="btn btn-ghost" href={resolve('/flashcards/importar')}
 			><Icon name="upload" />Importar do Anki</a
 		>
-		<a class="btn btn-primary" href={resolve('/flashcards/fichas/nova')}
+		<a class="btn btn-primary" href={resolve('/flashcards/fichas?ficha')} onclick={onNew}
 			><Icon name="plus" />Nova ficha</a
 		>
 	</div>
@@ -81,7 +100,7 @@
 			<h2>{data.tag ? `Nenhuma ficha com a tag “${data.tag}”` : 'Nenhuma ficha ainda'}</h2>
 			<p>Fichas guardam o que não cabe numa palavra: conjugações, regras, frases inteiras.</p>
 			<div class="acts">
-				<a class="btn btn-primary btn-lg" href={resolve('/flashcards/fichas/nova')}
+				<a class="btn btn-primary btn-lg" href={resolve('/flashcards/fichas?ficha')} onclick={onNew}
 					><Icon name="plus" />Criar ficha</a
 				>
 			</div>
@@ -94,8 +113,9 @@
 	</label>
 	<ul class="list">
 		{#each shown as f (f.id)}
+			{@const href = resolve('/flashcards/fichas/[id]', { id: f.id })}
 			<li>
-				<a href={resolve('/flashcards/fichas/[id]', { id: f.id })}>
+				<a {href} onclick={(e) => onEdit(e, href)}>
 					<span class="txt">
 						<b>{f.front}</b>
 						{#if f.back}<span class="back">{f.back}</span>{/if}
@@ -112,6 +132,17 @@
 		{/each}
 	</ul>
 {/if}
+
+<FichaDialog
+	mode="edit"
+	open={!!page.state.ficha}
+	edit={page.state.ficha ?? null}
+	language={data.language}
+	uiLanguage={data.uiLanguage}
+	onsaved={() => invalidateAll()}
+	ondeleted={() => invalidateAll()}
+	onclose={closeEdit}
+/>
 
 <style>
 	.acts {

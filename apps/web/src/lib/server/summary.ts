@@ -38,7 +38,7 @@ export interface ShellDeck {
 
 export interface ShellSummary {
 	languages: LanguageSummary[];
-	/** Decks do idioma ativo com algo para hoje (vazio se o idioma tem um deck só). */
+	/** Decks de topo do idioma ativo, sem os pausados (vazio se o idioma tem um deck só). */
 	decks: ShellDeck[];
 }
 
@@ -79,8 +79,7 @@ export async function loadShellSummary(
 		if (language === active && overview.decks.length > 1) {
 			decks = overview.decks
 				.filter((d) => d.depth === 0 && !isPausedIn(d, overview.decks))
-				.map((d) => ({ id: d.id, name: d.name, forToday: forToday(rowCounts(d)) }))
-				.filter((d) => d.forToday > 0);
+				.map((d) => ({ id: d.id, name: d.name, forToday: forToday(rowCounts(d)) }));
 		}
 		return { language, items, toReview: totals.total, fresh: totals.fresh };
 	});

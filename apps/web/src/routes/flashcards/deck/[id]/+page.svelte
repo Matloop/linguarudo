@@ -22,7 +22,7 @@
 	import { clozePlain } from '#lib/fichas.ts';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Popover from '#lib/ui/Popover.svelte';
-	import { toast } from '#lib/ui/app-state.svelte.ts';
+	import { openFicha, toast } from '#lib/ui/app-state.svelte.ts';
 	import { postAction } from '#lib/ui/post-action.ts';
 	import { Selection } from '#lib/ui/selection.svelte.ts';
 	import type { PageProps } from './$types';
@@ -332,7 +332,7 @@
 			<p>Mova palavras para cá em Minhas palavras, ou crie uma ficha.</p>
 			<div class="acts">
 				<a class="btn btn-soft" href={resolve('/palavras')}>Minhas palavras</a>
-				<a class="btn btn-ghost" href={resolve('/flashcards/fichas/nova')}>Nova ficha</a>
+				<button class="btn btn-ghost" type="button" onclick={openFicha}>Nova ficha</button>
 			</div>
 		</div>
 	</div>

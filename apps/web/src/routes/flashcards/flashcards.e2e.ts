@@ -233,7 +233,7 @@ test('baralhos: criar, mover palavras, página do baralho e estudar só ele', as
 	await page.getByLabel('Nome do baralho').fill('Viagem');
 	await page.getByRole('button', { name: 'Criar' }).click();
 	await expect(page.getByText('Baralho “Viagem” criado')).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Viagem', exact: true })).toBeVisible();
+	await expect(page.getByRole('table').getByRole('link', { name: 'Viagem', exact: true })).toBeVisible();
 
 	await page.goto('/palavras');
 	await page.getByRole('checkbox', { name: 'Selecionar maybe' }).check();
@@ -245,7 +245,7 @@ test('baralhos: criar, mover palavras, página do baralho e estudar só ele', as
 	await expect(page.getByText('1 palavra movida para Viagem')).toBeVisible();
 
 	await page.goto('/flashcards');
-	await page.getByRole('link', { name: 'Viagem', exact: true }).click();
+	await page.getByRole('table').getByRole('link', { name: 'Viagem', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Viagem' })).toBeVisible();
 	await expect(page.getByRole('link', { name: /maybe/ })).toBeVisible();
 	await expect(page.getByRole('link', { name: /however/ })).toHaveCount(0);
@@ -254,6 +254,40 @@ test('baralhos: criar, mover palavras, página do baralho e estudar só ele', as
 	await expect(page).toHaveURL(/\/flashcards\/estudar\?deck=/);
 	await expect(counter(page)).toHaveText('1 de 1');
 	await expect(front(page)).toContainText('maybe');
+});
+
+test('baralhos: renomear na engrenagem, barra lateral e trocar o baralho no painel da palavra', async ({
+	page
+}) => {
+	await login(page);
+	await addWord(page, 'maybe', 'talvez');
+
+	await reviewLink(page).click();
+	await page.getByRole('button', { name: 'Novo baralho' }).click();
+	await page.getByLabel('Nome do baralho').fill('Viagem');
+	await page.getByRole('button', { name: 'Criar' }).click();
+	await expect(page.getByText('Baralho “Viagem” criado')).toBeVisible();
+
+	// Vazio, mas já aparece na barra lateral.
+	const sidebarDecks = nav(page).getByRole('list', { name: 'Baralhos' });
+	await expect(sidebarDecks.getByRole('link', { name: 'Viagem' })).toBeVisible();
+
+	// Renomear pela engrenagem da linha.
+	await page.getByRole('button', { name: 'Opções de Viagem' }).click();
+	const opts = page.getByRole('dialog', { name: 'Opções de Viagem' });
+	await opts.getByLabel('Nome do baralho').fill('Férias');
+	await opts.getByRole('button', { name: 'Salvar' }).click();
+	await expect(page.getByText('Baralho salvo')).toBeVisible();
+	await expect(page.getByRole('table').getByRole('link', { name: 'Férias', exact: true })).toBeVisible();
+	await expect(sidebarDecks.getByRole('link', { name: 'Férias' })).toBeVisible();
+
+	// Trocar o baralho da palavra direto no painel.
+	await page.goto('/palavras');
+	await page.getByRole('list', { name: 'Palavras' }).getByRole('link', { name: 'maybe' }).click();
+	await page.getByRole('button', { name: /^Baralho: Minhas palavras\. Trocar baralho/ }).click();
+	await page.getByRole('option', { name: 'Férias' }).click();
+	await expect(page.getByText('“maybe” movida para Férias')).toBeVisible();
+	await expect(page.getByRole('button', { name: /^Baralho: Férias\. Trocar baralho/ })).toBeVisible();
 });
 
 test('limites diários do baralho: Este baralho e Só hoje', async ({ page }) => {
@@ -265,7 +299,7 @@ test('limites diários do baralho: Este baralho e Só hoje', async ({ page }) =>
 	await reviewLink(page).click();
 	await expect(page.getByTestId('para-hoje')).toHaveText('3 para hoje');
 
-	const limits = page.getByRole('dialog', { name: /^Limites de/ });
+	const limits = page.getByRole('dialog', { name: /^Opções de/ });
 	await page.getByTestId('deck-limits').click();
 	await limits.getByLabel('Novas por dia', { exact: true }).fill('1');
 	await limits

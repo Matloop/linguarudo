@@ -244,3 +244,21 @@ export function parseFichaMedia(raw: Record<string, unknown>, userId: string): F
 	}
 	return Object.keys(errors).length > 0 ? { ok: false, errors } : { ok: true, value };
 }
+
+/**
+ * A ficha aberta no diálogo em modo edição: frente e verso já em texto de formulário
+ * (fichaHtmlToText), a mídia com as URLs assinadas e o deck atual.
+ */
+export interface FichaEdit {
+	id: string;
+	language: Language;
+	front: string;
+	back: string;
+	reverse: boolean;
+	tags: readonly string[];
+	/** Ficha de lacunas (do Anki): sem inverso, um flashcard por lacuna. */
+	cloze: boolean;
+	deckId: string;
+	media: FichaMedia;
+	mediaUrls: Partial<Record<FichaMediaField, string>>;
+}

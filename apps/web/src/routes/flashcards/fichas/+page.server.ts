@@ -1,7 +1,9 @@
-import { error, redirect } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import { FICHA_KIND_LABELS, fichaPlainText, type FichaFlashcardKind } from '#lib/fichas.ts';
 import { formatNextReview } from '#lib/review.ts';
-import type { PageServerLoad } from './$types';
+import { defaultDeckId } from '#lib/server/decks.ts';
+import { fichaSaveError, readFichaForm } from '#lib/server/fichas.ts';
+import type { Actions, PageServerLoad } from './$types';
 
 const PAGE_SIZE = 500;
 
@@ -65,4 +67,22 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 			};
 		})
 	};
+};
+
+export const actions: Actions = {
+	/** Nova ficha, do diálogo (FichaDialog), de qualquer tela. */
+	create: async ({ locals, request }) => {
+		const user = await locals.getUser();
+		if (!user) error(401, 'Entre para criar fichas.');
+		const form = readFichaForm(Object.fromEntries(await request.formData()), user.id);
+		if (!form.ok) return fail(400, { errors: form.errors });
+
+		const deck = form.deck ?? (await defaultDeckId(locals.supabase, form.value.language));
+		// O gatilho fichas_sync_flashcards cria os flashcards (frente e, se pedido, inverso).
+		const { error: dbError } = await locals.supabase
+			.from('fichas')
+			.insert({ ...form.value, user_id: user.id, deck_id: deck });
+		if (dbError) return fail(500, { errors: fichaSaveError(dbError) });
+		return { message: 'Ficha criada' };
+	}
 };
