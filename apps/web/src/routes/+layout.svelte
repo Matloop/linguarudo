@@ -21,7 +21,7 @@
 	let { children, data }: LayoutProps = $props();
 
 	/** Telas com cara própria: landing, entrar e o jogo de música em tela cheia. */
-	const BARE = new Set(['/', '/entrar', '/musica/[id]']);
+	const BARE = new Set(['/', '/entrar', '/musica/[id]', '/livros/[id]/ler']);
 	const bare = $derived(!data.shell || BARE.has(page.route.id ?? ''));
 
 	// Estado local que nasce do cookie e muda na hora; o cookie vai junto.
