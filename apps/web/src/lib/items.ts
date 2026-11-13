@@ -61,6 +61,8 @@ export function normalizeText(raw: string): string {
 	return raw.normalize('NFC').trim();
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function asString(v: unknown): string {
 	return typeof v === 'string' ? v : '';
 }
@@ -85,6 +87,10 @@ export interface ItemInput {
 	sense: string;
 	/** Frase onde a pessoa viu; vira um encontro manual. Vazia = item sem encontro. */
 	sentence: string;
+	note: string;
+	tags: string[];
+	/** Deck escolhido em "Mais campos"; null = o padrão do idioma. */
+	deck: string | null;
 }
 
 export type ItemField = keyof ItemInput;
@@ -108,7 +114,11 @@ function compact<F extends string>(errors: Partial<Record<F, string | undefined>
 	>;
 }
 
-/** Guardar um item à mão. `languages` são os idiomas de estudo (o que o formulário oferece). */
+/**
+ * Guardar um item à mão (diálogo Guardar). `languages` são os idiomas de estudo (o que o
+ * formulário oferece). Nota, tags e deck vêm de "Mais campos" e são opcionais; a mídia
+ * precisa do usuário e é lida na action (parseMediaField).
+ */
 export function parseItemInput(
 	raw: Record<string, unknown>,
 	languages: readonly Language[]
@@ -118,23 +128,44 @@ export function parseItemInput(
 		lemma: asString(raw.lemma),
 		reading: asString(raw.reading),
 		sense: asString(raw.sense),
-		sentence: asString(raw.sentence)
+		sentence: asString(raw.sentence),
+		note: asString(raw.note),
+		tags: asString(raw.tags),
+		deck: asString(raw.deck)
 	};
 	const language = parseLanguage(values.language);
 	const lemma = normalizeLemma(values.lemma);
 	const reading = normalizeLemma(values.reading);
 	const sense = normalizeText(values.sense);
 	const sentence = normalizeText(values.sentence);
+	const note = normalizeText(values.note);
+	const tags = parseTags(values.tags);
+	const deck = values.deck.trim();
 
 	const errors = compact<ItemField>({
 		language: language && languages.includes(language) ? undefined : 'Escolha um idioma.',
 		lemma: lemmaError(lemma),
 		reading: tooLong(reading, LIMITS.reading),
 		sense: tooLong(sense, LIMITS.sense),
-		sentence: tooLong(sentence, LIMITS.sentence)
+		sentence: tooLong(sentence, LIMITS.sentence),
+		note: tooLong(note, LIMITS.note),
+		tags: tagsError(tags),
+		deck: deck === '' || UUID.test(deck) ? undefined : 'Escolha um deck da lista.'
 	});
 	if (Object.keys(errors).length > 0 || !language) return { ok: false, errors, values };
-	return { ok: true, value: { language, lemma, reading, sense, sentence } };
+	return {
+		ok: true,
+		value: {
+			language,
+			lemma,
+			reading,
+			sense,
+			sentence,
+			note,
+			tags,
+			deck: deck ? deck.toLowerCase() : null
+		}
+	};
 }
 
 export interface ItemEdit {
@@ -233,8 +264,6 @@ export type SaveEntry = {
 	encounter?: EncounterEntry;
 	work?: WorkEntry;
 };
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function wholeNumber(v: unknown, max: number): number | undefined {
 	if (typeof v !== 'number' || !Number.isFinite(v)) return undefined;

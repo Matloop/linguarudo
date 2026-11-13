@@ -48,7 +48,7 @@ test('fluxo de palavras: guardar, encontro, duplicata, editar, já sei, buscar, 
 	await expect(dialog.getByRole('alert')).toHaveText('“give up” já está no seu banco.');
 	await expect(dialog.getByRole('textbox', { name: 'Palavra' })).toHaveValue('Give Up');
 	// Com frase, vira um novo encontro do mesmo item.
-	await dialog.getByLabel('Contexto').fill('They never give up at night.');
+	await dialog.getByLabel('Frase').fill('They never give up at night.');
 	await dialog.getByRole('button', { name: 'Guardar' }).click();
 	await expect(toast(page)).toHaveText(
 		'“give up” já estava no banco. A frase entrou como novo encontro.'
@@ -150,7 +150,7 @@ test.describe('sem JavaScript', () => {
 	test('o link Guardar abre o diálogo e o formulário comum guarda', async ({ page }) => {
 		await login(page);
 		await page.goto('/palavras?guardar');
-		const dialog = page.getByRole('dialog', { name: /Guardar em/ });
+		const dialog = page.getByRole('dialog', { name: /Guardar palavra/ });
 		await expect(dialog).toBeVisible();
 		await dialog.getByRole('textbox', { name: 'Palavra' }).fill('magari');
 		await dialog.getByLabel('Tradução').fill('quem dera');

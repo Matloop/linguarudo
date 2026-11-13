@@ -364,6 +364,61 @@ export function formatNextReview(
 	return days === 1 ? 'amanhã' : `em ${days} dias`;
 }
 
+/**
+ * Situação do item na lista de Minhas palavras (o pontinho de cada linha). Só conta o
+ * flashcard já estudado: o novo nasce vencido (due_at = criação), mas espera o orçamento
+ * de novas e não é "para revisar".
+ */
+export type ItemReviewState =
+	'atrasada' | 'hoje' | 'aprendendo' | 'nova' | 'dominada' | 'depois' | 'conhecida';
+
+export function itemReviewState(
+	cards: readonly { state: number; stability: number; due_at: string }[],
+	known: boolean,
+	now: Date,
+	clock: DayClock = DEFAULT_CLOCK
+): ItemReviewState {
+	if (known) return 'conhecida';
+	const studied = cards.filter((c) => c.state !== STATE_NEW);
+	if (studied.length === 0) return 'nova';
+	const first = Math.min(...studied.map((c) => Date.parse(c.due_at)));
+	const learning = studied.some((c) => isLearning(c.state));
+	if (first < dayStart(now, clock).getTime()) return 'atrasada';
+	if (first < nextDayStart(now, clock).getTime()) {
+		return learning && first > now.getTime() ? 'aprendendo' : 'hoje';
+	}
+	if (learning) return 'aprendendo';
+	return isMastered(cards) ? 'dominada' : 'depois';
+}
+
+/**
+ * Quando, curto, para a coluna da lista: "há 3 dias", "ontem", "em 10 min", "amanhã",
+ * "em 2 sem", "em 3 meses". Vazio quando já venceu hoje (está na fila agora).
+ */
+export function formatDueShort(at: Date, now: Date, clock: DayClock = DEFAULT_CLOCK): string {
+	const days = daysFrom(at, now, clock);
+	if (days < 0) {
+		const ago = -days;
+		if (ago === 1) return 'ontem';
+		if (ago < 14) return `há ${ago} dias`;
+		if (ago < 60) return `há ${Math.round(ago / 7)} sem`;
+		return `há ${Math.round(ago / 30)} meses`;
+	}
+	if (days === 0)
+		return at.getTime() <= now.getTime()
+			? ''
+			: `em ${formatInterval(at.getTime() - now.getTime())}`;
+	if (days === 1) return 'amanhã';
+	if (days < 14) return `em ${days} dias`;
+	if (days < 60) return `em ${Math.round(days / 7)} sem`;
+	if (days < 365) {
+		const months = Math.round(days / 30);
+		return months === 1 ? 'em 1 mês' : `em ${months} meses`;
+	}
+	const years = Math.round(days / 365);
+	return years === 1 ? 'em 1 ano' : `em ${years} anos`;
+}
+
 /** "Quarta, 11 de novembro". */
 export function formatToday(now: Date, timeZone = REVIEW_TIME_ZONE): string {
 	const weekday = new Intl.DateTimeFormat('pt-BR', { timeZone, weekday: 'long' })

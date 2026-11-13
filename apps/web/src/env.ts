@@ -13,6 +13,11 @@ function required(name: string) {
 	};
 }
 
+/** Opcional: sem valor, string vazia. */
+function optional(value: string | undefined): string {
+	return value?.trim() ?? '';
+}
+
 /** URL opcional: sem valor, usa o padrão. Os e2e apontam para um servidor falso. */
 function optionalUrl(name: string, fallback: string) {
 	return (value: string | undefined): string => {
@@ -58,5 +63,23 @@ export const variables = defineEnvVars({
 		schema: (value: string | undefined): 'on' | 'off' => (value === 'off' ? 'off' : 'on'),
 		description:
 			'Limites por IP do pareamento do e-reader (10 por hora, 5 pendentes). "off" só nos e2e. Padrão: on'
+	},
+	GROQ_API_KEY: {
+		schema: optional,
+		description:
+			'Chave do Groq (grátis em console.groq.com/keys): IA que preenche o diálogo Guardar. Vazia: pula o Groq'
+	},
+	GEMINI_API_KEY: {
+		schema: optional,
+		description:
+			'Chave do Gemini (grátis em aistudio.google.com/apikey): reserva quando o Groq falha. Vazia: pula o Gemini'
+	},
+	GROQ_MODEL: {
+		schema: optional,
+		description: 'Modelo do Groq. Vazio: openai/gpt-oss-120b'
+	},
+	GEMINI_MODEL: {
+		schema: optional,
+		description: 'Modelo do Gemini. Vazio: gemini-3.8-flash'
 	}
 });

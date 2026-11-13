@@ -2,17 +2,21 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import {
 	ORIGIN_LABELS,
 	formatWorkSource,
-	parseItemInput,
-	type ItemField,
 	type FlashcardKind,
 	type ItemStatus,
-	type Origin,
-	type SaveEntry
+	type Origin
 } from '#lib/items.ts';
-import { lemmaKey } from '@linguetta/language';
-import { formatNextReview, isDueToday, isLeech, itemStrength } from '#lib/review.ts';
+import {
+	formatDueShort,
+	formatNextReview,
+	isDueToday,
+	isLeech,
+	itemReviewState,
+	itemStrength,
+	STATE_NEW
+} from '#lib/review.ts';
 import { releaseMedia, signMedia } from '#lib/server/media.ts';
-import { loadSettings } from '#lib/server/settings.ts';
+import { addItem } from '#lib/server/item-add.ts';
 import { editItem } from '#lib/server/item-edit.ts';
 import { deckTree } from '#lib/decks.ts';
 import { listDecks } from '#lib/server/decks.ts';
@@ -22,10 +26,8 @@ import type { Actions, PageServerLoad } from './$types';
 const PAGE_SIZE = 500;
 /** Encontros mostrados por item; o mais recente primeiro. */
 const ENCOUNTERS_SHOWN = 5;
-/** Revisões mostradas no painel do item. */
-const HISTORY_SHOWN = 8;
-
-type AddErrors = Partial<Record<ItemField | 'form', string>>;
+/** Revisões mostradas no histórico do painel (gráfico e lista). */
+const HISTORY_SHOWN = 20;
 
 async function requireUser(locals: App.Locals) {
 	const user = await locals.getUser();
@@ -67,6 +69,11 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 	const items = data.map(({ flashcards, encounters, seen_count, created_at, deck_id, ...item }) => {
 		const status = item.status as ItemStatus;
 		const dueAts = status === 'ativo' ? flashcards.map((c) => c.due_at) : [];
+		// A lista olha só o que já foi estudado: o flashcard novo nasce vencido.
+		const studiedDue = flashcards
+			.filter((c) => c.state !== STATE_NEW)
+			.map((c) => Date.parse(c.due_at));
+		const review = itemReviewState(flashcards, status === 'conhecido', now, shell.clock);
 		return {
 			...item,
 			status,
@@ -80,6 +87,12 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 			dueToday: status === 'ativo' && isDueToday(dueAts, now, shell.clock),
 			dueAt: dueAts.length ? Math.min(...dueAts.map(Date.parse)) : null,
 			next: status === 'ativo' ? formatNextReview(dueAts, now, shell.clock) : '',
+			review,
+			/** Coluna da lista: "há 3 dias", "em 10 min", "amanhã"… (vazio se nova ou conhecida). */
+			when:
+				review === 'nova' || review === 'conhecida' || studiedDue.length === 0
+					? ''
+					: formatDueShort(new Date(Math.min(...studiedDue)), now, shell.clock),
 			encounters: encounters.map((e) => ({
 				id: e.id,
 				sentence: e.sentence,
@@ -93,21 +106,46 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 		};
 	});
 
-	// O painel lateral (?item=) traz o histórico de revisões daquele item.
+	// O painel lateral (?item=) traz o histórico de revisões e os flashcards daquele item.
 	const selectedId = url.searchParams.get('item');
 	const selected = items.find((i) => i.id === selectedId) ?? null;
-	let history: { rating: number; reviewedAt: string; kind: FlashcardKind }[] = [];
+	let history: {
+		rating: number;
+		reviewedAt: string;
+		kind: FlashcardKind;
+		intervalDays: number | null;
+	}[] = [];
+	let historyTotal = 0;
+	let historyLapses = 0;
+	let selectedCards: {
+		id: string;
+		kind: FlashcardKind;
+		isNew: boolean;
+		dueAt: string;
+		scheduledDays: number;
+	}[] = [];
 	// URLs assinadas só da mídia do item aberto (a lista não mostra mídia).
 	let selectedMedia: { image: string | null; audio: string | null } = { image: null, audio: null };
 	if (selected) {
-		const [{ data: logs }, urls] = await Promise.all([
+		// Total e erros contam no banco; a lista traz só as últimas.
+		const logsOf = (head = false) =>
 			locals.supabase
 				.from('review_logs')
-				.select('rating, reviewed_at, flashcards!inner(item_id, kind)')
+				.select('rating, reviewed_at, interval_days, flashcards!inner(item_id, kind)', {
+					count: 'exact',
+					head
+				})
 				.eq('user_id', user.id)
-				.eq('flashcards.item_id', selected.id)
-				.order('reviewed_at', { ascending: false })
-				.limit(HISTORY_SHOWN),
+				.eq('flashcards.item_id', selected.id);
+		const [{ data: logs, count }, { count: lapses }, { data: cards }, urls] = await Promise.all([
+			logsOf().order('reviewed_at', { ascending: false }).limit(HISTORY_SHOWN),
+			logsOf(true).eq('rating', 1),
+			locals.supabase
+				.from('flashcards')
+				.select('id, kind, state, due_at, scheduled_days')
+				.eq('user_id', user.id)
+				.eq('item_id', selected.id)
+				.order('ord'),
 			signMedia(locals.supabase, [selected.image, selected.audio]).catch(
 				() => new Map<string, string>()
 			)
@@ -115,7 +153,17 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 		history = (logs ?? []).map((l) => ({
 			rating: l.rating,
 			reviewedAt: l.reviewed_at,
-			kind: (l.flashcards as unknown as { kind: FlashcardKind }).kind
+			kind: (l.flashcards as unknown as { kind: FlashcardKind }).kind,
+			intervalDays: l.interval_days
+		}));
+		historyTotal = count ?? history.length;
+		historyLapses = lapses ?? 0;
+		selectedCards = (cards ?? []).map((c) => ({
+			id: c.id,
+			kind: c.kind as FlashcardKind,
+			isNew: c.state === STATE_NEW,
+			dueAt: c.due_at,
+			scheduledDays: c.scheduled_days
 		}));
 		selectedMedia = {
 			image: selected.image ? (urls.get(selected.image) ?? null) : null,
@@ -129,13 +177,17 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 			id: d.id,
 			name: d.name,
 			parentId: d.parentId,
-			depth: d.parentId ? 1 : 0
+			depth: d.parentId ? 1 : 0,
+			isDefault: d.isDefault
 		})),
 		language,
 		uiLanguage: shell.uiLanguage,
 		selectedId: selected?.id ?? null,
 		selectedMedia,
+		selectedCards,
 		history,
+		historyTotal,
+		historyLapses,
 		now: now.toISOString()
 	};
 };
@@ -145,56 +197,7 @@ export const actions: Actions = {
 	extra: extraAction,
 	add: async ({ locals, request }) => {
 		const user = await requireUser(locals);
-		const settings = await loadSettings(locals.supabase, user.id);
-		const parsed = parseItemInput(
-			Object.fromEntries(await request.formData()),
-			settings.studyLanguages
-		);
-		if (!parsed.ok) {
-			const errors: AddErrors = parsed.errors;
-			return fail(400, { action: 'add' as const, errors, values: parsed.values });
-		}
-
-		const { language, lemma, reading, sense, sentence } = parsed.value;
-		const entry: SaveEntry = {
-			language,
-			lemma,
-			lemma_key: lemmaKey(lemma, language),
-			reading,
-			sense,
-			note: '',
-			ipa: '',
-			part_of_speech: ''
-		};
-		if (sentence) {
-			entry.encounter = {
-				form: '',
-				sentence,
-				highlight: '',
-				sense,
-				position: {},
-				origin: 'manual',
-				seen_at: null,
-				client_id: null
-			};
-		}
-		const { data, error: dbError } = await locals.supabase.rpc('save_items', { p_items: [entry] });
-		const saved = data?.[0];
-		if (dbError || !saved) {
-			const errors: AddErrors = { form: 'Não deu para salvar agora. Tente de novo.' };
-			return fail(500, { action: 'add' as const, errors, values: { ...parsed.value } });
-		}
-		if (!saved.created && !saved.encounter_id) {
-			const errors: AddErrors = { lemma: `“${saved.lemma}” já está no seu banco.` };
-			return fail(409, { action: 'add' as const, errors, values: { ...parsed.value } });
-		}
-		return {
-			action: 'add' as const,
-			added: saved.lemma,
-			message: saved.created
-				? `“${saved.lemma}” guardada.`
-				: `“${saved.lemma}” já estava no banco. A frase entrou como novo encontro.`
-		};
+		return addItem(locals, user.id, await request.formData());
 	},
 
 	edit: async ({ locals, request }) => {

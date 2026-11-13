@@ -10,6 +10,8 @@ import {
 	dayStart,
 	estimateMinutes,
 	formatAgo,
+	formatDueShort,
+	itemReviewState,
 	formatInterval,
 	formatNextReview,
 	formatToday,
@@ -551,6 +553,51 @@ describe('próxima revisão', () => {
 		expect(isDueToday(['2026-11-12T02:00:00.000Z'], now)).toBe(true);
 		expect(isDueToday(['2026-11-12T13:00:00.000Z'], now)).toBe(false);
 		expect(isDueToday([], now)).toBe(false);
+	});
+});
+
+describe('situação na lista de palavras', () => {
+	// 15:00 UTC = 12:00 em São Paulo; o dia de estudo começou às 04:00 (07:00 UTC).
+	const now = new Date('2026-11-11T15:00:00.000Z');
+	const card = (state: number, due_at: string, stability = 5) => ({ state, stability, due_at });
+
+	test('só flashcard novo é nova, mesmo nascendo vencido', () => {
+		expect(itemReviewState([card(0, '2026-11-01T10:00:00.000Z')], false, now)).toBe('nova');
+		expect(itemReviewState([card(2, '2026-11-01T10:00:00.000Z')], true, now)).toBe('conhecida');
+	});
+
+	test('vencida antes do dia de estudo é atrasada; até o fim dele, hoje', () => {
+		expect(itemReviewState([card(2, '2026-11-11T06:00:00.000Z')], false, now)).toBe('atrasada');
+		expect(itemReviewState([card(2, '2026-11-11T08:00:00.000Z')], false, now)).toBe('hoje');
+		expect(itemReviewState([card(2, '2026-11-12T06:30:00.000Z')], false, now)).toBe('hoje');
+		// O novo do lado não muda nada.
+		expect(
+			itemReviewState(
+				[card(2, '2026-11-11T08:00:00.000Z'), card(0, '2026-11-01T00:00:00.000Z')],
+				false,
+				now
+			)
+		).toBe('hoje');
+	});
+
+	test('aprendendo com passo ainda por vir; dominada e depois', () => {
+		expect(itemReviewState([card(1, '2026-11-11T15:10:00.000Z')], false, now)).toBe('aprendendo');
+		expect(itemReviewState([card(1, '2026-11-11T14:50:00.000Z')], false, now)).toBe('hoje');
+		expect(itemReviewState([card(2, '2026-12-20T15:00:00.000Z', 120)], false, now)).toBe(
+			'dominada'
+		);
+		expect(itemReviewState([card(2, '2026-11-14T15:00:00.000Z')], false, now)).toBe('depois');
+	});
+
+	test('formatDueShort: passado, hoje e futuro', () => {
+		expect(formatDueShort(new Date('2026-11-10T20:00:00.000Z'), now)).toBe('ontem');
+		expect(formatDueShort(new Date('2026-11-08T20:00:00.000Z'), now)).toBe('há 3 dias');
+		expect(formatDueShort(new Date('2026-11-11T14:00:00.000Z'), now)).toBe('');
+		expect(formatDueShort(new Date(now.getTime() + 10 * MIN), now)).toBe('em 10 min');
+		expect(formatDueShort(new Date('2026-11-12T13:00:00.000Z'), now)).toBe('amanhã');
+		expect(formatDueShort(new Date('2026-11-13T13:00:00.000Z'), now)).toBe('em 2 dias');
+		expect(formatDueShort(new Date('2026-12-02T13:00:00.000Z'), now)).toBe('em 3 sem');
+		expect(formatDueShort(new Date('2027-01-11T13:00:00.000Z'), now)).toBe('em 2 meses');
 	});
 });
 

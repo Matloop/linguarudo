@@ -96,7 +96,7 @@ export async function chooseLanguages(page: Page, [first, ...rest]: string[]) {
 
 /** Abre o diálogo Guardar pelo atalho N e guarda a palavra no idioma ativo. */
 export async function saveWord(page: Page, lemma: string, sense = '', sentence = '') {
-	const dialog = page.getByRole('dialog', { name: /Guardar em/ });
+	const dialog = page.getByRole('dialog', { name: /Guardar palavra/ });
 	// Logo depois de navegar, a tecla pode chegar antes da hidratação: tenta de novo.
 	await expect(async () => {
 		if (!(await dialog.isVisible())) await page.keyboard.press('n');
@@ -104,7 +104,7 @@ export async function saveWord(page: Page, lemma: string, sense = '', sentence =
 	}).toPass();
 	await dialog.getByRole('textbox', { name: 'Palavra' }).fill(lemma);
 	if (sense) await dialog.getByLabel('Tradução').fill(sense);
-	if (sentence) await dialog.getByLabel('Contexto').fill(sentence);
+	if (sentence) await dialog.getByLabel('Frase').fill(sentence);
 	await dialog.getByRole('button', { name: 'Guardar' }).click();
 	return dialog;
 }

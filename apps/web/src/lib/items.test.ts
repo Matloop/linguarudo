@@ -43,8 +43,43 @@ describe('parseItemInput', () => {
 		);
 		expect(r).toEqual({
 			ok: true,
-			value: { lemma: 'give up', reading: '', sense: 'desistir', language: 'en', sentence: '' }
+			value: {
+				lemma: 'give up',
+				reading: '',
+				sense: 'desistir',
+				language: 'en',
+				sentence: '',
+				note: '',
+				tags: [],
+				deck: null
+			}
 		});
+	});
+
+	test('"Mais campos": nota, tags e deck são lidos e validados como na edição', () => {
+		const deck = '0B4E1C1A-1111-4222-8333-444455556666';
+		const r = parseItemInput(
+			{ lemma: 'scherzo', language: 'it', note: ' piada ', tags: 'filme, gíria ,Filme', deck },
+			study
+		);
+		expect(r.ok && r.value).toMatchObject({
+			note: 'piada',
+			tags: ['filme', 'gíria'],
+			deck: deck.toLowerCase()
+		});
+
+		const bad = parseItemInput(
+			{
+				lemma: 'scherzo',
+				language: 'it',
+				note: 'n'.repeat(LIMITS.note + 1),
+				tags: Array.from({ length: 51 }, (_, i) => `t${i}`).join(','),
+				deck: 'Minhas palavras'
+			},
+			study
+		);
+		expect(bad.ok).toBe(false);
+		if (!bad.ok) expect(Object.keys(bad.errors).sort()).toEqual(['deck', 'note', 'tags']);
 	});
 
 	test('idioma é canonizado e precisa ser de estudo; leitura é opcional', () => {
@@ -103,7 +138,10 @@ describe('parseItemInput', () => {
 				reading: '',
 				sense: 'oi',
 				language: 'en',
-				sentence: 'x'
+				sentence: 'x',
+				note: '',
+				tags: '',
+				deck: ''
 			});
 	});
 

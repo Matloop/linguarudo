@@ -1,11 +1,13 @@
 // POST de uma form action da página atual sem <form> (barra de seleção, popovers):
 // mesma resposta do use:enhance, depois recarrega os dados da página e do shell.
+// `action` é o nome na página atual ("move") ou o caminho inteiro ("/palavras?/edit").
 
 import { deserialize } from '$app/forms';
 import { invalidateAll } from '$app/navigation';
 
 export type ActionReply =
-	{ ok: true; data: Record<string, unknown> } | { ok: false; message: string };
+	| { ok: true; data: Record<string, unknown> }
+	| { ok: false; message: string; data?: Record<string, unknown> };
 
 export async function postAction(
 	action: string,
@@ -18,7 +20,7 @@ export async function postAction(
 		if (typeof v === 'string') body.set(k, v);
 		else for (const x of v) body.append(k, x);
 	}
-	const res = await fetch(`?/${action}`, {
+	const res = await fetch(action.includes('?/') ? action : `?/${action}`, {
 		method: 'POST',
 		body,
 		headers: { 'x-sveltekit-action': 'true' }
@@ -30,8 +32,9 @@ export async function postAction(
 		return { ok: true, data: (result.data ?? {}) as Record<string, unknown> };
 	}
 	if (result.type === 'failure') {
-		const message = (result.data as { message?: string } | undefined)?.message;
-		return { ok: false, message: message ?? 'Não deu para salvar agora.' };
+		const data = (result.data ?? {}) as Record<string, unknown>;
+		const message = typeof data.message === 'string' ? data.message : 'Não deu para salvar agora.';
+		return { ok: false, message, data };
 	}
 	return { ok: false, message: 'Não deu para salvar agora.' };
 }

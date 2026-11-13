@@ -38,7 +38,10 @@
 		| 'eye'
 		| 'more'
 		| 'pause'
-		| 'folder';
+		| 'folder'
+		| 'quote'
+		| 'note'
+		| 'trash';
 </script>
 
 <script lang="ts">

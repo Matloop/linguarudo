@@ -1,36 +1,25 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { enhance } from '$app/forms';
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { LIMITS } from '#lib/items.ts';
-	import { playWord } from '#lib/audio.ts';
-	import { langAttrs, languageInline } from '#lib/languages.ts';
-	import {
-		GRADE_LABELS,
-		STRENGTH_LABELS,
-		formatAgo,
-		highlightParts,
-		type Grade
-	} from '#lib/review.ts';
+	import { langAttrs } from '#lib/languages.ts';
+	import { highlightParts, type ItemReviewState } from '#lib/review.ts';
 	import { deckDisplayName, plural } from '#lib/decks-ui.ts';
 	import BulkBar from '#lib/ui/BulkBar.svelte';
 	import DeckPicker from '#lib/ui/DeckPicker.svelte';
-	import { answers } from '#lib/ui/answers.svelte.ts';
-	import AnswersToggle from '#lib/ui/AnswersToggle.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Popover from '#lib/ui/Popover.svelte';
 	import { postAction } from '#lib/ui/post-action.ts';
 	import { Selection } from '#lib/ui/selection.svelte.ts';
-	import MediaField from '#lib/ui/MediaField.svelte';
 	import Mark from '#lib/ui/Mark.svelte';
+	import WordSheet from '#lib/ui/WordSheet.svelte';
 	import { openSave, toast } from '#lib/ui/app-state.svelte.ts';
 	import { ORIGIN_ICONS } from '#lib/ui/origins.ts';
-	import type { PageProps, SubmitFunction } from './$types';
+	import { view, type ListView } from './view.svelte.ts';
+	import type { PageProps } from './$types';
 
-	let { data, form }: PageProps = $props();
-	const timeZone = $derived(data.shell?.clock.timeZone);
+	let { data }: PageProps = $props();
 
 	type Filter = 'todas' | 'hoje' | 'novas' | 'dominadas' | 'teimosas';
 	const FILTERS: [Filter, string][] = [
@@ -47,6 +36,32 @@
 		['revisao', 'Próxima revisão'],
 		['forca', 'Força da memória']
 	];
+	const SWITCHES: [keyof ListView, string][] = [
+		['traducao', 'Tradução'],
+		['frase', 'Frase de exemplo'],
+		['leitura', 'Leitura / IPA'],
+		['origem', 'Origem']
+	];
+	/** Pontinho de cada linha: estado da revisão, ou teimosa por cima de tudo. */
+	type Dot = 'late' | 'today' | 'learn' | 'new' | 'done' | 'leech';
+	const DOTS: Record<ItemReviewState, Dot> = {
+		atrasada: 'late',
+		hoje: 'today',
+		aprendendo: 'learn',
+		nova: 'new',
+		dominada: 'done',
+		depois: 'done',
+		conhecida: 'done'
+	};
+	const DOT_LABELS: Record<ItemReviewState, string> = {
+		atrasada: 'Atrasada',
+		hoje: 'Para revisar hoje',
+		aprendendo: 'Aprendendo',
+		nova: 'Nova',
+		dominada: 'Dominada',
+		depois: 'Em dia',
+		conhecida: 'Já sei'
+	};
 	const parseFilter = (v: string | null): Filter =>
 		FILTERS.some(([k]) => k === v) ? (v as Filter) : 'todas';
 
@@ -73,25 +88,30 @@
 			: null
 	);
 	const inDeck = $derived(data.items.filter((i) => !deckScope || deckScope.has(i.deckId)));
-	let editing = $state(false);
-	let busy = $state(false);
-	let drawerEl: HTMLElement | undefined = $state();
 
 	const now = $derived(new Date(data.now));
-	const langName = $derived(languageInline(data.language, data.uiLanguage));
 	const study = $derived(langAttrs(data.language));
+	type Row = (typeof data.items)[number];
+	// "Para revisar" = atrasadas + as de hoje; a nova espera o orçamento e conta em Novas.
+	const due = (i: Row) => i.review === 'atrasada' || i.review === 'hoje';
+	const isNew = (i: Row) => i.review === 'nova';
 	const counts = $derived({
 		todas: inDeck.length,
-		hoje: inDeck.filter((i) => i.dueToday).length,
-		novas: inDeck.filter((i) => i.status === 'ativo' && i.strength === 0).length,
+		hoje: inDeck.filter(due).length,
+		novas: inDeck.filter(isNew).length,
 		dominadas: inDeck.filter((i) => i.strength === 4).length,
 		teimosas: inDeck.filter((i) => i.leech).length
 	});
+	const late = $derived(inDeck.filter((i) => i.review === 'atrasada').length);
+	/** "Revisar N": o mesmo número da sidebar (flashcards da sessão de hoje). */
+	const toReview = $derived(
+		data.shell?.summary?.languages.find((l) => l.language === data.language)?.toReview ?? 0
+	);
 	const rows = $derived.by(() => {
 		const needle = q.trim().toLocaleLowerCase();
 		const found = inDeck.filter((i) => {
-			if (filter === 'hoje' && !i.dueToday) return false;
-			if (filter === 'novas' && !(i.status === 'ativo' && i.strength === 0)) return false;
+			if (filter === 'hoje' && !due(i)) return false;
+			if (filter === 'novas' && !isNew(i)) return false;
 			if (filter === 'dominadas' && i.strength !== 4) return false;
 			if (filter === 'teimosas' && !i.leech) return false;
 			return (
@@ -101,20 +121,27 @@
 			);
 		});
 		// Sem revisão marcada (já sei) vai para o fim.
-		const due = (i: (typeof found)[number]) => i.dueAt ?? Number.MAX_SAFE_INTEGER;
+		const dueAt = (i: Row) => i.dueAt ?? Number.MAX_SAFE_INTEGER;
 		if (order === 'az') found.sort((a, b) => a.lemma.localeCompare(b.lemma, data.language));
-		if (order === 'revisao') found.sort((a, b) => due(a) - due(b));
+		if (order === 'revisao') found.sort((a, b) => dueAt(a) - dueAt(b));
 		if (order === 'forca') found.sort((a, b) => a.strength - b.strength);
 		return found;
 	});
 
-	// Frases da lista: a escolha fica salva no navegador.
-	const SENTENCES_KEY = 'linguetta.frases';
-	let sentencesShown = $state(true);
-	function toggleSentences() {
-		sentencesShown = !sentencesShown;
-		localStorage.setItem(SENTENCES_KEY, sentencesShown ? '1' : '0');
-	}
+	// Colunas da linha conforme o "Exibir": a frase, quando aparece, fica com a sobra.
+	const cols = $derived.by(() => {
+		const { traducao, frase, leitura, origem } = view.on;
+		const flex = 'minmax(0, 1fr)';
+		const word = leitura ? 'minmax(140px, 230px)' : 'minmax(110px, 170px)';
+		return [
+			'16px',
+			!traducao && !frase ? flex : word,
+			...(traducao ? [frase ? 'minmax(110px, 190px)' : flex] : []),
+			...(frase ? [flex] : []),
+			...(origem ? ['20px'] : []),
+			'84px'
+		].join(' ');
+	});
 
 	let adding = $state(false);
 	async function addNew() {
@@ -139,6 +166,7 @@
 	const pickerDecks = $derived(data.decks.map((d) => ({ id: d.id, name: d.name, depth: d.depth })));
 	let moveOpen = $state(false);
 	let moving = $state(false);
+	let showOpen = $state(false);
 
 	async function moveTo(choice: { deckId: string } | { newName: string }) {
 		moving = true;
@@ -161,33 +189,14 @@
 		deckFilter = v || null;
 		replaceState(resolve(`/palavras${searchWith({ deck: v || null })}`), page.state);
 	}
+	const deckLabel = (name: string) => deckDisplayName(name).split(' › ').at(-1);
+	const currentDeck = $derived(data.decks.find((d) => d.id === deckFilter) ?? null);
 
 	const selected = $derived(data.items.find((i) => i.id === data.selectedId) ?? null);
-	const editErrors = $derived(
-		form?.action === 'edit' && 'errors' in form && form.id === selected?.id ? form.errors : null
-	);
+	/** Posição do painel na lista como ela está (filtro, busca, ordem). */
+	const selectedIndex = $derived(selected ? rows.findIndex((i) => i.id === selected.id) : -1);
 
-	onMount(() => {
-		answers.load();
-		sentencesShown = localStorage.getItem(SENTENCES_KEY) !== '0';
-	});
-	// Trocar de palavra fecha a edição.
-	$effect(() => {
-		void data.selectedId;
-		editing = false;
-	});
-	$effect(() => {
-		if (selected && drawerEl) drawerEl.focus({ preventScroll: true });
-	});
-
-	/**
-	 * Action que mantém a busca atual (item, filtro): depois do POST o SvelteKit troca a URL
-	 * pela do formulário, e sem isso o painel fecharia.
-	 */
-	function actionKeeping(name: string) {
-		const rest = page.url.search.slice(1);
-		return `?/${name}${rest ? `&${rest}` : ''}`;
-	}
+	onMount(() => view.load());
 
 	/** Busca da URL atual com as mudanças aplicadas (`?…` ou vazia). */
 	function searchWith(changes: Record<string, string | null>): `?${string}` | '' {
@@ -214,19 +223,28 @@
 		goto(resolve(`/palavras${searchWith({ item: null })}`), { reset: false, replace: true });
 	}
 
-	function onKeydown(e: KeyboardEvent) {
-		if (!selected && sel.onkeydown(e)) return;
-		if (!selected && answers.onkeydown(e)) return;
-		if (e.key === 'Escape' && selected && !document.querySelector('dialog[open]')) {
-			if (editing) editing = false;
-			else closeDrawer();
-		}
+	/** ↑/↓ e J/K do painel: abre a vizinha na lista e a deixa à vista. */
+	function step(delta: number) {
+		const next = rows[selectedIndex + delta];
+		if (!next) return;
+		goto(resolve(`/palavras${searchWith({ item: next.id })}`), { reset: false, replace: true });
+		document
+			.querySelector(`[data-sel-id="${next.id}"]`)
+			?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 	}
 
-	function speak(text: string) {
-		playWord(text, data.language).catch(() =>
-			toast('Não foi possível tocar o áudio desta palavra')
-		);
+	async function afterDelete() {
+		await goto(resolve(`/palavras${searchWith({ item: null })}`), {
+			reset: false,
+			replace: true,
+			invalidateAll: true
+		});
+	}
+
+	function onKeydown(e: KeyboardEvent) {
+		if (selected) return; // o painel cuida do Esc
+		if (sel.onkeydown(e)) return;
+		view.onkeydown(e);
 	}
 
 	function onSave(e: MouseEvent) {
@@ -234,61 +252,6 @@
 		e.preventDefault();
 		openSave();
 	}
-
-	const submitEdit: SubmitFunction = () => {
-		busy = true;
-		return async ({ result, update }) => {
-			await update({ reset: false });
-			busy = false;
-			if (result.type === 'success') {
-				editing = false;
-				toast('Alterações salvas');
-			}
-		};
-	};
-
-	const submitKnown: SubmitFunction = ({ formData }) => {
-		const known = formData.get('known') === 'true';
-		const lemma = selected?.lemma ?? '';
-		return async ({ result, update }) => {
-			await update({ reset: false });
-			if (result.type === 'success') {
-				toast(known ? `“${lemma}” saiu da revisão` : `“${lemma}” voltou para a revisão`);
-			} else if (result.type === 'failure') {
-				toast(
-					String(
-						(result.data as { message?: string } | undefined)?.message ??
-							'Não deu para mudar agora.'
-					)
-				);
-			}
-		};
-	};
-
-	const submitDelete: SubmitFunction = ({ cancel }) => {
-		const lemma = selected?.lemma ?? '';
-		if (!confirm(`Apagar “${lemma}” e o histórico de revisão dela?`)) {
-			cancel();
-			return;
-		}
-		return async ({ result }) => {
-			if (result.type === 'success') {
-				toast(`“${lemma}” apagada`);
-				await goto(resolve(`/palavras${searchWith({ item: null })}`), {
-					reset: false,
-					replace: true,
-					invalidateAll: true
-				});
-			} else if (result.type === 'failure') {
-				toast(
-					String(
-						(result.data as { message?: string } | undefined)?.message ??
-							'Não deu para apagar agora.'
-					)
-				);
-			}
-		};
-	};
 </script>
 
 <svelte:head>
@@ -297,46 +260,142 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-{#snippet strength(level: number)}
-	<span class="str" title={STRENGTH_LABELS[level]} aria-label="Força: {STRENGTH_LABELS[level]}">
-		{#each [1, 2, 3, 4] as n (n)}<i class:on={n <= level}></i>{/each}
-	</span>
-{/snippet}
-
 {#snippet sentence(text: string, term: string)}
 	{#each highlightParts(text, term, data.language) as part, i (i)}{#if part.hit}<mark
 				>{part.text}</mark
 			>{:else}{part.text}{/if}{/each}
 {/snippet}
 
-<div class="ph">
-	<div>
-		<h1>Minhas palavras</h1>
-		<p>
-			{#if data.items.length === 0}
-				Nenhuma palavra em {langName} ainda.
-			{:else}
-				{data.items.length}
-				{data.items.length === 1 ? 'palavra' : 'palavras'} em {langName}{#if counts.hoje > 0}
-					· {counts.hoje} para revisar hoje{/if}
-			{/if}
-		</p>
-	</div>
+{#snippet sortSelect(id: string)}
+	<label class="txt-sel" for={id}
+		>Ordem: <b>{ORDERS.find(([k]) => k === order)?.[1]}</b><Icon name="down" size="sm" /><select
+			{id}
+			value={order}
+			onchange={pickOrder}
+		>
+			{#each ORDERS as [key, label] (key)}
+				<option value={key}>{label}</option>
+			{/each}
+		</select></label
+	>
+{/snippet}
+
+{#snippet deckSelect(id: string)}
+	<label class="txt-sel" for={id}
+		>Deck: <b>{currentDeck ? deckLabel(currentDeck.name) : 'Todos'}</b><Icon
+			name="down"
+			size="sm"
+		/><select {id} value={deckFilter ?? ''} onchange={pickDeck}>
+			<option value="">Todos os decks</option>
+			{#each data.decks as d (d.id)}
+				<option value={d.id}>{d.depth ? '\u00a0\u00a0\u00a0' : ''}{deckLabel(d.name)}</option>
+			{/each}
+		</select></label
+	>
+{/snippet}
+
+<div class="top" class:bare={data.items.length === 0}>
+	<h1>Minhas palavras</h1>
 	{#if data.items.length > 0}
-		<div class="ph-acts">
+		<div class="acts">
+			<Popover label="Exibir na lista" bind:open={showOpen} width={268}>
+				{#snippet trigger({ toggle, expanded, id })}
+					<button
+						class="btn btn-ghost show-btn"
+						type="button"
+						aria-haspopup="dialog"
+						aria-expanded={expanded}
+						aria-controls={id}
+						aria-label="Exibir"
+						onclick={toggle}
+						><Icon name="eye" size="sm" /><span class="lbl">Exibir</span><Icon
+							name="down"
+							size="sm"
+						/></button
+					>
+				{/snippet}
+				<div class="show">
+					<p class="show-h">Exibir na lista</p>
+					{#each SWITCHES as [key, label] (key)}
+						<button
+							class="sw"
+							type="button"
+							role="switch"
+							aria-checked={view.on[key]}
+							onclick={() => view.toggle(key)}>{label}<span class="switch"></span></button
+						>
+					{/each}
+					<div class="sep"></div>
+					<button
+						class="sw"
+						type="button"
+						role="switch"
+						aria-checked={view.on.estudo}
+						onclick={() => view.toggle('estudo')}>Modo estudo<span class="switch"></span></button
+					>
+					<p class="show-note">Esconde a tradução até passar o mouse. Atalho <kbd>H</kbd></p>
+					<!-- No mobile a ordem e o deck moram aqui (a linha das abas não tem espaço). -->
+					<div class="show-m">
+						<div class="sep"></div>
+						{@render sortSelect('ordem-m')}
+						{#if data.decks.length > 1}{@render deckSelect('deck-m')}{/if}
+					</div>
+				</div>
+			</Popover>
 			{#if counts.novas > 0}
-				<button class="btn btn-ghost" type="button" disabled={adding} onclick={addNew}
-					><Icon name="plus" size="sm" />5 novas hoje</button
+				<button
+					class="btn btn-ghost add-btn"
+					type="button"
+					title="Puxa 5 palavras novas para a revisão de hoje"
+					disabled={adding}
+					onclick={addNew}><Icon name="plus" size="sm" />5 novas</button
 				>
 			{/if}
-			<button
-				class="btn btn-ghost"
-				type="button"
-				aria-pressed={!sentencesShown}
-				onclick={toggleSentences}
-				><Icon name="eye" size="sm" />{sentencesShown ? 'Ocultar frases' : 'Mostrar frases'}</button
+			<a class="btn btn-primary review-btn" href={resolve('/flashcards/estudar')}
+				><Icon name="play" size="sm" />Revisar{#if toReview > 0}&nbsp;{toReview}{/if}</a
 			>
-			<AnswersToggle />
+		</div>
+
+		<nav class="tabs" aria-label="Filtro">
+			{#each FILTERS as [key, label] (key)}
+				<a
+					href={resolve(`/palavras${searchWith({ f: key, item: null })}`)}
+					data-f={key}
+					aria-current={filter === key ? 'page' : undefined}
+					onclick={(e) => pickFilter(e, key)}
+					>{#if key === 'hoje' && late > 0}<span
+							class="late-dot"
+							aria-hidden="true"
+							title={plural(late, 'atrasada', 'atrasadas')}
+						></span>{/if}{label}<span class="c">{counts[key]}</span></a
+				>
+			{/each}
+		</nav>
+		<div class="tools">
+			<form
+				class="search"
+				class:has-q={q.trim() !== ''}
+				method="GET"
+				role="search"
+				onsubmit={(e) => e.preventDefault()}
+			>
+				<label for="busca"><Icon name="search" size="sm" /></label>
+				{#if filter !== 'todas'}<input type="hidden" name="f" value={filter} />{/if}
+				<input
+					id="busca"
+					name="q"
+					type="search"
+					placeholder="Buscar"
+					aria-label="Buscar"
+					autocomplete="off"
+					bind:value={q}
+					oninput={syncUrl}
+					onkeydown={(e) => e.key === 'Escape' && (e.currentTarget as HTMLInputElement).blur()}
+				/>
+				<kbd>/</kbd>
+			</form>
+			{#if data.decks.length > 1}{@render deckSelect('deck-filtro')}{/if}
+			{@render sortSelect('ordem')}
 		</div>
 	{/if}
 </div>
@@ -357,122 +416,90 @@
 			</div>
 		</div>
 	</div>
-{:else}
-	<div class="tools">
-		<nav class="seg" aria-label="Filtro">
-			{#each FILTERS as [key, label] (key)}
-				<a
-					href={resolve(`/palavras${searchWith({ f: key, item: null })}`)}
-					data-f={key}
-					aria-current={filter === key ? 'page' : undefined}
-					onclick={(e) => pickFilter(e, key)}>{label}<span class="c">{counts[key]}</span></a
-				>
-			{/each}
-		</nav>
-		<form class="search" method="GET" role="search" onsubmit={(e) => e.preventDefault()}>
-			<Icon name="search" size="sm" />
-			<label class="visually-hidden" for="busca">Buscar</label>
-			{#if filter !== 'todas'}<input type="hidden" name="f" value={filter} />{/if}
-			<input
-				id="busca"
-				name="q"
-				type="search"
-				placeholder="Buscar palavra ou tradução"
-				autocomplete="off"
-				bind:value={q}
-				oninput={syncUrl}
-				onkeydown={(e) => e.key === 'Escape' && (e.currentTarget as HTMLInputElement).blur()}
-			/>
-			<kbd>/</kbd>
-		</form>
-		{#if data.decks.length > 1}
-			<label class="visually-hidden" for="deck-filtro">Deck</label>
-			<select
-				id="deck-filtro"
-				class="input deck-filter"
-				value={deckFilter ?? ''}
-				onchange={pickDeck}
-			>
-				<option value="">Todos os decks</option>
-				{#each data.decks as d (d.id)}
-					<option value={d.id}
-						>{d.depth ? '\u00a0\u00a0\u00a0' : ''}{deckDisplayName(d.name)
-							.split(' › ')
-							.at(-1)}</option
-					>
-				{/each}
-			</select>
-		{/if}
-		<label class="visually-hidden" for="ordem">Ordenar</label>
-		<select id="ordem" class="input deck-filter" value={order} onchange={pickOrder}>
-			{#each ORDERS as [key, label] (key)}
-				<option value={key}>{label}</option>
-			{/each}
-		</select>
+{:else if rows.length === 0}
+	<div class="no-res">
+		<b>Nada por aqui</b>{q.trim()
+			? `Nenhuma palavra com “${q.trim()}”.`
+			: 'Nenhuma palavra neste filtro.'}
 	</div>
-
-	{#if rows.length === 0}
-		<div class="no-res">
-			<b>Nada por aqui</b>{q.trim()
-				? `Nenhuma palavra com “${q.trim()}”.`
-				: 'Nenhuma palavra neste filtro.'}
-		</div>
-	{:else}
-		<ul
-			class="list"
-			class:picking={sel.size > 0}
-			class:no-ctx={!sentencesShown}
-			aria-label="Palavras"
-		>
-			{#each rows as item (item.id)}
-				{@const enc = item.encounters[0]}
-				<li data-sel-id={item.id} class:picked={sel.has(item.id)}>
-					<input
-						class="ck"
-						type="checkbox"
-						aria-label="Selecionar {item.lemma}"
-						checked={sel.has(item.id)}
-						onclick={(e) => sel.toggle(item.id, e.shiftKey)}
-					/>
-					<a
-						class="wrow"
-						class:sel={item.id === data.selectedId}
-						href={resolve(`/palavras${searchWith({ item: item.id })}`)}
-						data-sveltekit-noscroll
-						data-sveltekit-keepfocus
-						data-sveltekit-replacestate
-						aria-current={item.id === data.selectedId ? 'true' : undefined}
+{:else}
+	<ul
+		class="list"
+		class:picking={sel.size > 0}
+		class:study={view.on.estudo}
+		style:--cols={cols}
+		aria-label="Palavras"
+	>
+		{#each rows as item (item.id)}
+			{@const enc = item.encounters[0]}
+			<li data-sel-id={item.id} class:picked={sel.has(item.id)}>
+				<input
+					class="ck"
+					type="checkbox"
+					aria-label="Selecionar {item.lemma}"
+					checked={sel.has(item.id)}
+					onclick={(e) => sel.toggle(item.id, e.shiftKey)}
+				/>
+				<a
+					class="r"
+					class:cur={item.id === data.selectedId}
+					href={resolve(`/palavras${searchWith({ item: item.id })}`)}
+					data-sveltekit-noscroll
+					data-sveltekit-keepfocus
+					data-sveltekit-replacestate
+					aria-current={item.id === data.selectedId ? 'true' : undefined}
+				>
+					<span
+						class="st"
+						data-st={item.leech ? 'leech' : DOTS[item.review]}
+						aria-hidden="true"
+						title={item.leech ? 'Teimosa' : DOT_LABELS[item.review]}
+					></span>
+					<span class="w"
+						><b {...study}>{item.lemma}</b>{#if view.on.leitura && (item.reading || item.ipa)}<small
+								{...item.reading ? study : {}}>{item.reading || item.ipa}</small
+							>{/if}</span
 					>
-						<span class="w"
-							><b {...study}>{item.lemma}</b>{#if answers.shown}<span
-									>{item.sense || 'Sem tradução'}</span
-								>{:else}<span class="veil" aria-label="Tradução oculta"></span>{/if}</span
-						>
-						<span class="ctx"
+					{#if view.on.traducao}
+						<span class="t" class:faint={!item.sense}>{item.sense || 'Sem tradução'}</span>
+					{/if}
+					{#if view.on.frase}
+						<span class="x"
 							>{#if enc?.sentence}{@render sentence(
 									enc.sentence,
 									enc.highlight || item.lemma
 								)}{/if}</span
 						>
-						<span class="src-ic" title={enc ? enc.source || enc.originLabel : 'Guardada à mão'}
-							><Icon name={ORIGIN_ICONS[enc?.origin ?? 'manual']} /></span
+					{/if}
+					{#if view.on.origem}
+						<span class="src" title={enc ? enc.source || enc.originLabel : 'Guardada à mão'}
+							><Icon name={ORIGIN_ICONS[enc?.origin ?? 'manual']} size="sm" /></span
 						>
-						{@render strength(item.strength)}
-						<span class="next" class:hoje={item.dueToday}
-							>{#if item.leech}<span class="teimosa" title="Errou {item.lapses} vezes">Teimosa</span
-								>{/if}{item.status === 'conhecido' ? 'Já sei' : item.next}</span
-						>
-					</a>
-				</li>
-			{/each}
-		</ul>
-		<div class="list-foot">
-			<span class="legend"><Icon name="tv" size="sm" />Stremio</span>
-			<span class="legend"><Icon name="music" size="sm" />Música</span>
-			<span class="legend"><Icon name="pencil" size="sm" />À mão</span>
-			<span class="legend force">{@render strength(3)}Força da memória</span>
-		</div>
-	{/if}
+					{/if}
+					<span class="when" class:late={item.review === 'atrasada' && !item.leech}
+						>{#if item.leech}<span class="chip-leech" title="Errou {item.lapses} vezes"
+								>Teimosa</span
+							>{:else if item.review === 'conhecida'}Já sei{:else if item.review !== 'hoje'}{item.when}{/if}</span
+					>
+					{#if !item.leech && item.review !== 'conhecida'}<span class="visually-hidden"
+							>, {DOT_LABELS[item.review]}</span
+						>{/if}
+				</a>
+			</li>
+		{/each}
+	</ul>
+	<div class="foot">
+		<span><span class="st" data-st="late"></span>Atrasada</span>
+		<span><span class="st" data-st="today"></span>Revisar hoje</span>
+		<span><span class="st" data-st="learn"></span>Aprendendo</span>
+		<span><span class="st" data-st="new"></span>Nova</span>
+		<span><span class="st" data-st="done"></span>Em dia</span>
+		<span><span class="st" data-st="leech"></span>Teimosa</span>
+		<span class="gap"><Icon name="tv" size="sm" />Série/filme</span>
+		<span><Icon name="bookmark" size="sm" />Livro</span>
+		<span><Icon name="music" size="sm" />Música</span>
+		<span><Icon name="pencil" size="sm" />À mão</span>
+	</div>
 {/if}
 
 <BulkBar count={sel.size} label="Ações das palavras" onclear={() => sel.clear()}>
@@ -492,311 +519,297 @@
 </BulkBar>
 
 {#if selected}
-	{@const enc = selected.encounters[0]}
-	<a
-		class="drawer-scrim"
-		href={resolve(`/palavras${searchWith({ item: null })}`)}
-		aria-hidden="true"
-		tabindex="-1"><span class="visually-hidden">Fechar</span></a
-	>
-	<section
-		class="drawer"
-		aria-label="Detalhes de “{selected.lemma}”"
-		tabindex="-1"
-		bind:this={drawerEl}
-		data-drawer-open
-	>
-		<div class="dr-h">
-			<span class="eyebrow"
-				><Icon name={ORIGIN_ICONS[enc?.origin ?? 'manual']} size="sm" />{enc
-					? enc.source || enc.originLabel
-					: 'Guardada à mão'}</span
-			>
-			<a
-				class="icon-btn"
-				href={resolve(`/palavras${searchWith({ item: null })}`)}
-				aria-label="Fechar"
-				data-sveltekit-noscroll><Icon name="x" /></a
-			>
-		</div>
-
-		{#if editing}
-			<form
-				class="dr-body edit"
-				method="POST"
-				action={actionKeeping('edit')}
-				use:enhance={submitEdit}
-				aria-label="Editar “{selected.lemma}”"
-			>
-				<input type="hidden" name="id" value={selected.id} />
-				<label
-					>Palavra<input
-						name="lemma"
-						{...study}
-						value={selected.lemma}
-						maxlength={LIMITS.lemma}
-						required
-						aria-invalid={editErrors?.lemma ? 'true' : undefined}
-					/></label
-				>
-				{#if editErrors?.lemma}<p class="err" role="alert">{editErrors.lemma}</p>{/if}
-				<label
-					>Leitura <i class="opt">· opcional, como furigana ou pinyin</i><input
-						name="reading"
-						{...study}
-						value={selected.reading}
-						maxlength={LIMITS.reading}
-						aria-invalid={editErrors?.reading ? 'true' : undefined}
-					/></label
-				>
-				{#if editErrors?.reading}<p class="err" role="alert">{editErrors.reading}</p>{/if}
-				<label>Tradução<input name="sense" value={selected.sense} maxlength={LIMITS.sense} /></label
-				>
-				<label
-					>Nota<textarea name="note" rows="3" maxlength={LIMITS.note} value={selected.note}
-					></textarea></label
-				>
-				<label
-					>Tags <i class="opt">· separadas por vírgula</i><input
-						name="tags"
-						value={selected.tags.join(', ')}
-						placeholder="viagem, A2"
-						autocomplete="off"
-						aria-invalid={editErrors?.tags ? 'true' : undefined}
-					/></label
-				>
-				{#if editErrors?.tags}<p class="err" role="alert">{editErrors.tags}</p>{/if}
-				<div class="media-row">
-					<MediaField
-						name="image"
-						kind="image"
-						label="Imagem"
-						path={selected.image}
-						url={data.selectedMedia.image}
-					/>
-					<MediaField
-						name="audio"
-						kind="audio"
-						label="Áudio"
-						path={selected.audio}
-						url={data.selectedMedia.audio}
-					/>
-				</div>
-				{#if editErrors?.image}<p class="err" role="alert">{editErrors.image}</p>{/if}
-				{#if editErrors?.audio}<p class="err" role="alert">{editErrors.audio}</p>{/if}
-				{#if editErrors?.form}<p class="err" role="alert">{editErrors.form}</p>{/if}
-				<div class="edit-acts">
-					<button class="btn btn-primary" disabled={busy}>Salvar</button>
-					<button type="button" class="btn btn-ghost" onclick={() => (editing = false)}
-						>Cancelar</button
-					>
-				</div>
-			</form>
-		{:else}
-			<div class="dr-body">
-				{#if selected.reading}<div class="dr-reading" {...study}>{selected.reading}</div>{/if}
-				<h2 class="dr-word" {...study}>{selected.lemma}</h2>
-				{#if data.selectedMedia.image}
-					<img class="dr-img" src={data.selectedMedia.image} alt="" loading="lazy" />
-				{/if}
-				<div class="dr-ipa">
-					{#if selected.ipa}<span>{selected.ipa}</span>{/if}
-					{#if data.selectedMedia.audio}
-						{@const rec = data.selectedMedia.audio}
-						<button class="listen" type="button" onclick={() => void new Audio(rec).play()}
-							><Icon name="sound" size="sm" />Ouvir gravação</button
-						>
-					{:else}<button class="listen" type="button" onclick={() => speak(selected.lemma)}
-							><Icon name="sound" size="sm" />Ouvir</button
-						>{/if}
-				</div>
-				<div class="dr-tr" class:faint={!selected.sense}>{selected.sense || 'Sem tradução'}</div>
-				{#if selected.note}<p class="note">{selected.note}</p>{/if}
-				{#if selected.tags.length > 0}
-					<div class="item-tags">
-						{#each selected.tags as tag (tag)}
-							<a class="chip" href={resolve(`/flashcards/estudar?tag=${encodeURIComponent(tag)}`)}
-								><Icon name="tag" size="sm" />{tag}</a
-							>
-						{/each}
-					</div>
-				{/if}
-
-				<section class="dr-sec">
-					<h3>Próxima revisão</h3>
-					<div class="next-box">
-						{#if selected.status === 'conhecido'}
-							<div><b>Fora da revisão</b><span>Você marcou que já sabe</span></div>
-						{:else}
-							<div>
-								<b class:hoje={selected.dueToday}
-									>{selected.next.charAt(0).toUpperCase() + selected.next.slice(1)}</b
-								><span
-									>{selected.dueToday
-										? 'Está na fila de agora'
-										: 'Você não precisa fazer nada até lá'}</span
-								>
-							</div>
-						{/if}
-						<div class="str-l">
-							{@render strength(selected.strength)}<span>{STRENGTH_LABELS[selected.strength]}</span>
-						</div>
-						{#if selected.leech}
-							<p class="leech-note">
-								<span class="teimosa">Teimosa</span> Você errou {selected.lapses} vezes. Vale reescrever
-								ou trocar a frase do card.
-							</p>
-						{/if}
-					</div>
-				</section>
-
-				<section class="dr-sec">
-					<h3>{selected.encounters.length > 1 ? 'Contextos' : 'Contexto'}</h3>
-					{#each selected.encounters as e (e.id)}
-						<div class="quote">
-							<div class="qs">
-								<Icon name={ORIGIN_ICONS[e.origin]} size="sm" />{e.source || e.originLabel} · {formatAgo(
-									new Date(e.seenAt),
-									now,
-									timeZone
-								)}
-							</div>
-							{#if e.sentence}<p>
-									{@render sentence(e.sentence, e.highlight || selected.lemma)}
-								</p>{/if}
-							{#if e.sense && e.sense !== selected.sense}<div class="pt">{e.sense}</div>{/if}
-						</div>
-					{:else}
-						<p class="faint small">
-							Guardada sem frase. A próxima vez que ela aparecer, a frase entra aqui.
-						</p>
-					{/each}
-				</section>
-
-				<section class="dr-sec">
-					<h3>Histórico</h3>
-					{#if data.history.length === 0}
-						<p class="faint small">Ainda não revisada. Ela entra na revisão como palavra nova.</p>
-					{:else}
-						<ul class="hist">
-							{#each data.history as h, i (i)}
-								<li>
-									<time datetime={h.reviewedAt}
-										>{formatAgo(new Date(h.reviewedAt), now, timeZone)}</time
-									>
-									<span class="grade" data-g={h.rating}>{GRADE_LABELS[h.rating as Grade]}</span>
-									<span class="iv">{h.kind === 'produzir' ? 'Produzir' : 'Reconhecer'}</span>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</section>
-			</div>
-		{/if}
-
-		<div class="dr-foot">
-			{#if selected.dueToday}
-				<a class="btn btn-primary" href={resolve('/flashcards/estudar')}>Revisar agora</a>
-			{/if}
-			<button type="button" class="btn btn-ghost" onclick={() => (editing = !editing)}
-				><Icon name="pencil" size="sm" />Editar</button
-			>
-			<form method="POST" action={actionKeeping('known')} use:enhance={submitKnown}>
-				<input type="hidden" name="id" value={selected.id} />
-				<input
-					type="hidden"
-					name="known"
-					value={selected.status === 'conhecido' ? 'false' : 'true'}
-				/>
-				<button
-					class="btn btn-ghost"
-					aria-label={selected.status === 'conhecido'
-						? `Voltar “${selected.lemma}” para a revisão`
-						: `Marcar “${selected.lemma}” como conhecida`}
-					><Icon
-						name={selected.status === 'conhecido' ? 'refresh' : 'check'}
-						size="sm"
-					/>{selected.status === 'conhecido' ? 'Revisar de novo' : 'Já sei'}</button
-				>
-			</form>
-			<form method="POST" action="?/delete" use:enhance={submitDelete} class="del">
-				<input type="hidden" name="id" value={selected.id} />
-				<button class="btn btn-danger" aria-label="Apagar “{selected.lemma}”">Apagar</button>
-			</form>
-		</div>
-	</section>
+	<WordSheet
+		item={selected}
+		media={data.selectedMedia}
+		cards={data.selectedCards}
+		history={data.history}
+		historyTotal={data.historyTotal}
+		historyLapses={data.historyLapses}
+		decks={data.decks}
+		language={data.language}
+		nativeLanguage={data.uiLanguage}
+		{now}
+		clock={data.shell?.clock}
+		position={selectedIndex >= 0 ? { index: selectedIndex, total: rows.length } : null}
+		closeHref={resolve(`/palavras${searchWith({ item: null })}`)}
+		onclose={closeDrawer}
+		onprev={() => step(-1)}
+		onnext={() => step(1)}
+		ondeleted={afterDelete}
+	/>
 {/if}
 
 <style>
-	.dr-reading {
-		color: var(--ink-3);
-		font-size: 15.5px;
-		margin-bottom: -2px;
+	/* Cabeçalho: título e ações; embaixo, abas sublinhadas com busca e ordem à direita. */
+	.top {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas: 'title acts' 'tabs tools';
+		align-items: center;
+		margin-bottom: 8px;
 	}
-	.opt {
-		font-style: normal;
-		color: var(--ink-3);
-		font-weight: 400;
+	.top.bare {
+		margin-bottom: 28px;
 	}
-	.tools {
+	.top h1 {
+		grid-area: title;
+		margin: 0 0 20px;
+		font: 600 30px/1.2 var(--f-head);
+		letter-spacing: -0.02em;
+	}
+	.acts {
+		grid-area: acts;
+		align-self: start;
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		margin-bottom: 14px;
+		gap: 6px;
 	}
-	.seg .c {
-		font: 500 13.5px/1 var(--f-body);
-		font-variant-numeric: tabular-nums;
+	.acts .btn {
+		height: 36px;
+		padding: 0 13px;
+		font-size: 15px;
+		gap: 7px;
+	}
+	.show-btn :global(.ic:last-child) {
+		width: 13px;
+		height: 13px;
+		margin-left: -2px;
+	}
+	.tabs {
+		grid-area: tabs;
+		display: flex;
+		align-items: flex-end;
+		gap: 28px;
+		min-width: 0;
+		border-bottom: 1px solid var(--line);
+	}
+	.tabs a {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		height: 44px;
+		font-size: 15.5px;
+		font-weight: 500;
 		color: var(--ink-3);
+		text-decoration: none;
+		white-space: nowrap;
+		transition: color 0.15s;
 	}
-	.seg [data-f='hoje'] .c {
-		color: var(--terra-ink);
+	.tabs a:hover,
+	.tabs a[aria-current='page'] {
+		color: var(--ink);
 	}
+	.tabs a[aria-current='page']::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: -1px;
+		height: 2px;
+		border-radius: 2px;
+		background: var(--ink);
+	}
+	.tabs .c {
+		font-size: 13px;
+		color: var(--ink-3);
+		font-variant-numeric: tabular-nums;
+	}
+	.late-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--terra-ink);
+	}
+	.tools {
+		grid-area: tools;
+		align-self: stretch;
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 2px;
+		padding-left: 16px;
+		border-bottom: 1px solid var(--line);
+	}
+
+	/* Busca compacta: ícone + "Buscar" + /; cresce no foco. */
 	.search {
 		position: relative;
-		width: 320px;
 		margin: 0;
+		width: 210px;
+		transition: width 0.2s var(--ease);
 	}
-	.search > :global(.ic) {
+	.search:focus-within,
+	.search.has-q {
+		width: 280px;
+	}
+	.search label {
 		position: absolute;
-		left: 12px;
+		left: 10px;
 		top: 50%;
 		translate: 0 -50%;
+		display: grid;
 		color: var(--ink-3);
-		pointer-events: none;
+		cursor: text;
 	}
 	.search input {
 		width: 100%;
-		height: 40px;
-		padding: 0 40px 0 36px;
+		height: 34px;
+		padding: 0 36px 0 34px;
 		border: 0;
 		border-radius: var(--r-m);
 		outline: none;
-		background: var(--sunk);
-		box-shadow: inset 0 0 0 1px var(--line);
+		background: transparent;
+		font-size: 14.5px;
+		color: var(--ink);
 		transition:
-			box-shadow 0.18s,
-			background-color 0.18s;
+			background-color 0.15s,
+			box-shadow 0.15s;
 	}
 	.search input::placeholder {
 		color: var(--ink-3);
 	}
+	.search input:hover {
+		background: var(--hover);
+	}
 	.search input:focus {
-		background: var(--raise);
+		background: var(--sunk);
 		box-shadow:
 			inset 0 0 0 1px var(--line-2),
 			0 0 0 3px var(--ring);
 	}
 	.search kbd {
 		position: absolute;
-		right: 9px;
+		right: 8px;
 		top: 50%;
 		translate: 0 -50%;
+		pointer-events: none;
 	}
-	.list {
+	.search:focus-within kbd,
+	.search.has-q kbd {
+		display: none;
+	}
+
+	/* Seletor só texto ("Ordem: Mais recentes ▾"): o select de verdade fica por cima, invisível. */
+	.txt-sel {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		height: 32px;
+		padding: 0 8px;
+		border-radius: var(--r-s);
+		font-size: 14px;
+		color: var(--ink-3);
+		white-space: nowrap;
+		cursor: pointer;
+		transition:
+			background-color 0.15s,
+			color 0.15s;
+	}
+	.txt-sel:hover,
+	.txt-sel:focus-within {
+		background: var(--hover);
+		color: var(--ink);
+	}
+	.txt-sel:has(select:focus-visible) {
+		box-shadow: 0 0 0 3px var(--ring);
+	}
+	.txt-sel b {
+		color: var(--ink-2);
+		font-weight: 500;
+		max-width: 150px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.txt-sel :global(.ic) {
+		width: 13px;
+		height: 13px;
+	}
+	.txt-sel select {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		opacity: 0;
+		cursor: pointer;
+		font-size: 16px;
+	}
+
+	/* Popover Exibir */
+	.show {
+		margin: -8px;
+	}
+	.show-h {
+		margin: 0;
+		padding: 6px 10px 4px;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--ink-3);
+	}
+	.sw {
 		display: flex;
-		flex-direction: column;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		padding: 8px 10px;
+		border: 0;
+		border-radius: var(--r-m);
+		background: none;
+		font-size: 15px;
+		color: var(--ink);
+		text-align: left;
+		cursor: pointer;
+	}
+	.sw:hover {
+		background: var(--hover);
+	}
+	.switch {
+		position: relative;
+		flex: none;
+		width: 28px;
+		height: 16px;
+		margin-left: auto;
+		border-radius: 99px;
+		background: var(--line-2);
+		transition: background-color 0.18s;
+	}
+	.switch::after {
+		content: '';
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		background: var(--raise);
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+		transition: left 0.18s var(--ease);
+	}
+	.sw[aria-checked='true'] .switch {
+		background: var(--primary);
+	}
+	.sw[aria-checked='true'] .switch::after {
+		left: 14px;
+		background: var(--on-primary);
+	}
+	.sep {
+		height: 1px;
+		margin: 6px 4px;
+		background: var(--line);
+	}
+	.show-note {
+		margin: 0;
+		padding: 2px 10px 6px;
+		font-size: 13px;
+		color: var(--ink-3);
+	}
+	.show-m {
+		display: none;
+	}
+
+	/* Lista: uma linha por palavra. */
+	.list {
 		margin: 0 -14px;
 		padding: 0;
 		list-style: none;
@@ -804,13 +817,51 @@
 	.list li {
 		position: relative;
 	}
-	/* Seleção (Mover para deck…): a caixa fica na margem esquerda da linha. */
+	.r {
+		display: grid;
+		grid-template-columns: var(--cols);
+		gap: 18px;
+		align-items: center;
+		min-height: 52px;
+		padding: 0 16px;
+		border-radius: var(--r-m);
+		position: relative;
+		color: inherit;
+		text-decoration: none;
+		transition: background-color 0.15s;
+	}
+	li + li .r::before {
+		content: '';
+		position: absolute;
+		left: 16px;
+		right: 16px;
+		top: 0;
+		height: 1px;
+		background: var(--line);
+	}
+	.r:hover,
+	.r.cur {
+		background: var(--hover);
+	}
+	.list li.picked .r {
+		background: var(--sel);
+	}
+	li:hover .r::before,
+	li:hover + li .r::before,
+	li:has(.cur) .r::before,
+	li:has(.cur) + li .r::before,
+	li.picked .r::before,
+	li.picked + li .r::before {
+		opacity: 0;
+	}
+	/* Seleção (Mover para deck…): a caixa toma o lugar do pontinho. */
 	.list .ck {
 		position: absolute;
-		left: 14px;
+		left: 16px;
 		top: 50%;
 		translate: 0 -50%;
 		z-index: 1;
+		margin: 0;
 		opacity: 0;
 		transition: opacity 0.15s;
 	}
@@ -820,139 +871,135 @@
 	.list .ck:checked {
 		opacity: 1;
 	}
-	@media (hover: none) {
-		.list .ck {
-			opacity: 1;
-		}
-	}
-	.list li.picked .wrow {
-		background: var(--sel);
-	}
-	.tools > .search {
-		margin-left: auto;
-		flex: 0 1 320px;
-		min-width: 200px;
-	}
-	.deck-filter {
-		width: auto;
-		max-width: 170px;
-		flex: none;
-		text-overflow: ellipsis;
-	}
-	.wrow {
-		display: grid;
-		grid-template-columns: minmax(190px, 1fr) minmax(0, 2.1fr) 28px 48px 96px;
-		align-items: center;
-		gap: 24px;
-		padding: 16px 16px 16px 46px;
-		border-radius: var(--r-m);
-		text-align: left;
-		width: 100%;
-		position: relative;
-		color: inherit;
-		text-decoration: none;
-		transition: background-color 0.15s;
-	}
-	li + li .wrow::before {
-		content: '';
-		position: absolute;
-		left: 16px;
-		right: 16px;
-		top: 0;
-		height: 1px;
-		background: var(--line);
-		transition: opacity 0.15s;
-	}
-	.wrow:hover {
-		background: var(--hover);
-	}
-	.wrow.sel {
-		background: var(--sel);
-	}
-	.wrow:hover::before,
-	.wrow.sel::before,
-	li:hover + li .wrow::before,
-	li:has(.sel) + li .wrow::before {
+	.list li:hover .st,
+	.list li:focus-within .st,
+	.list.picking .st {
 		opacity: 0;
 	}
+
+	.st {
+		display: inline-block;
+		flex: none;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		transition: opacity 0.15s;
+	}
+	.st[data-st='today'] {
+		background: var(--salvia);
+	}
+	.st[data-st='late'] {
+		background: var(--terra-ink);
+	}
+	.st[data-st='learn'] {
+		box-shadow: inset 0 0 0 1.5px var(--salvia);
+	}
+	.st[data-st='new'] {
+		box-shadow: inset 0 0 0 1.5px var(--ink-3);
+		opacity: 0.7;
+	}
+	.st[data-st='done'] {
+		background: var(--line-2);
+	}
+	.st[data-st='leech'] {
+		background: var(--gold-ink);
+	}
 	.w {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
 		min-width: 0;
 	}
 	.w b {
-		font: 600 17.5px/1.3 var(--f-head);
-		display: block;
+		font: 600 17px/1.3 var(--f-head);
 		letter-spacing: -0.01em;
-		overflow-wrap: anywhere;
-	}
-	.w span {
-		font-size: 14.5px;
-		color: var(--ink-3);
-		display: block;
-		margin-top: 2px;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.w .veil {
-		width: 88px;
-		height: 0.8em;
-		margin-top: 7px;
-		border-radius: 999px;
-		background: var(--line);
+	.w small {
+		font-size: 14px;
+		color: var(--ink-3);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
-	.ctx {
-		font-size: 15px;
+	.t {
 		color: var(--ink-2);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		transition: opacity 0.15s;
 	}
-	.src-ic {
+	.t.faint {
 		color: var(--ink-3);
-		display: grid;
-		place-items: center;
 	}
-	.next {
-		font-size: 14.5px;
+	/* Modo estudo: a tradução só aparece com o mouse em cima (ou foco na linha). */
+	.list.study .t {
+		opacity: 0;
+	}
+	.list.study li:hover .t,
+	.list.study .r:focus-visible .t,
+	.list.study .r.cur .t {
+		opacity: 1;
+	}
+	.x {
+		font-size: 15px;
+		color: var(--ink-3);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.x :global(mark) {
+		background: transparent;
+		color: var(--ink);
+		font-weight: 600;
+		padding: 0;
+		margin: 0;
+	}
+	.src {
+		display: inline-grid;
+		place-items: center;
+		color: var(--ink-3);
+	}
+	.when {
+		font-size: 14px;
 		color: var(--ink-3);
 		text-align: right;
 		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
 	}
-	.next.hoje {
+	.when.late {
 		color: var(--terra-ink);
 		font-weight: 500;
 	}
-	.teimosa {
-		display: inline-block;
-		margin-right: 8px;
-		padding: 1px 7px;
-		border-radius: 999px;
-		background: var(--terra-soft, color-mix(in oklab, var(--terra-ink) 12%, transparent));
-		color: var(--terra-ink);
-		font-size: 12.5px;
-		font-weight: 500;
-	}
-	.leech-note {
-		grid-column: 1 / -1;
-		margin: 4px 0 0;
-		color: var(--ink-2);
-		font-size: 14px;
-	}
-	.list-foot {
-		margin-top: 22px;
-		font-size: 14px;
-		color: var(--ink-3);
-		display: flex;
-		gap: 18px;
+	.chip-leech {
+		display: inline-flex;
 		align-items: center;
+		height: 20px;
+		padding: 0 7px;
+		border-radius: 4px;
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--gold-ink);
+		background: var(--gold-soft);
 	}
-	.legend {
+	.foot {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 16px;
+		margin-top: 18px;
+		font-size: 13.5px;
+		color: var(--ink-3);
+	}
+	.foot > span {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
 	}
-	.legend.force {
-		margin-left: auto;
+	.foot .gap {
+		margin-left: 8px;
 	}
 	.no-res {
 		text-align: center;
@@ -966,423 +1013,186 @@
 		margin-bottom: 4px;
 	}
 
-	/* Painel lateral: preso à janela, por cima do canto direito do painel. */
-	.drawer-scrim {
-		display: none;
-	}
-	.drawer {
-		position: fixed;
-		z-index: 45;
-		top: 18px;
-		right: 18px;
-		bottom: 18px;
-		width: 420px;
-		max-width: calc(100vw - 36px);
-		background: var(--raise);
-		border-radius: var(--r-l);
-		box-shadow: var(--sh-pop);
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		animation: drawerIn 0.4s var(--ease) both;
-	}
-	:global(.tema-escuro) .drawer {
-		background: var(--raise-2);
-	}
-	.drawer:focus {
-		outline: none;
-	}
-	@keyframes drawerIn {
-		from {
-			transform: translateX(calc(100% + 24px));
+	/* Sem mouse não há hover: a caixa fica sempre à vista, à esquerda do pontinho. */
+	@media (hover: none) {
+		.list .ck {
+			opacity: 1;
 		}
-	}
-	.dr-h {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 12px 12px 0 16px;
-	}
-	.dr-h .eyebrow {
-		min-width: 0;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.dr-body {
-		flex: 1;
-		overflow-y: auto;
-		padding: 14px 28px 28px;
-		margin: 0;
-	}
-	.dr-word {
-		font: 600 43px/1.1 var(--f-head);
-		letter-spacing: -0.03em;
-		margin: 8px 0 0;
-		overflow-wrap: anywhere;
-	}
-	.dr-ipa {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		margin-top: 10px;
-		color: var(--ink-3);
-		font-size: 16.5px;
-	}
-	.listen {
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		height: 28px;
-		padding: 0 11px 0 9px;
-		border: 0;
-		border-radius: var(--r-s);
-		font-size: 14.5px;
-		font-weight: 500;
-		color: var(--accent-ink);
-		background: var(--sel);
-		cursor: pointer;
-		transition: background-color 0.15s;
-	}
-	.listen:hover {
-		background: var(--press);
-	}
-	.dr-tr {
-		font-size: 19.5px;
-		margin-top: 16px;
-	}
-	.note {
-		margin: 8px 0 0;
-		color: var(--ink-2);
-		font-size: 15.5px;
-	}
-	.item-tags {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		margin-top: 12px;
-	}
-	.small {
-		margin: 0;
-		font-size: 15px;
-	}
-	.dr-sec {
-		margin-top: 30px;
-	}
-	.dr-sec h3 {
-		margin: 0 0 12px;
-		font-size: 13.5px;
-		font-weight: 500;
-		color: var(--ink-3);
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-	}
-	.quote {
-		padding: 14px 16px;
-		border-radius: var(--r-m);
-		background: var(--tile);
-		box-shadow: inset 0 0 0 1px var(--line);
-	}
-	.quote + .quote {
-		margin-top: 8px;
-	}
-	.quote p {
-		margin: 0;
-		font-size: 16px;
-		line-height: 1.55;
-	}
-	.quote .pt {
-		color: var(--ink-3);
-		font-size: 14.5px;
-		margin-top: 6px;
-	}
-	.quote .qs {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		font-size: 13.5px;
-		color: var(--ink-3);
-		margin-bottom: 8px;
-	}
-	.next-box {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 14px 16px;
-		border-radius: var(--r-m);
-		background: var(--tile);
-		box-shadow: inset 0 0 0 1px var(--line);
-	}
-	.next-box b {
-		font: 600 18.5px/1.2 var(--f-head);
-		display: block;
-	}
-	.next-box b.hoje {
-		color: var(--terra-ink);
-	}
-	.next-box span {
-		font-size: 14px;
-		color: var(--ink-3);
-	}
-	.str-l {
-		text-align: right;
-		flex: none;
-	}
-	.str-l > span:last-child {
-		display: block;
-		margin-top: 4px;
-	}
-	.hist {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-	}
-	.hist li {
-		display: grid;
-		grid-template-columns: 84px 1fr auto;
-		gap: 12px;
-		align-items: center;
-		padding: 8px 2px;
-		font-size: 15px;
-	}
-	.hist li + li {
-		border-top: 1px solid var(--line);
-	}
-	.hist time,
-	.hist .iv {
-		color: var(--ink-3);
-		font-size: 14px;
-	}
-	.dr-foot {
-		padding: 14px 20px;
-		display: flex;
-		gap: 4px;
-		border-top: 1px solid var(--line);
-	}
-	.dr-foot form {
-		margin: 0;
-	}
-	.dr-foot .btn-primary {
-		flex: 1;
-	}
-	.dr-foot .del {
-		margin-left: auto;
-	}
-	.edit label {
-		display: block;
-		font-size: 13.5px;
-		font-weight: 500;
-		color: var(--ink-3);
-		margin-top: 16px;
-	}
-	.edit input,
-	.edit textarea {
-		display: block;
-		width: 100%;
-		margin-top: 6px;
-		padding: 9px 12px;
-		border: 0;
-		border-radius: var(--r-m);
-		background: var(--sunk);
-		box-shadow: inset 0 0 0 1px var(--line);
-		font-size: 16.5px;
-		color: var(--ink);
-		resize: vertical;
-		outline: none;
-	}
-	.edit input:focus,
-	.edit textarea:focus {
-		background: var(--raise);
-		box-shadow:
-			inset 0 0 0 1px var(--line-2),
-			0 0 0 3px var(--ring);
-	}
-	.edit input[name='lemma'] {
-		font: 600 24px/1.3 var(--f-head);
-	}
-	.edit .err {
-		margin: 6px 0 0;
-		color: var(--terra-ink);
-		font-size: 14px;
-	}
-	.media-row {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 10px;
-		margin-top: 14px;
-	}
-	.dr-img {
-		display: block;
-		max-width: 100%;
-		max-height: 220px;
-		margin: 0 0 14px;
-		border-radius: 12px;
-		object-fit: contain;
-	}
-	.edit-acts {
-		display: flex;
-		gap: 6px;
-		margin-top: 20px;
+		.r {
+			padding-left: 44px;
+		}
+		.list li:hover .st,
+		.list li:focus-within .st,
+		.list.picking .st {
+			opacity: 1;
+		}
 	}
 
-	.ph-acts {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px;
-	}
-	.list.no-ctx .wrow .ctx {
-		display: none;
-	}
-	@media (min-width: 769px) {
-		.list.no-ctx .wrow {
-			grid-template-columns: minmax(0, 1fr) 28px 48px 96px;
-		}
-	}
-	@media (max-width: 1180px) {
-		.wrow {
-			grid-template-columns: minmax(150px, 1fr) minmax(0, 1.6fr) 28px 44px 80px;
-			gap: 16px;
-		}
-	}
 	@media (max-width: 980px) {
-		.wrow .ctx {
+		.search {
+			width: 160px;
+		}
+		.search:focus-within,
+		.search.has-q {
+			width: 220px;
+		}
+	}
+
+	/* Mobile: título com busca e Exibir em ícones; filtros em pílulas que rolam. */
+	@media (max-width: 768px) {
+		.top {
+			position: relative;
+			grid-template-columns: minmax(0, 1fr) auto auto;
+			grid-template-areas: 'title tools acts' 'tabs tabs tabs';
+			margin: 0 0 6px;
+		}
+		.top h1 {
+			margin: 0;
+			font-size: 27px;
+		}
+		.tools,
+		.tabs {
+			border: 0;
+		}
+		.tools {
+			padding: 0;
+			align-self: center;
+		}
+		.tools > .txt-sel,
+		.add-btn,
+		.review-btn,
+		.show-btn .lbl,
+		.show-btn :global(.ic:last-child) {
 			display: none;
 		}
-		.wrow {
-			grid-template-columns: minmax(0, 1fr) 28px 44px 84px;
+		.acts .show-btn {
+			width: 38px;
+			padding: 0;
 		}
-	}
-	@media (max-width: 768px) {
-		.tools {
-			flex-direction: column-reverse;
-			align-items: stretch;
-			gap: 12px;
+		.show-m {
+			display: block;
 		}
-		.tools > .search {
-			margin-left: 0;
-			flex: none;
-			order: 1;
-			min-width: 0;
+		.show-m .txt-sel {
+			display: flex;
+			height: 38px;
+			padding: 0 10px;
+			font-size: 15px;
 		}
-		.deck-filter {
-			max-width: none;
-			width: 100%;
+		.search,
+		.search:focus-within,
+		.search.has-q {
+			width: 38px;
 		}
-		.list .ck {
-			left: 10px;
+		.search input {
+			height: 38px;
+			padding: 0;
+			color: transparent;
 		}
-		.search {
-			width: 100%;
-		}
+		.search input::placeholder,
 		.search kbd {
 			display: none;
+			color: transparent;
 		}
-		.seg {
+		.search label {
+			left: 11px;
+			color: var(--ink-2);
+		}
+		/* Aberta, a busca cobre a linha do título. */
+		.search:focus-within,
+		.search.has-q {
+			position: absolute;
+			left: 0;
+			right: 0;
+			top: 0;
+			width: auto;
+			z-index: 2;
+			background: var(--page);
+		}
+		.search:focus-within input,
+		.search.has-q input {
+			padding: 0 12px 0 36px;
+			color: var(--ink);
+			background: var(--sunk);
+		}
+		.search:focus-within input::placeholder,
+		.search.has-q input::placeholder {
+			display: initial;
+			color: var(--ink-3);
+		}
+		.tabs {
+			gap: 6px;
+			margin: 12px -16px 4px;
+			padding: 0 16px;
 			overflow-x: auto;
 			scrollbar-width: none;
-			justify-content: flex-start;
 		}
-		.seg::-webkit-scrollbar {
+		.tabs::-webkit-scrollbar {
 			display: none;
 		}
-		.seg > a {
+		.tabs a {
 			flex: none;
-			padding: 0 11px;
+			height: 34px;
+			padding: 0 13px;
+			border-radius: 99px;
+			font-size: 14.5px;
+			color: var(--ink-2);
+			box-shadow: inset 0 0 0 1px var(--line-2);
+		}
+		.tabs a[aria-current='page'] {
+			background: var(--primary);
+			color: var(--on-primary);
+			box-shadow: none;
+		}
+		.tabs a[aria-current='page']::after {
+			display: none;
+		}
+		.tabs a[aria-current='page'] .c {
+			color: inherit;
+			opacity: 0.7;
 		}
 		.list {
 			margin: 0 -8px;
 		}
-		.wrow {
-			grid-template-columns: minmax(0, 1fr) auto;
-			grid-template-areas: 'w n' 'c c';
-			gap: 4px 12px;
-			padding: 13px 10px 13px 40px;
+		.r {
+			grid-template-columns: 8px auto minmax(0, 1fr) auto;
+			grid-template-areas: 'st w t n' 'st x x n';
+			gap: 2px 10px;
+			min-height: 0;
+			padding: 11px 12px;
 		}
-		.wrow .w {
+		.st {
+			grid-area: st;
+		}
+		.w {
 			grid-area: w;
 		}
-		.wrow .ctx {
-			display: -webkit-box;
-			grid-area: c;
-			white-space: normal;
-			-webkit-line-clamp: 1;
-			line-clamp: 1;
-			-webkit-box-orient: vertical;
-			margin-top: 2px;
+		.t {
+			grid-area: t;
+			align-self: baseline;
 		}
-		.wrow .src-ic,
-		.wrow :global(.str) {
+		.x {
+			grid-area: x;
+			font-size: 14px;
+		}
+		.when {
+			grid-area: n;
+			font-size: 13.5px;
+		}
+		.src {
 			display: none;
 		}
-		.wrow .next {
-			grid-area: n;
-			align-self: start;
-			padding-top: 3px;
+		.w b {
+			font-size: 16.5px;
 		}
-		li + li .wrow::before {
-			left: 10px;
-			right: 10px;
+		li + li .r::before {
+			left: 12px;
+			right: 12px;
 		}
-		.list-foot {
-			flex-wrap: wrap;
-			gap: 10px 16px;
+		.list .ck {
+			left: 8px;
 		}
-		.drawer-scrim {
-			display: block;
-			position: fixed;
-			inset: 0;
-			z-index: 50;
-			background: var(--scrim);
-			animation: fade 0.25s var(--ease) both;
-		}
-		.drawer {
-			z-index: 51;
-			top: auto;
-			left: 0;
-			right: 0;
-			bottom: 0;
-			width: auto;
-			max-width: none;
-			max-height: 88dvh;
-			border-radius: var(--r-l) var(--r-l) 0 0;
-			animation-name: sheetIn;
-		}
-		.drawer::before {
-			content: '';
-			position: absolute;
-			top: 8px;
-			left: 50%;
-			translate: -50% 0;
-			width: 36px;
-			height: 4px;
-			border-radius: 4px;
-			background: var(--line-2);
-		}
-		.dr-h {
-			padding-top: 18px;
-		}
-		.dr-body {
-			padding: 8px 22px 22px;
-		}
-		.dr-word {
-			font-size: 39px;
-		}
-		.dr-foot {
-			padding-bottom: calc(14px + var(--safe-b));
-			flex-wrap: wrap;
-		}
-	}
-	@keyframes sheetIn {
-		from {
-			transform: translateY(105%);
-		}
-	}
-	@keyframes fade {
-		from {
-			opacity: 0;
+		.foot {
+			display: none;
 		}
 	}
 </style>

@@ -1,6 +1,6 @@
-// Respostas nas listas (deck e Minhas palavras): ver a tradução ao lado da palavra é cola,
-// então ficam escondidas até a pessoa pedir. A escolha vale para as duas listas e fica salva
-// no navegador.
+// Respostas na lista do deck: ver a tradução ao lado da palavra é cola, então ficam
+// escondidas até a pessoa pedir. A escolha fica salva no navegador. (Minhas palavras tem o
+// próprio "Exibir", em routes/palavras/view.svelte.ts.)
 
 const KEY = 'linguetta.respostas';
 

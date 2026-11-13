@@ -316,6 +316,9 @@
 	{#if shell.active}
 		<SaveDialog
 			language={shell.active}
+			study={shell.studyLanguages}
+			native={shell.nativeLanguage}
+			summaries={shell.summary?.languages ?? null}
 			uiLanguage={shell.uiLanguage}
 			ssrOpen={page.url.searchParams.has('guardar')}
 		/>

@@ -12,7 +12,9 @@
 		kind,
 		path = null,
 		url = null,
-		label
+		label,
+		addLabel,
+		onchange
 	}: {
 		/** Nome do campo no formulário (o valor é o caminho no bucket, ou vazio). */
 		name: string;
@@ -21,6 +23,10 @@
 		/** URL assinada da mídia que já existe. */
 		url?: string | null;
 		label: string;
+		/** Texto do botão quando vazio (padrão: o rótulo). */
+		addLabel?: string;
+		/** Depois de enviar (caminho novo) ou remover (null): a edição no lugar salva aqui. */
+		onchange?: (path: string | null) => void;
 	} = $props();
 
 	let value = $state<string | null>(null);
@@ -56,6 +62,7 @@
 			const media = await prepareMedia(kind, file, file.name);
 			value = await uploadMedia(userId, media);
 			preview = URL.createObjectURL(media.blob);
+			onchange?.(value);
 		} catch (e) {
 			error = e instanceof MediaError ? e.message : 'Não deu para enviar o arquivo agora.';
 		} finally {
@@ -68,6 +75,7 @@
 		value = null;
 		preview = null;
 		error = null;
+		onchange?.(null);
 	}
 </script>
 
@@ -104,7 +112,7 @@
 	{:else}
 		<button type="button" class="pick" onclick={() => input?.click()} disabled={busy}>
 			<Icon name={busy ? 'upload' : kind === 'image' ? 'image' : 'sound'} size="sm" />
-			{busy ? 'Enviando…' : label}
+			{busy ? 'Enviando…' : (addLabel ?? label)}
 		</button>
 	{/if}
 	{#if error}<p class="err" role="alert">{error}</p>{/if}

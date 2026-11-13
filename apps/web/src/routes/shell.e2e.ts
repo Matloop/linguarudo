@@ -3,7 +3,7 @@ import { login } from '../e2e/auth.ts';
 
 test('N abre o diálogo Guardar e Esc fecha; N não dispara enquanto digita', async ({ page }) => {
 	await login(page);
-	const dialog = page.getByRole('dialog', { name: /Guardar em/ });
+	const dialog = page.getByRole('dialog', { name: /Guardar palavra/ });
 	await expect(dialog).toBeHidden();
 
 	await page.keyboard.press('n');
@@ -85,5 +85,5 @@ test('celular: barra de abas no lugar da lateral', async ({ page }) => {
 	await tabs.getByRole('link', { name: 'Palavras' }).click();
 	await expect(page).toHaveURL(/\/palavras$/);
 	await page.getByRole('link', { name: 'Guardar palavra' }).first().click();
-	await expect(page.getByRole('dialog', { name: /Guardar em/ })).toBeVisible();
+	await expect(page.getByRole('dialog', { name: /Guardar palavra/ })).toBeVisible();
 });

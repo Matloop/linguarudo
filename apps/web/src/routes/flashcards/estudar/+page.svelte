@@ -791,7 +791,12 @@
 	</form>
 </dialog>
 
-<dialog class="editor" bind:this={editDialog} aria-label="Editar flashcard" onclose={() => (editFor = null)}>
+<dialog
+	class="editor"
+	bind:this={editDialog}
+	aria-label="Editar flashcard"
+	onclose={() => (editFor = null)}
+>
 	<div class="ed-in">
 		<div class="ed-h">
 			<h2>{editFor?.data?.kind === 'ficha' ? 'Editar ficha' : 'Editar palavra'}</h2>
