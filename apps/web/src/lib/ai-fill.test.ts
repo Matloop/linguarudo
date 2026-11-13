@@ -1,12 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { mergeSuggestion, parseSuggestion, type FillFields } from './ai-fill.ts';
 
-const blank: FillFields = { lemma: '', reading: '', sense: '', sentence: '' };
+const blank: FillFields = { lemma: '', reading: '', sense: '', sentence: '', translation: '' };
 const ai: FillFields = {
 	lemma: 'volere',
 	reading: '',
 	sense: 'querer',
-	sentence: 'Voglio un caffè.'
+	sentence: 'Voglio un caffè.',
+	translation: 'Quero um café.'
 };
 
 describe('mergeSuggestion', () => {
@@ -19,7 +20,13 @@ describe('mergeSuggestion', () => {
 	});
 
 	test('não sobrescreve o que o usuário escreveu', () => {
-		const current = { lemma: 'voglio', reading: 'vo', sense: 'desejar', sentence: 'Io voglio.' };
+		const current = {
+			lemma: 'voglio',
+			reading: 'vo',
+			sense: 'desejar',
+			sentence: 'Io voglio.',
+			translation: 'Eu desejo.'
+		};
 		expect(mergeSuggestion(current, { ...ai, reading: 'vɔ' })).toEqual({
 			...current,
 			lemma: 'volere'
@@ -28,6 +35,14 @@ describe('mergeSuggestion', () => {
 
 	test('só espaços conta como vazio', () => {
 		expect(mergeSuggestion({ ...blank, lemma: 'x', sense: '  ' }, ai).sense).toBe('querer');
+	});
+
+	test('tradução da frase só entra vazia e com frase', () => {
+		const mine = { ...blank, lemma: 'voglio', sentence: 'Io voglio.' };
+		expect(
+			mergeSuggestion(mine, { ...ai, sentence: 'Io voglio.', translation: 'Eu quero.' })
+		).toMatchObject({ sentence: 'Io voglio.', translation: 'Eu quero.' });
+		expect(mergeSuggestion({ ...blank, lemma: 'x' }, { ...ai, sentence: '' }).translation).toBe('');
 	});
 
 	test('sugestão vazia mantém o atual', () => {
@@ -39,8 +54,20 @@ describe('mergeSuggestion', () => {
 describe('parseSuggestion', () => {
 	test('lê a resposta e apara espaços', () => {
 		expect(
-			parseSuggestion({ lemma: ' volere ', reading: '', sense: 'querer', sentence: '' })
-		).toEqual({ lemma: 'volere', reading: '', sense: 'querer', sentence: '' });
+			parseSuggestion({
+				lemma: ' volere ',
+				reading: '',
+				sense: 'querer',
+				sentence: '',
+				translation: ' Quero. '
+			})
+		).toEqual({
+			lemma: 'volere',
+			reading: '',
+			sense: 'querer',
+			sentence: '',
+			translation: 'Quero.'
+		});
 	});
 
 	test('tipos errados viram vazio; tudo vazio é nulo', () => {

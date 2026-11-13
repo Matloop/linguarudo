@@ -229,7 +229,13 @@ describe('parseSuggestion', () => {
 				{ lemma: ' volere ', reading: '', sense: ' querer ', sentence: 'Voglio un caffè.' },
 				'Io voglio.'
 			)
-		).toEqual({ lemma: 'volere', reading: '', sense: 'querer', sentence: 'Io voglio.' });
+		).toEqual({
+			lemma: 'volere',
+			reading: '',
+			sense: 'querer',
+			sentence: 'Io voglio.',
+			translation: ''
+		});
 		const long = parseSuggestion(
 			{ lemma: 'a'.repeat(300), sense: 'b'.repeat(300), sentence: 'c' },
 			''
@@ -256,8 +262,9 @@ describe('suggestRequest', () => {
 		expect(r.system).toContain('example sentence');
 		expect(r.schema).toMatchObject({
 			additionalProperties: false,
-			required: ['lemma', 'reading', 'sense', 'sentence']
+			required: ['lemma', 'reading', 'sense', 'sentence', 'translation']
 		});
+		expect(r.system).toContain('translation of your example sentence');
 
 		const withSentence = suggestRequest(
 			{ language: 'it', text: 'voglio', sentence: 'Io voglio.' },
@@ -267,5 +274,15 @@ describe('suggestRequest', () => {
 		expect(
 			withSentence.parse({ lemma: 'volere', reading: '', sense: 'querer', sentence: 'x' })?.sentence
 		).toBe('Io voglio.');
+		expect(withSentence.system).toContain("translation of the learner's sentence");
+		expect(
+			withSentence.parse({
+				lemma: 'volere',
+				reading: '',
+				sense: 'querer',
+				sentence: '',
+				translation: ' Eu  quero. '
+			})?.translation
+		).toBe('Eu quero.');
 	});
 });

@@ -1,5 +1,5 @@
 // Sugestão de campos do diálogo Guardar: a pessoa digita a palavra e a IA devolve lema,
-// leitura, sentido na língua nativa e uma frase de exemplo.
+// leitura, sentido na língua nativa, uma frase de exemplo e a tradução da frase.
 
 import { languageName } from '@linguetta/language';
 import { LIMITS } from '#lib/items.ts';
@@ -21,6 +21,8 @@ export interface Suggestion {
 	reading: string;
 	sense: string;
 	sentence: string;
+	/** A frase (a enviada ou o exemplo) na língua nativa. */
+	translation: string;
 }
 
 /** Corta em code points, sem partir emoji ou caractere fora do BMP. */
@@ -64,8 +66,8 @@ const STR = { type: 'string' } as const;
 /** Formato strict aceito pelos dois (Groq e Gemini aceitam additionalProperties). */
 export const SUGGEST_SCHEMA = {
 	type: 'object',
-	properties: { lemma: STR, reading: STR, sense: STR, sentence: STR },
-	required: ['lemma', 'reading', 'sense', 'sentence'],
+	properties: { lemma: STR, reading: STR, sense: STR, sentence: STR, translation: STR },
+	required: ['lemma', 'reading', 'sense', 'sentence', 'translation'],
 	additionalProperties: false
 };
 
@@ -89,7 +91,8 @@ export function suggestRequest(
 - lemma: the dictionary form of it. ${LEMMA_CASE} ${LEMMA_FORM}
 - reading: for the lemma, ${READING}
 - sense: its meaning in ${native}, 1 to 6 words, as used in the sentence when there is one; otherwise the most common meaning.
-- sentence: ${req.sentence ? 'an empty string (the learner already has a sentence).' : `a short, natural ${target} example sentence (at most 15 words) using the word in its most common meaning.`}`;
+- sentence: ${req.sentence ? 'an empty string (the learner already has a sentence).' : `a short, natural ${target} example sentence (at most 15 words) using the word in its most common meaning.`}
+- translation: a natural ${native} translation of ${req.sentence ? "the learner's sentence" : 'your example sentence'}, using the sense above for the word.`;
 	const user = `Language: ${target} (${req.language})
 Learner's native language: ${native} (${nativeLanguage})
 Word: ${req.text}${req.sentence ? `\nSentence: ${req.sentence}` : ''}`;
@@ -114,7 +117,8 @@ export function parseSuggestion(data: unknown, sentence: string): Suggestion | n
 		lemma,
 		reading: cap(clean(d.reading), LIMITS.reading),
 		sense: cap(clean(d.sense), LIMITS.sense),
-		sentence: sentence || cap(clean(d.sentence), LIMITS.sentence)
+		sentence: sentence || cap(clean(d.sentence), LIMITS.sentence),
+		translation: cap(clean(d.translation), LIMITS.translation)
 	};
 }
 
