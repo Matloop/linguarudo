@@ -25,9 +25,9 @@ type Client = SupabaseClient<Database>;
 const FLASHCARD_COLUMNS =
 	'id, item_id, kind, ord, due_at, stability, stability_fast, difficulty, state, schedule_status, last_review_at, reps, lapses, scheduled_days, learning_step, created_at';
 
-const FLASHCARD_WITH_ITEM = `${FLASHCARD_COLUMNS}, items!inner(lemma, reading, sense, ipa, language, tags, image, audio, encounters(sentence, highlight, origin, position, seen_at, works(title, subtitle)))`;
+const FLASHCARD_WITH_ITEM = `${FLASHCARD_COLUMNS}, items!inner(lemma, reading, sense, ipa, language, tags, image, audio, deck_id, encounters(id, sentence, highlight, translation, origin, position, seen_at, works(title, subtitle)))`;
 
-const FLASHCARD_WITH_FICHA = `${FLASHCARD_COLUMNS}, fichas!inner(id, front, back, language, tags, front_image, front_audio, back_image, back_audio)`;
+const FLASHCARD_WITH_FICHA = `${FLASHCARD_COLUMNS}, fichas!inner(id, front, back, language, tags, deck_id, front_image, front_audio, back_image, back_audio)`;
 
 export interface ReviewFilter {
 	language?: Language;
@@ -87,11 +87,14 @@ export type ItemFlashcardRow = BaseRow & {
 		reading: string;
 		language: string;
 		tags: string[];
+		deck_id: string;
 		image: string | null;
 		audio: string | null;
 		encounters: {
+			id: string;
 			sentence: string;
 			highlight: string;
+			translation: string;
 			origin: string;
 			position: unknown;
 			works: { title: string; subtitle: string } | null;
@@ -101,7 +104,14 @@ export type ItemFlashcardRow = BaseRow & {
 
 export type FichaFlashcardRow = BaseRow & {
 	kind: FichaFlashcardKind;
-	fichas: { id: string; front: string; back: string; language: string; tags: string[] } & Record<
+	fichas: {
+		id: string;
+		front: string;
+		back: string;
+		language: string;
+		tags: string[];
+		deck_id: string;
+	} & Record<
 		FichaMediaField,
 		string | null
 	>;
@@ -177,6 +187,8 @@ export async function toReviewItem(
 		tags: row.items.tags,
 		sentence: encounter?.sentence ?? '',
 		highlight: encounter?.highlight ?? '',
+		translation: encounter?.translation ?? '',
+		encounterId: encounter?.id ?? null,
 		origin: (encounter?.origin as Origin | undefined) ?? null,
 		sourceDetail: encounter ? formatWorkSource(encounter.works, encounter.position) : '',
 		image: row.items.image,

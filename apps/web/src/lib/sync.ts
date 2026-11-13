@@ -19,7 +19,14 @@ import {
 	type UiLanguage
 } from './languages.ts';
 import { isGrade, type Grade } from './review.ts';
-import { DECK_LIMITS, parseDeckName, type Deck, type LeechAction, type NewOrder } from './decks.ts';
+import {
+	DECK_LIMITS,
+	deckLimit,
+	parseDeckName,
+	type Deck,
+	type LeechAction,
+	type NewOrder
+} from './decks.ts';
 import { FICHA_LIMITS, fichaPlainText, fichaTextToHtml, renderCloze } from './fichas.ts';
 
 export const SYNC_PROTOCOL = 1;
@@ -640,6 +647,8 @@ export interface HeaderInput {
 	nativeLanguage: Language | null;
 	studyLanguages: Language[];
 	newFlashcardsPerDay: number;
+	/** Revisões máximas por dia do Geral. */
+	reviewsPerDay: number;
 	timeZone: string;
 	/** Hora local em que o dia de estudo vira (0–23). */
 	dayStartHour: number;
@@ -653,6 +662,8 @@ export interface HeaderInput {
 	leech: { lapses: number; action: LeechAction };
 	extraNew: number;
 	newAllowance: number;
+	/** Revisões que "Estudar tudo" ainda serve hoje (Geral − feitas). */
+	reviewAllowance: number;
 	/** Decks no leitor (on_reader e não pausados), pais antes dos filhos. */
 	decks: Deck[];
 }
@@ -690,6 +701,7 @@ export function utcOffsetMinutes(timeZone: string, at: Date): number {
 }
 
 export function headerLine(h: HeaderInput): string {
+	const general = { newPerDay: h.newFlashcardsPerDay, reviewsPerDay: h.reviewsPerDay };
 	return JSON.stringify({
 		t: 'header',
 		protocol: SYNC_PROTOCOL,
@@ -705,6 +717,7 @@ export function headerLine(h: HeaderInput): string {
 			nativeLanguage: h.nativeLanguage,
 			studyLanguages: h.studyLanguages,
 			newFlashcardsPerDay: h.newFlashcardsPerDay,
+			reviewsPerDay: h.reviewsPerDay,
 			timeZone: h.timeZone,
 			utcOffsetMinutes: utcOffsetMinutes(h.timeZone, h.serverNow),
 			dayStartHour: h.dayStartHour,
@@ -718,7 +731,8 @@ export function headerLine(h: HeaderInput): string {
 			nextDayStart: h.nextDayStart.toISOString(),
 			newDoneToday: h.newDoneToday,
 			extraNew: h.extraNew,
-			newAllowance: h.newAllowance
+			newAllowance: h.newAllowance,
+			reviewAllowance: h.reviewAllowance
 		},
 		decks: h.decks.map((d) => ({
 			id: d.id,
@@ -726,7 +740,9 @@ export function headerLine(h: HeaderInput): string {
 			default: d.isDefault,
 			parentId: d.parentId,
 			newOrder: d.newOrder,
-			newCap: d.newCap
+			// Limites que valem hoje (Só hoje > Este baralho > Geral).
+			newPerDay: deckLimit(d, 'new', general).value,
+			reviewsPerDay: deckLimit(d, 'reviews', general).value
 		})),
 		fsrs: { ...FSRS_HEADER, desiredRetention: h.desiredRetention }
 	});

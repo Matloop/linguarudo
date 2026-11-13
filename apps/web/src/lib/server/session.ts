@@ -4,15 +4,18 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '#lib/database.types.ts';
 import type { Language } from '#lib/languages.ts';
-import { buildQueue, dayStart, nextDayStart, type DayClock } from '#lib/review.ts';
+import { takeWithin } from '#lib/decks.ts';
+import { buildQueue, dayStart, nextDayStart, STATE_REVIEW, type DayClock } from '#lib/review.ts';
 import type { ReviewItem } from '#lib/review.ts';
 import { itemsOfWork } from './decks.ts';
 import {
 	OBRA_SESSION_NEW,
 	orderNew,
 	planNew,
+	reviewQuota,
 	scopeDeckIds,
 	stateAllowance,
+	stateReviewAllowance,
 	newDoneToday,
 	type NewPlan,
 	type QueueScope,
@@ -28,7 +31,7 @@ import {
 
 type Client = SupabaseClient<Database>;
 
-/** Teto de segurança por carga; revisões vencidas não têm limite (a próxima carga traz o resto). */
+/** Teto de segurança por carga (o limite de revisões do dia corta antes, no plano). */
 const MAX_DUE_PER_LOAD = 500;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -66,7 +69,7 @@ export async function parseScope(
 
 /**
  * Novas da sessão. Um deck ou tudo: planNew. Vários decks: a união dos escopos (cada um
- * com os subdecks), intercalada como "Estudar tudo" e cortada no orçamento do idioma.
+ * com os subdecks), intercalada como "Estudar tudo" e cortada no Geral do idioma.
  */
 export function planSession(state: QueueState, scope: SessionScope): NewPlan {
 	if (scope.kind === 'all') return planNew(state, { kind: 'all' });
@@ -82,7 +85,9 @@ export function planSession(state: QueueState, scope: SessionScope): NewPlan {
 	return {
 		ids: list.slice(0, allowance).map((c) => c.id),
 		newAllowance: allowance,
+		newLimit: state.settings.perDay,
 		newDoneToday: newDoneToday(state),
+		reviews: reviewQuota(state, stateReviewAllowance(state)),
 		more: Math.max(0, list.length - allowance),
 		deckIds
 	};
@@ -149,7 +154,7 @@ export async function loadSessionQueue(
 	const rows = results
 		.flatMap((r) => (r.data ?? []) as ReviewFlashcardRow[])
 		.sort((a, b) => (rank.get(a.id) ?? -1) - (rank.get(b.id) ?? -1));
-	const queue = buildQueue(
+	const built = buildQueue(
 		rows.map((r) => ({
 			...r,
 			itemId: 'items' in r ? r.item_id : null,
@@ -165,11 +170,22 @@ export async function loadSessionQueue(
 			reviewedToday: reviewedToday.data.map((c) => ({ id: c.id, itemId: c.item_id }))
 		}
 	);
+	// Limite de revisões do dia: as que vencem primeiro entram (buildQueue ordena por due).
+	const served = new Set(
+		takeWithin(
+			built.filter((r) => r.state === STATE_REVIEW),
+			rowDeck,
+			plan.reviews
+		).map((r) => r.id)
+	);
+	const queue = built.filter((r) => r.state !== STATE_REVIEW || served.has(r.id));
 	return attachMediaUrls(
 		supabase,
 		await Promise.all(queue.map((r) => toReviewItem(r, q.now, q.retention)))
 	);
 }
+
+const rowDeck = (r: ReviewFlashcardRow) => ('items' in r ? r.items.deck_id : r.fichas.deck_id);
 
 async function headCount(query: PromiseLike<{ count: number | null; error: unknown }>) {
 	const { count, error } = await query;

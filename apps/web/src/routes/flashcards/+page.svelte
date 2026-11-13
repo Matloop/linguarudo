@@ -13,6 +13,7 @@
 		todayTotals
 	} from '#lib/decks-ui.ts';
 	import BulkBar from '#lib/ui/BulkBar.svelte';
+	import DeckLimits from '#lib/ui/DeckLimits.svelte';
 	import DeckPicker from '#lib/ui/DeckPicker.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Mark from '#lib/ui/Mark.svelte';
@@ -57,7 +58,7 @@
 		resolve(`/flashcards/estudar?${chosen.map((d) => `deck=${d.id}`).join('&')}`)
 	);
 
-	// ---------- Novo deck ----------
+	// ---------- Novo baralho ----------
 	let createOpen = $state(false);
 	let createName = $state('');
 	let createError = $state('');
@@ -75,7 +76,7 @@
 			return;
 		}
 		const deck = r.data.deck as { id: string; name: string };
-		toast(`Deck “${deckDisplayName(deck.name)}” criado`);
+		toast(`Baralho “${deckDisplayName(deck.name)}” criado`);
 		createOpen = false;
 		createName = '';
 		createError = '';
@@ -105,8 +106,8 @@
 		if (!r.ok) return toast(r.message);
 		toast(
 			paused
-				? `${plural(chosen.length, 'deck pausado', 'decks pausados')}: fora do Estudar tudo`
-				: `${plural(chosen.length, 'deck retomado', 'decks retomados')}`
+				? `${plural(chosen.length, 'baralho pausado', 'baralhos pausados')}: fora do Estudar tudo`
+				: `${plural(chosen.length, 'baralho retomado', 'baralhos retomados')}`
 		);
 	}
 
@@ -121,11 +122,11 @@
 			return;
 		}
 		renameOpen = false;
-		toast('Deck renomeado');
+		toast('Baralho renomeado');
 	}
 
 	const nestTargets = $derived([
-		{ id: '', name: 'Nenhum (deck de topo)', depth: 0 },
+		{ id: '', name: 'Nenhum (baralho de topo)', depth: 0 },
 		...decks
 			.filter((d) => d.depth === 0 && !sel.has(d.id))
 			.map((d) => ({ id: d.id, name: d.name, depth: 0 }))
@@ -139,7 +140,7 @@
 		moveOpen = false;
 		if (!r.ok) return toast(r.message);
 		const target = decks.find((d) => d.id === choice.deckId);
-		toast(target ? `Movido para ${deckDisplayName(target.name)}` : 'Agora é deck de topo');
+		toast(target ? `Movido para ${deckDisplayName(target.name)}` : 'Agora é baralho de topo');
 		sel.clear();
 	}
 
@@ -158,7 +159,7 @@
 </script>
 
 <svelte:head>
-	<title>Flashcards · Linguetta</title>
+	<title>Baralhos · Linguetta</title>
 </svelte:head>
 
 <svelte:window {onkeydown} />
@@ -196,7 +197,7 @@
 
 <div class="ph">
 	<div>
-		<h1>Flashcards</h1>
+		<h1>Baralhos</h1>
 		{#if !nothing}<p data-testid="hub-sub">{subtitle}</p>{/if}
 	</div>
 	<div class="ph-acts">
@@ -204,7 +205,7 @@
 			><Icon name="upload" size="sm" />Importar</a
 		>
 		{@render more()}
-		<Popover label="Novo deck" bind:open={createOpen}>
+		<Popover label="Novo baralho" bind:open={createOpen}>
 			{#snippet trigger({ toggle, expanded, id })}
 				<button
 					class="btn btn-soft"
@@ -212,12 +213,12 @@
 					aria-haspopup="dialog"
 					aria-expanded={expanded}
 					aria-controls={id}
-					onclick={toggle}><Icon name="plus" size="sm" />Novo deck</button
+					onclick={toggle}><Icon name="plus" size="sm" />Novo baralho</button
 				>
 			{/snippet}
 			{#snippet children({ close })}
 				<form class="pop-form" onsubmit={create}>
-					<label for="novo-deck">Nome do deck</label>
+					<label for="novo-deck">Nome do baralho</label>
 					<!-- svelte-ignore a11y_autofocus -->
 					<input
 						id="novo-deck"
@@ -233,7 +234,7 @@
 					/>
 					{#if createError}<p class="err" id="novo-deck-erro" role="alert">{createError}</p>{/if}
 					<div class="pop-row">
-						<span class="code" title="Idioma do deck">{data.language.toUpperCase()}</span>
+						<span class="code" title="Idioma do baralho">{data.language.toUpperCase()}</span>
 						<span class="sp"></span>
 						<button class="btn btn-ghost" type="button" onclick={close}>Cancelar</button>
 						<button class="btn btn-primary" disabled={!createName.trim() || creating}>Criar</button>
@@ -248,9 +249,9 @@
 	<div class="empty">
 		<div>
 			<Mark class="mark mark-hero" />
-			<h2>Nenhum flashcard ainda</h2>
+			<h2>Nenhuma carta ainda</h2>
 			<p>
-				Guarde palavras, crie fichas ou importe um baralho do Anki. Cada uma vira flashcard no deck
+				Guarde palavras, crie fichas ou importe um baralho do Anki. Cada uma vira carta no baralho
 				certo.
 			</p>
 			<div class="acts">
@@ -315,28 +316,28 @@
 	</div>
 
 	<table class="decks" class:picking={picking || sel.size > 0} class:solo={onlyDefault}>
-		<caption class="visually-hidden">Decks em {data.language}</caption>
-		{#if !onlyDefault}
-			<thead>
-				<tr>
-					<th scope="col" class="c-ck"
-						><input
-							class="ck"
-							type="checkbox"
-							aria-label="Selecionar todos"
-							checked={sel.size === decks.length && decks.length > 0}
-							indeterminate={sel.size > 0 && sel.size < decks.length}
-							onclick={() => (sel.size === decks.length ? sel.clear() : sel.all())}
-						/></th
-					>
-					<th scope="col" class="c-name">Deck</th>
-					<th scope="col" class="c-n">Novas</th>
-					<th scope="col" class="c-n">Aprendendo</th>
-					<th scope="col" class="c-n">Revisar</th>
-					<th scope="col" class="c-today">Hoje</th>
-				</tr>
-			</thead>
-		{/if}
+		<caption class="visually-hidden">Baralhos em {data.language}</caption>
+		<thead>
+			<tr>
+				<th scope="col" class="c-ck"
+					><input
+						class="ck"
+						type="checkbox"
+						aria-label="Selecionar todos"
+						checked={sel.size === decks.length && decks.length > 0}
+						indeterminate={sel.size > 0 && sel.size < decks.length}
+						onclick={() => (sel.size === decks.length ? sel.clear() : sel.all())}
+					/></th
+				>
+				<th scope="col" class="c-name">Baralho</th>
+				<th scope="col" class="c-n">Novas</th>
+				<th scope="col" class="c-n">Aprendendo</th>
+				<th scope="col" class="c-n">Revisar</th>
+				<th scope="col" class="c-today">Hoje</th>
+				<th scope="col" class="c-n c-total">Cartas</th>
+				<th scope="col" class="c-set"><span class="visually-hidden">Limites</span></th>
+			</tr>
+		</thead>
 		<tbody>
 			{#each decks as d (d.id)}
 				{@const c = rowCounts(d)}
@@ -390,6 +391,12 @@
 					<td class="c-today {cell(forToday(c))}" class:rev={forToday(c) > 0 && !paused}
 						>{forToday(c)}<span class="visually-hidden">&nbsp;para hoje</span></td
 					>
+					<td class="c-n c-total {cell(c.flashcards)}" data-testid="deck-total"
+						>{c.flashcards}<span class="visually-hidden"
+							>&nbsp;{c.flashcards === 1 ? 'carta' : 'cartas'}</span
+						></td
+					>
+					<td class="c-set"><DeckLimits deck={d} /></td>
 				</tr>
 			{/each}
 		</tbody>
@@ -400,7 +407,7 @@
 		</p>
 	{/if}
 
-	<BulkBar count={sel.size} label="Ações dos decks" onclear={() => sel.clear()}>
+	<BulkBar count={sel.size} label="Ações dos baralhos" onclear={() => sel.clear()}>
 		<a class="btn btn-ghost" href={studyHref}><Icon name="play" size="sm" />Estudar</a>
 		<button class="btn btn-ghost" type="button" disabled={busy} onclick={togglePause}
 			><Icon name={allPaused ? 'play' : 'pause'} size="sm" />{allPaused
@@ -408,7 +415,7 @@
 				: 'Pausar'}</button
 		>
 		{#if chosen.length === 1}
-			<Popover label="Renomear deck" bind:open={renameOpen} align="start" placement="above">
+			<Popover label="Renomear baralho" bind:open={renameOpen} align="start" placement="above">
 				{#snippet trigger({ toggle, expanded, id })}
 					<button
 						class="btn btn-ghost"
@@ -421,7 +428,7 @@
 				{/snippet}
 				{#snippet children({ close })}
 					<form class="pop-form" onsubmit={rename}>
-						<label for="renomear-deck">Nome do deck</label>
+						<label for="renomear-deck">Nome do baralho</label>
 						<input
 							id="renomear-deck"
 							class="input"
@@ -442,13 +449,13 @@
 				{/snippet}
 			</Popover>
 		{/if}
-		<Popover label="Mover deck" bind:open={moveOpen} align="start" placement="above">
+		<Popover label="Mover baralho" bind:open={moveOpen} align="start" placement="above">
 			{#snippet trigger({ toggle, expanded, id })}
 				<button
 					class="btn btn-ghost"
 					type="button"
 					disabled={!canNest}
-					title={canNest ? undefined : 'Deck com subdecks fica no topo'}
+					title={canNest ? undefined : 'Baralho com sub-baralhos fica no topo'}
 					aria-haspopup="dialog"
 					aria-expanded={expanded}
 					aria-controls={id}
@@ -456,7 +463,7 @@
 				>
 			{/snippet}
 			<div>
-				<p class="pop-title">Dentro de qual deck?</p>
+				<p class="pop-title">Dentro de qual baralho?</p>
 				<DeckPicker decks={nestTargets} allowNew={false} pending={busy} onpick={nest} />
 			</div>
 		</Popover>
@@ -690,6 +697,33 @@
 	}
 	.c-today {
 		display: none;
+	}
+	.c-total {
+		width: 96px;
+		color: var(--ink-2);
+	}
+	.c-set {
+		width: 44px;
+		padding: 0 4px 0 0;
+		position: relative;
+		z-index: 2;
+	}
+	.c-set:has(:global([aria-expanded='true'])) {
+		z-index: 5;
+	}
+	.c-set :global(.gear) {
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+	tr:hover .c-set :global(.gear),
+	.c-set:focus-within :global(.gear),
+	.c-set :global(.gear[aria-expanded='true']) {
+		opacity: 1;
+	}
+	@media (hover: none) {
+		.c-set :global(.gear) {
+			opacity: 1;
+		}
 	}
 	.zero {
 		color: var(--ink-3);

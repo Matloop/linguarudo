@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { budget, summarizeDecks, type Deck } from './decks.ts';
+import { budget, summarizeDecks, type Deck, type RawDeckCounts } from './decks.ts';
 import {
 	deckDisplayName,
 	deckSubtitle,
@@ -28,7 +28,10 @@ function deck(id: string, over: Partial<Deck> = {}): Deck {
 		isDefault: false,
 		paused: false,
 		newOrder: 'importance',
-		newCap: null,
+		newPerDay: null,
+		reviewsPerDay: null,
+		newPerDayToday: null,
+		reviewsPerDayToday: null,
 		onReader: true,
 		position: 0,
 		createdAt: '2026-11-01T00:00:00.000Z',
@@ -36,21 +39,26 @@ function deck(id: string, over: Partial<Deck> = {}): Deck {
 	};
 }
 
-const raw = (over: Partial<Record<string, number>> = {}) => ({
+const raw = (over: Partial<RawDeckCounts> = {}): RawDeckCounts => ({
 	newAvailable: 0,
 	learning: 0,
-	review: 0,
+	reviewAvailable: 0,
 	newDoneToday: 0,
+	reviewDoneToday: 0,
 	items: 0,
 	fichas: 0,
+	flashcards: 0,
 	leeches: 0,
 	...over
 });
 
+const day = (perDay: number, newDoneToday: number, reviewsPerDay = 200, reviewDoneToday = 0) =>
+	budget({ perDay, extraNew: 0, newDoneToday, reviewsPerDay, reviewDoneToday });
+
 describe('textos', () => {
 	test('plural e nome de subdeck do Anki', () => {
-		expect(plural(1, 'deck', 'decks')).toBe('1 deck');
-		expect(plural(0, 'deck', 'decks')).toBe('0 decks');
+		expect(plural(1, 'baralho', 'baralhos')).toBe('1 baralho');
+		expect(plural(0, 'baralho', 'baralhos')).toBe('0 baralhos');
 		expect(deckDisplayName('B::C')).toBe('B › C');
 		expect(deckDisplayName('B :: C::D')).toBe('B › C › D');
 		expect(deckDisplayName('Séries')).toBe('Séries');
@@ -58,8 +66,8 @@ describe('textos', () => {
 
 	test('cabeçalho do hub', () => {
 		const decks = [deck('a'), deck('b'), deck('c'), deck('a1', { parentId: 'a' })];
-		expect(hubSubtitle(decks, 63)).toBe('3 decks · 1 subdeck · 63 flashcards');
-		expect(hubSubtitle([deck('a')], 1)).toBe('1 deck · 1 flashcard');
+		expect(hubSubtitle(decks, 63)).toBe('3 baralhos · 1 sub-baralho · 63 cartas');
+		expect(hubSubtitle([deck('a')], 1)).toBe('1 baralho · 1 carta');
 	});
 
 	test('detalhe de hoje sem partes zeradas', () => {
@@ -80,8 +88,15 @@ describe('textos', () => {
 	});
 
 	test('subtítulo do deck e rótulo da seleção', () => {
-		expect(deckSubtitle(48, 5)).toBe('48 flashcards · teto de 5 novas/dia');
-		expect(deckSubtitle(1, null)).toBe('1 flashcard · sem teto próprio');
+		expect(
+			deckSubtitle(48, {
+				new: { value: 20, mode: 'geral' },
+				reviews: { value: 200, mode: 'deck' }
+			})
+		).toBe('48 cartas · 20 novas/dia · 200 revisões/dia');
+		expect(
+			deckSubtitle(1, { new: { value: 1, mode: 'hoje' }, reviews: { value: 1, mode: 'geral' } })
+		).toBe('1 carta · 1 nova/dia · 1 revisão/dia');
 		expect(selectionLabel(1)).toBe('1 selecionado');
 		expect(selectionLabel(3)).toBe('3 selecionados');
 	});
@@ -95,35 +110,55 @@ describe('para hoje', () => {
 		deck('p1', { parentId: 'p' })
 	];
 	const counts = new Map([
-		['a', raw({ newAvailable: 3, review: 4 })],
+		['a', raw({ newAvailable: 3, reviewAvailable: 4 })],
 		['a1', raw({ newAvailable: 10, learning: 2 })],
-		['p', raw({ review: 7, newAvailable: 5 })],
-		['p1', raw({ review: 1 })]
+		['p', raw({ reviewAvailable: 7, newAvailable: 5 })],
+		['p1', raw({ reviewAvailable: 1 })]
 	]);
 
 	test('soma os ativos e limita as novas ao orçamento', () => {
-		const b = budget(10, 0, 4);
-		const rows = summarizeDecks(decks, counts, b.newAllowance);
+		const b = day(10, 4);
+		const rows = summarizeDecks(decks, counts, b);
 		const t = todayTotals(rows, b);
 		// Novas: min(6, 3 + 6) = 6; revisões: 4 + 2 (pausado e filho de pausado ficam fora).
 		expect(t).toEqual({ total: 12, fresh: 6, reviews: 6, waiting: 7, budgetSpent: false });
 	});
 
 	test('orçamento esgotado', () => {
-		const b = budget(10, 0, 10);
-		const t = todayTotals(summarizeDecks(decks, counts, b.newAllowance), b);
+		const b = day(10, 10);
+		const t = todayTotals(summarizeDecks(decks, counts, b), b);
 		expect(t.fresh).toBe(0);
 		expect(t.budgetSpent).toBe(true);
 		expect(t.total).toBe(6);
 	});
 
 	test('linha do pai mostra o que a sessão dele serve; subdeck, o próprio', () => {
-		const b = budget(10, 0, 0);
-		const rows = summarizeDecks(decks, counts, b.newAllowance);
+		const b = day(10, 0);
+		const rows = summarizeDecks(decks, counts, b);
 		const a = rows.find((d) => d.id === 'a')!;
 		const a1 = rows.find((d) => d.id === 'a1')!;
 		expect(forToday(rowCounts(a))).toBe(10 + 2 + 4);
 		expect(forToday(rowCounts(a1))).toBe(10 + 2);
+	});
+
+	test('revisões: limite do pai junta os filhos; o Geral corta o Estudar tudo', () => {
+		const ds = [
+			deck('a', { reviewsPerDay: 3 }),
+			deck('a1', { parentId: 'a' }),
+			deck('b', { position: 1 })
+		];
+		const c = new Map([
+			['a', raw({ reviewAvailable: 2 })],
+			['a1', raw({ reviewAvailable: 5, learning: 1 })],
+			['b', raw({ reviewAvailable: 4 })]
+		]);
+		const rows = summarizeDecks(ds, c, day(10, 0));
+		expect(rowCounts(rows.find((d) => d.id === 'a')!).review).toBe(3);
+		// a: min(2 + 3, 3) = 3; b: 4; aprendendo (1) fica fora do limite.
+		expect(todayTotals(rows, day(10, 0)).reviews).toBe(1 + 3 + 4);
+		// Geral de 5 com 0 feitas: min(7, 5) + 1.
+		const tight = day(10, 0, 5);
+		expect(todayTotals(summarizeDecks(ds, c, tight), tight).reviews).toBe(1 + 5);
 	});
 });
 

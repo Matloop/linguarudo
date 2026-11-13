@@ -6,10 +6,12 @@ import {
 	type Deck,
 	type DeckBudget,
 	type DeckCounts,
-	type DeckSummary
+	type DeckLimitsView,
+	type DeckSummary,
+	type LimitMode
 } from './decks.ts';
 
-/** "1 deck", "3 decks". */
+/** "1 baralho", "3 baralhos". */
 export function plural(n: number, one: string, many: string): string {
 	return `${n} ${n === 1 ? one : many}`;
 }
@@ -51,15 +53,31 @@ export interface TodayTotals {
 }
 
 /**
- * Totais de "Estudar tudo": decks ativos (sem os pausados nem os filhos de pausados);
- * novas limitadas pelo orçamento do idioma e pelo teto de cada deck.
+ * Totais de "Estudar tudo": decks ativos (sem os pausados nem os filhos de pausados). Novas
+ * e revisões cabem nos limites de cada deck (o filho conta contra o pai) e no Geral do
+ * idioma; aprendendo nunca tem limite.
  */
 export function todayTotals(decks: readonly DeckSummary[], b: DeckBudget): TodayTotals {
 	const active = decks.filter((d) => !isPausedIn(d, decks as readonly Deck[]));
-	const reviews = active.reduce((s, d) => s + d.counts.learning + d.counts.review, 0);
+	const ids = new Set(active.map((d) => d.id));
+	const tops = active.filter((d) => !d.parentId || !ids.has(d.parentId));
+	const pooled = (k: 'newToday' | 'review', left: (d: DeckSummary) => number) =>
+		tops.reduce((s, t) => {
+			const own = active
+				.filter((d) => d.id === t.id || d.parentId === t.id)
+				.reduce((n, d) => n + d.counts[k], 0);
+			return s + Math.min(own, left(t));
+		}, 0);
+	const learning = active.reduce((s, d) => s + d.counts.learning, 0);
+	const reviews =
+		learning +
+		Math.min(
+			b.reviewAllowance,
+			pooled('review', (d) => d.limits.reviewsLeft)
+		);
 	const fresh = Math.min(
 		b.newAllowance,
-		active.reduce((s, d) => s + d.counts.newToday, 0)
+		pooled('newToday', (d) => d.limits.newLeft)
 	);
 	const available = active.reduce((s, d) => s + d.counts.newAvailable, 0);
 	const waiting = Math.max(0, available - fresh);
@@ -72,12 +90,12 @@ export function todayTotals(decks: readonly DeckSummary[], b: DeckBudget): Today
 	};
 }
 
-/** "3 decks · 1 subdeck · 63 flashcards". */
+/** "3 baralhos · 1 sub-baralho · 63 cartas". */
 export function hubSubtitle(decks: readonly Pick<Deck, 'parentId'>[], flashcards: number): string {
 	const subs = decks.filter((d) => d.parentId).length;
-	const parts = [plural(decks.length - subs, 'deck', 'decks')];
-	if (subs) parts.push(plural(subs, 'subdeck', 'subdecks'));
-	parts.push(plural(flashcards, 'flashcard', 'flashcards'));
+	const parts = [plural(decks.length - subs, 'baralho', 'baralhos')];
+	if (subs) parts.push(plural(subs, 'sub-baralho', 'sub-baralhos'));
+	parts.push(plural(flashcards, 'carta', 'cartas'));
 	return parts.join(' · ');
 }
 
@@ -107,12 +125,24 @@ export function deleteMoveText(n: number, target: string): string {
 	return n ? `Mover ${n} para ${target}` : `Mover para ${target}`;
 }
 
-/** Subtítulo da página do deck: "48 flashcards · teto de 5 novas/dia". */
-export function deckSubtitle(flashcards: number, newCap: number | null): string {
-	const parts = [plural(flashcards, 'flashcard', 'flashcards')];
-	parts.push(newCap === null ? 'sem teto próprio' : `teto de ${newCap} novas/dia`);
-	return parts.join(' · ');
+/** Subtítulo da página do deck: "48 cartas · 20 novas/dia · 200 revisões/dia". */
+export function deckSubtitle(
+	flashcards: number,
+	limits: Pick<DeckLimitsView, 'new' | 'reviews'>
+): string {
+	return [
+		plural(flashcards, 'carta', 'cartas'),
+		`${limits.new.value} ${limits.new.value === 1 ? 'nova' : 'novas'}/dia`,
+		`${limits.reviews.value} ${limits.reviews.value === 1 ? 'revisão' : 'revisões'}/dia`
+	].join(' · ');
 }
+
+/** De onde vem o limite, para a engrenagem: "Geral", "Este baralho", "Só hoje". */
+export const LIMIT_MODE_LABEL: Record<LimitMode, string> = {
+	geral: 'Geral',
+	deck: 'Este baralho',
+	hoje: 'Só hoje'
+};
 
 // ---------- Seleção ----------
 

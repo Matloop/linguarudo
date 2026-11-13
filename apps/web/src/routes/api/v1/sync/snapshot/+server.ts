@@ -13,7 +13,8 @@ import {
 	parseQueueState,
 	readerDecks,
 	readerRanks,
-	stateAllowance
+	stateAllowance,
+	stateReviewAllowance
 } from '#lib/server/queue.ts';
 import {
 	decodePageToken,
@@ -121,6 +122,7 @@ export const GET: RequestHandler = (event) =>
 				nativeLanguage: parseLanguage(res.account?.native_language),
 				studyLanguages: parseStudyLanguages(res.account?.study_languages ?? []) ?? [],
 				newFlashcardsPerDay: queue.settings.perDay,
+				reviewsPerDay: queue.settings.reviewsPerDay,
 				timeZone: clock.timeZone,
 				dayStartHour: clock.startHour,
 				desiredRetention: res.account?.desired_retention ?? DEFAULT_RETENTION,
@@ -131,6 +133,7 @@ export const GET: RequestHandler = (event) =>
 				leech: { lapses: queue.settings.leechLapses, action: queue.settings.leechAction },
 				extraNew: queue.extraNew,
 				newAllowance: stateAllowance(queue),
+				reviewAllowance: stateReviewAllowance(queue),
 				decks: readerDecks(queue)
 			}),
 			...(kind === 'item'

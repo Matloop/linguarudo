@@ -2,7 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { enhance, type ActionResult, type SubmitFunction } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import {
 		MAX_STUDY_LANGUAGES,
 		UI_LANGUAGES,
@@ -17,6 +17,7 @@
 	import { applyTheme, toast } from '#lib/ui/app-state.svelte.ts';
 	import Icon from '#lib/ui/Icon.svelte';
 	import LanguagePicker from '#lib/ui/LanguagePicker.svelte';
+	import Select from '#lib/ui/Select.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -57,11 +58,10 @@
 	const initial = $derived((email || '?').charAt(0).toUpperCase());
 	const name = $derived(email.split('@')[0] ?? '');
 
-	let newPerDay = $derived(data.newPerDay);
 	let leechLapses = $derived(data.leechLapses);
 	const ORDER_LABELS: [NewOrder, string, string][] = [
 		['importance', 'Importância', 'Vem antes o que você mais viu, em mais obras'],
-		['deck', 'Ordem do deck', 'Cada deck na ordem em que as palavras entraram'],
+		['deck', 'Ordem do baralho', 'Cada baralho na ordem em que as palavras entraram'],
 		['random', 'Aleatória', 'Sorteio estável no dia']
 	];
 	const LEECH_LABELS: [LeechAction, string][] = [
@@ -87,6 +87,7 @@
 	});
 	// Só no navegador: no servidor o fuso seria o do host.
 	let browserZone = $state<string | null>(null);
+	let zoneForm: HTMLFormElement | undefined = $state();
 	onMount(() => {
 		browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
 	});
@@ -134,11 +135,6 @@
 		applyTheme(theme);
 		cancel();
 		invalidateAll();
-	};
-
-	const submitStep: SubmitFunction = ({ formData }) => {
-		newPerDay = Number(formData.get('novasPorDia'));
-		return afterSave();
 	};
 
 	const submitLapses: SubmitFunction = ({ formData }) => {
@@ -291,32 +287,6 @@
 
 	<h2 class="group" id="estudo">Estudo</h2>
 
-	<div class="set-row">
-		<div>
-			<b id="npd-titulo">Palavras novas por dia</b>
-			<span>Revisões não têm limite</span>
-		</div>
-		<form
-			class="stepper"
-			method="POST"
-			action="?/novasPorDia"
-			use:enhance={submitStep}
-			aria-labelledby="npd-titulo"
-		>
-			<input type="hidden" name="voltar" value="/perfil" />
-			<button name="novasPorDia" value={newPerDay - 1} aria-label="Menos" disabled={newPerDay <= 0}
-				>−</button
-			>
-			<output aria-live="polite">{newPerDay}</output>
-			<button
-				name="novasPorDia"
-				value={newPerDay + 1}
-				aria-label="Mais"
-				disabled={newPerDay >= data.maxNewPerDay}>+</button
-			>
-		</form>
-	</div>
-
 	<div class="set-row stack">
 		<div>
 			<b id="ordem-titulo">Ordem das novas</b>
@@ -444,6 +414,7 @@
 			</span>
 		</div>
 		<form
+			bind:this={zoneForm}
 			class="zone"
 			method="POST"
 			action="?/fuso"
@@ -451,16 +422,14 @@
 			aria-labelledby="fuso-titulo"
 		>
 			<input type="hidden" name="voltar" value="/perfil" />
-			<select
+			<Select
 				name="fuso"
-				aria-labelledby="fuso-titulo"
+				labelledby="fuso-titulo"
+				align="end"
 				value={clock.timeZone}
-				onchange={(e) => e.currentTarget.form?.requestSubmit()}
-			>
-				{#each zones as z (z)}
-					<option value={z}>{z.replaceAll('_', ' ')}</option>
-				{/each}
-			</select>
+				options={zones.map((z) => ({ value: z, label: z.replaceAll('_', ' ') }))}
+				onchange={() => tick().then(() => zoneForm?.requestSubmit())}
+			/>
 			<noscript><button class="btn btn-soft">Salvar</button></noscript>
 		</form>
 		{#if browserZone && browserZone !== clock.timeZone}
@@ -701,17 +670,8 @@
 		align-items: center;
 		min-width: 0;
 	}
-	.zone select {
-		max-width: 220px;
-		height: 36px;
-		padding: 0 10px;
-		border-radius: var(--r-m);
-		background: var(--sunk);
-		box-shadow: inset 0 0 0 1px var(--line);
-		border: 0;
-		color: var(--ink);
-		font: inherit;
-		font-size: 15px;
+	.zone :global(.sel) {
+		width: 220px;
 	}
 	.f-err {
 		color: var(--terra-ink);

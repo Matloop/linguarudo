@@ -9,13 +9,7 @@ import {
 	addStudyLanguage,
 	parseTheme
 } from '#lib/prefs.ts';
-import {
-	DEFAULT_NEW_PER_DAY,
-	DEFAULT_RETENTION,
-	isTimeZone,
-	MAX_RETENTION,
-	MIN_RETENTION
-} from '#lib/review.ts';
+import { DEFAULT_RETENTION, isTimeZone, MAX_RETENTION, MIN_RETENTION } from '#lib/review.ts';
 import {
 	DECK_LIMITS,
 	DEFAULT_LEECH_LAPSES,
@@ -27,9 +21,6 @@ import {
 import { updateStudySettings, type StudySettings } from '#lib/server/decks.ts';
 import { loadSettings } from '#lib/server/settings.ts';
 import type { Actions, PageServerLoad } from './$types';
-
-/** Teto do "palavras novas por dia" (o banco aceita até 9999; ninguém precisa de tanto). */
-const MAX_NEW_PER_DAY = 50;
 
 async function requireUser(locals: App.Locals) {
 	const user = await locals.getUser();
@@ -54,9 +45,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const [{ data: settings }, { count: tokens }] = await Promise.all([
 		locals.supabase
 			.from('user_settings')
-			.select(
-				'new_flashcards_per_day, autoplay_audio, desired_retention, new_order, leech_lapses, leech_action'
-			)
+			.select('autoplay_audio, desired_retention, new_order, leech_lapses, leech_action')
 			.eq('user_id', user.id)
 			.maybeSingle(),
 		locals.supabase
@@ -65,8 +54,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 			.eq('user_id', user.id)
 	]);
 	return {
-		newPerDay: settings?.new_flashcards_per_day ?? DEFAULT_NEW_PER_DAY,
-		maxNewPerDay: MAX_NEW_PER_DAY,
 		newOrder: (parseNewOrder(settings?.new_order) ?? 'importance') as NewOrder,
 		leechLapses: settings?.leech_lapses ?? DEFAULT_LEECH_LAPSES,
 		leechAction: (parseLeechAction(settings?.leech_action) ?? 'wait') as LeechAction,
@@ -186,16 +173,6 @@ export const actions: Actions = {
 			.eq('user_id', user.id);
 		if (dbError) return fail(500, { message: 'Não deu para salvar agora.' });
 		back(form);
-	},
-
-	novasPorDia: async ({ locals, request }) => {
-		const user = await requireUser(locals);
-		const form = await request.formData();
-		const n = Number(form.get('novasPorDia'));
-		if (!Number.isInteger(n) || n < 0 || n > MAX_NEW_PER_DAY) {
-			return fail(400, { message: `Escolha um número de 0 a ${MAX_NEW_PER_DAY}.` });
-		}
-		return saveStudy(locals, user.id, form, { newFlashcardsPerDay: n });
 	},
 
 	/** Como "Estudar tudo" intercala as novas dos decks. */

@@ -10,6 +10,7 @@ import {
 	scopeDeckIds,
 	stableHash,
 	stateAllowance,
+	stateReviewAllowance,
 	type QueueCandidate,
 	type QueueState
 } from './queue.ts';
@@ -23,7 +24,10 @@ function deck(id: string, over: Partial<Deck> = {}): Deck {
 		isDefault: false,
 		paused: false,
 		newOrder: 'importance',
-		newCap: null,
+		newPerDay: null,
+		reviewsPerDay: null,
+		newPerDayToday: null,
+		reviewsPerDayToday: null,
 		onReader: true,
 		position: 0,
 		createdAt: '2026-11-01T00:00:00.000Z',
@@ -52,10 +56,17 @@ function card(id: string, deckId: string, over: Partial<QueueCandidate> = {}): Q
 
 function state(over: Partial<QueueState> = {}): QueueState {
 	return {
-		settings: { perDay: 10, newOrder: 'importance', leechLapses: 8, leechAction: 'wait' },
+		settings: {
+			perDay: 10,
+			reviewsPerDay: 200,
+			newOrder: 'importance',
+			leechLapses: 8,
+			leechAction: 'wait'
+		},
 		dayKey: '2026-11-11',
 		extraNew: 0,
 		newDoneByDeck: {},
+		reviewDoneByDeck: {},
 		activeWorkId: null,
 		decks: [deck('padrao', { isDefault: true })],
 		candidates: [],
@@ -115,9 +126,9 @@ describe('ordem das novas', () => {
 		expect(stableHash('abc')).toBe(stableHash('abc'));
 	});
 
-	test('teto do deck desconta as novas que o deck já começou hoje', () => {
+	test('novas por dia do deck descontam as que o deck já começou hoje', () => {
 		const s = state({
-			decks: [deck('a', { newCap: 3 }), deck('b')],
+			decks: [deck('a', { newPerDay: 3 }), deck('b')],
 			newDoneByDeck: { a: 2 },
 			candidates: [card('a1', 'a'), card('a2', 'a'), card('b1', 'b'), card('b2', 'b')]
 		});
@@ -140,7 +151,13 @@ describe('ordem das novas', () => {
 
 	test('conta em ordem de deck: um deck inteiro depois do outro, filho logo após o pai', () => {
 		const s = state({
-			settings: { perDay: 10, newOrder: 'deck', leechLapses: 8, leechAction: 'wait' },
+			settings: {
+				perDay: 10,
+				reviewsPerDay: 200,
+				newOrder: 'deck',
+				leechLapses: 8,
+				leechAction: 'wait'
+			},
 			decks: [deck('b', { position: 1 }), deck('a'), deck('a-filho', { parentId: 'a' })],
 			candidates: [card('b1', 'b', { encounters: 9 }), card('f1', 'a-filho'), card('a1', 'a')]
 		});
@@ -187,6 +204,47 @@ describe('escopos', () => {
 		]);
 	});
 
+	test('um deck segue o próprio limite e o do pai, não o Geral', () => {
+		const s = state({
+			decks: [deck('pai', { newPerDay: 3 }), deck('filho', { parentId: 'pai', newPerDay: 30 })],
+			newDoneByDeck: { filho: 1 },
+			candidates: Array.from({ length: 8 }, (_, i) => card(`f${i}`, 'filho'))
+		});
+		// Filho: 30 − 1; pai: 3 − 1 (o feito no filho conta no pai).
+		const child = planNew(s, { kind: 'deck', deckId: 'filho' });
+		expect(child.ids).toHaveLength(2);
+		expect(child).toMatchObject({ newAllowance: 2, newLimit: 30, newDoneToday: 1, more: 6 });
+		// Geral 0, mas o pai tem limite próprio: a sessão do deck ignora o Geral.
+		const zero = { ...s, settings: { ...s.settings, perDay: 0 } };
+		expect(planNew(zero, { kind: 'deck', deckId: 'pai' }).ids).toHaveLength(2);
+		expect(planNew(zero, { kind: 'all' }).ids).toHaveLength(0);
+	});
+
+	test('Só hoje vence o limite do deck', () => {
+		const s = state({
+			decks: [deck('a', { newPerDay: 1, newPerDayToday: 4 })],
+			candidates: Array.from({ length: 6 }, (_, i) => card(`a${i}`, 'a'))
+		});
+		const plan = planNew(s, { kind: 'deck', deckId: 'a' });
+		expect(plan.ids).toHaveLength(4);
+		expect(plan.newLimit).toBe(4);
+	});
+
+	test('revisões: Estudar tudo no Geral menos as feitas; um deck nos limites dele', () => {
+		const s = state({
+			settings: { ...state().settings, reviewsPerDay: 5 },
+			decks: [deck('a', { reviewsPerDay: 2 }), deck('b')],
+			reviewDoneByDeck: { b: 1 }
+		});
+		const all = planNew(s, { kind: 'all' });
+		expect(all.reviews.max).toBe(4);
+		expect(all.reviews.left.get('a')).toBe(2);
+		expect(all.reviews.left.get('b')).toBe(4);
+		const one = planNew(s, { kind: 'deck', deckId: 'a' });
+		expect(one.reviews.max).toBe(Infinity);
+		expect(planNew(s, { kind: 'obra', workId: 'w', itemIds: new Set() }).reviews.max).toBe(0);
+	});
+
 	test('Desta obra: só itens da obra, fora do orçamento', () => {
 		const s = state({
 			decks,
@@ -227,10 +285,17 @@ describe('leitor', () => {
 	test('parseQueueState aceita o jsonb do banco', () => {
 		const s = parseQueueState(
 			{
-				settings: { perDay: 7, newOrder: 'random', leechLapses: 6, leechAction: 'suspend' },
+				settings: {
+					perDay: 7,
+					reviewsPerDay: 50,
+					newOrder: 'random',
+					leechLapses: 6,
+					leechAction: 'suspend'
+				},
 				dayKey: '2026-11-11',
 				extraNew: 5,
 				newDoneByDeck: { d1: 2 },
+				reviewDoneByDeck: { d1: 9 },
 				activeWorkId: null,
 				decks: [
 					{
@@ -240,7 +305,10 @@ describe('leitor', () => {
 						default: true,
 						paused: false,
 						newOrder: 'importance',
-						newCap: null,
+						newPerDay: 4,
+						reviewsPerDay: null,
+						newPerDayToday: 12,
+						reviewsPerDayToday: null,
 						onReader: true,
 						position: 0,
 						createdAt: '2026-11-01T00:00:00Z'
@@ -266,12 +334,14 @@ describe('leitor', () => {
 		);
 		expect(s.settings).toEqual({
 			perDay: 7,
+			reviewsPerDay: 50,
 			newOrder: 'random',
 			leechLapses: 6,
 			leechAction: 'suspend'
 		});
 		expect(stateAllowance(s)).toBe(10);
-		expect(s.decks[0].isDefault).toBe(true);
+		expect(stateReviewAllowance(s)).toBe(41);
+		expect(s.decks[0]).toMatchObject({ isDefault: true, newPerDay: 4, newPerDayToday: 12 });
 		expect(s.candidates[0].works).toBe(1);
 	});
 });

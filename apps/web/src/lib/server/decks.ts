@@ -10,13 +10,15 @@ import {
 	parseDeckName,
 	parseLeechAction,
 	parseLeechLapses,
-	parseNewCap,
+	parseLimit,
 	parseNewOrder,
+	studyDayKey,
 	summarizeDecks,
 	type Deck,
 	type DeckBudget,
 	type DeckSummary,
 	type LeechAction,
+	type LimitMode,
 	type NewOrder
 } from '#lib/decks.ts';
 import type { Language } from '#lib/languages.ts';
@@ -40,7 +42,12 @@ function failure<T>(raw: { message?: string; code?: string } | null | undefined)
 	return { ok: false, code, message: deckErrorMessage(code) };
 }
 
-export function toDeck(r: DeckRow): Deck {
+/**
+ * Linha do banco → Deck. O "Só hoje" só vale no dia de estudo `dayKey` (YYYY-MM-DD); sem
+ * dayKey, fica de fora.
+ */
+export function toDeck(r: DeckRow, dayKey?: string): Deck {
+	const today = dayKey !== undefined && r.limits_day === dayKey;
 	return {
 		id: r.id,
 		language: r.language,
@@ -49,15 +56,22 @@ export function toDeck(r: DeckRow): Deck {
 		isDefault: r.is_default,
 		paused: r.paused,
 		newOrder: parseNewOrder(r.new_order) ?? 'importance',
-		newCap: r.new_cap,
+		newPerDay: r.new_per_day,
+		reviewsPerDay: r.reviews_per_day,
+		newPerDayToday: today ? r.new_today : null,
+		reviewsPerDayToday: today ? r.reviews_today : null,
 		onReader: r.on_reader,
 		position: r.position,
 		createdAt: r.created_at
 	};
 }
 
-/** Decks do idioma, em ordem (posição, criação). */
-export async function listDecks(supabase: Client, language: Language): Promise<Deck[]> {
+/** Decks do idioma, em ordem (posição, criação). Com dayKey, inclui o "Só hoje" do dia. */
+export async function listDecks(
+	supabase: Client,
+	language: Language,
+	dayKey?: string
+): Promise<Deck[]> {
 	const { data, error } = await supabase
 		.from('decks')
 		.select('*')
@@ -65,7 +79,7 @@ export async function listDecks(supabase: Client, language: Language): Promise<D
 		.order('position')
 		.order('created_at');
 	if (error) throw new Error(`decks: ${error.message}`);
-	return data.map(toDeck);
+	return data.map((r) => toDeck(r, dayKey));
 }
 
 /** Deck padrão do idioma ("Minhas palavras"); o banco cria se faltar. */
@@ -81,8 +95,8 @@ export interface DeckOverview {
 }
 
 /**
- * Tela de decks: cada deck com novas/aprendendo/revisar de hoje (pais somam os filhos em
- * total) e o orçamento do idioma (newAllowance, newDoneToday).
+ * Tela de decks: cada deck com novas/aprendendo/revisar de hoje nos limites diários (pais
+ * somam os filhos em total) e o orçamento do idioma ("Estudar tudo").
  */
 export async function loadDeckSummaries(
 	supabase: Client,
@@ -93,7 +107,7 @@ export async function loadDeckSummaries(
 	const start = dayStart(now, clock);
 	const nextDay = nextDayStart(now, clock);
 	const [decks, sums, counts] = await Promise.all([
-		listDecks(supabase, language),
+		listDecks(supabase, language, studyDayKey(start, clock.timeZone)),
 		supabase.rpc('deck_summaries', {
 			p_day_start: start.toISOString(),
 			p_now: now.toISOString(),
@@ -116,16 +130,24 @@ export async function loadDeckSummaries(
 			{
 				newAvailable: s.new_available,
 				learning: s.learning_due,
-				review: s.review_due,
+				reviewAvailable: s.review_due,
 				newDoneToday: s.new_done_today,
+				reviewDoneToday: s.review_done_today,
 				items: s.items,
 				fichas: s.fichas,
+				flashcards: s.flashcards,
 				leeches: s.leeches
 			}
 		])
 	);
-	const b = budget(counts.data.new_limit, counts.data.extra_new, counts.data.new_done_today);
-	return { decks: summarizeDecks(decks, raw, b.newAllowance), budget: b };
+	const b = budget({
+		perDay: counts.data.new_limit,
+		extraNew: counts.data.extra_new,
+		newDoneToday: counts.data.new_done_today,
+		reviewsPerDay: counts.data.reviews_limit,
+		reviewDoneToday: counts.data.review_done_today
+	});
+	return { decks: summarizeDecks(decks, raw, b), budget: b };
 }
 
 /** Estado da fila do idioma no dia de estudo (decks, orçamento, candidatas a nova). */
@@ -209,8 +231,6 @@ export async function setDeckPaused(
 
 export interface DeckOptions {
 	newOrder?: NewOrder;
-	/** null = sem teto. */
-	newCap?: number | null;
 	onReader?: boolean;
 	/** null = deck de topo. */
 	parentId?: string | null;
@@ -228,11 +248,6 @@ export async function setDeckOptions(
 		const order = parseNewOrder(options.newOrder);
 		if (!order) return failure({ message: 'bad_request' });
 		patch.new_order = order;
-	}
-	if (options.newCap !== undefined) {
-		const cap = parseNewCap(options.newCap);
-		if (cap === undefined) return failure({ message: 'bad_request' });
-		patch.new_cap = cap;
 	}
 	if (options.onReader !== undefined) patch.on_reader = options.onReader;
 	if (options.parentId !== undefined) patch.parent_id = options.parentId;
@@ -315,7 +330,6 @@ export async function addExtraNew(
 }
 
 export interface StudySettings {
-	newFlashcardsPerDay?: number;
 	/** Como "Estudar tudo" intercala os decks. */
 	newOrder?: NewOrder;
 	leechLapses?: number;
@@ -329,11 +343,6 @@ export async function updateStudySettings(
 	s: StudySettings
 ): Promise<DeckResult> {
 	const patch: Database['public']['Tables']['user_settings']['Update'] = {};
-	if (s.newFlashcardsPerDay !== undefined) {
-		const n = s.newFlashcardsPerDay;
-		if (!Number.isInteger(n) || n < 0 || n > 1000) return failure({ message: 'bad_request' });
-		patch.new_flashcards_per_day = n;
-	}
 	if (s.newOrder !== undefined) {
 		const order = parseNewOrder(s.newOrder);
 		if (!order) return failure({ message: 'bad_request' });
@@ -350,6 +359,38 @@ export async function updateStudySettings(
 		patch.leech_action = action;
 	}
 	const { error } = await supabase.from('user_settings').update(patch).eq('user_id', userId);
+	return error ? failure(error) : ok(undefined);
+}
+
+export interface LimitChange {
+	mode: LimitMode;
+	value: number;
+}
+
+/**
+ * Limites diários do deck (engrenagem do hub). Cada limite vai para o Geral (user_settings;
+ * o deck volta a seguir o Geral), para o deck ("Este baralho") ou só para o dia de estudo
+ * de `now` ("Só hoje"). Limite ausente fica como está.
+ */
+export async function setDeckLimits(
+	supabase: Client,
+	deckId: string,
+	limits: { new?: LimitChange; reviews?: LimitChange },
+	now: Date,
+	clock: DayClock = DEFAULT_CLOCK
+): Promise<DeckResult> {
+	const n = limits.new ? parseLimit(limits.new.value, 'new') : null;
+	const r = limits.reviews ? parseLimit(limits.reviews.value, 'reviews') : null;
+	if ((limits.new && n === null) || (limits.reviews && r === null))
+		return failure({ message: 'bad_request' });
+	const { error } = await supabase.rpc('set_deck_limits', {
+		p_deck: deckId,
+		p_new_mode: limits.new?.mode ?? 'geral',
+		p_new: n as number,
+		p_reviews_mode: limits.reviews?.mode ?? 'geral',
+		p_reviews: r as number,
+		p_day_start: dayStart(now, clock).toISOString()
+	});
 	return error ? failure(error) : ok(undefined);
 }
 

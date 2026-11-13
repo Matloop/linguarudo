@@ -17,6 +17,7 @@
 	import { answers } from '#lib/ui/answers.svelte.ts';
 	import AnswersToggle from '#lib/ui/AnswersToggle.svelte';
 	import BulkBar from '#lib/ui/BulkBar.svelte';
+	import DeckLimits from '#lib/ui/DeckLimits.svelte';
 	import DeckPicker from '#lib/ui/DeckPicker.svelte';
 	import { clozePlain } from '#lib/fichas.ts';
 	import Icon from '#lib/ui/Icon.svelte';
@@ -43,7 +44,7 @@
 	];
 	const ORDER_LABELS: Record<NewOrder, string> = {
 		importance: 'Importância',
-		deck: 'Ordem do deck',
+		deck: 'Ordem do baralho',
 		random: 'Aleatória'
 	};
 
@@ -116,12 +117,10 @@
 	let optsOpen = $state(false);
 	let renameName = $state('');
 	let renameError = $state('');
-	let cap = $state('');
 	$effect(() => {
 		if (optsOpen) {
 			renameName = deck.name;
 			renameError = '';
-			cap = deck.newCap === null ? '' : String(deck.newCap);
 		}
 	});
 
@@ -135,19 +134,13 @@
 			renameError = r.message;
 			return;
 		}
-		toast('Deck renomeado');
-	}
-
-	function saveCap() {
-		const now = deck.newCap === null ? '' : String(deck.newCap);
-		if (cap.trim() === now) return;
-		void save('options', { id: deck.id, newCap: cap.trim() }, 'Teto salvo');
+		toast('Baralho renomeado');
 	}
 
 	const setOrder = (o: NewOrder) =>
 		o !== deck.newOrder && save('options', { id: deck.id, newOrder: o }, 'Ordem salva');
 	const setPaused = (p: boolean) =>
-		save('options', { id: deck.id, paused: String(p) }, p ? 'Deck pausado' : 'Deck retomado');
+		save('options', { id: deck.id, paused: String(p) }, p ? 'Baralho pausado' : 'Baralho retomado');
 	const setReader = (on: boolean) =>
 		save(
 			'options',
@@ -167,8 +160,8 @@
 		delDialog?.close();
 		toast(
 			delMode === 'move'
-				? `Deck apagado; ${plural(content, 'flashcard foi', 'flashcards foram')} para ${deckDisplayName(data.defaultName)}`
-				: 'Deck apagado'
+				? `Baralho apagado; ${plural(content, 'carta foi', 'cartas foram')} para ${deckDisplayName(data.defaultName)}`
+				: 'Baralho apagado'
 		);
 		await goto(resolve('/flashcards'));
 	}
@@ -186,7 +179,7 @@
 <svelte:window {onkeydown} />
 
 <nav class="crumbs" aria-label="Caminho">
-	<a href={resolve('/flashcards')}>Flashcards</a>
+	<a href={resolve('/flashcards')}>Baralhos</a>
 	<Icon name="right" size="sm" />
 	{#if data.parent}
 		<a href={resolve('/flashcards/deck/[id]', { id: data.parent.id })}>{data.parent.name}</a>
@@ -197,16 +190,17 @@
 <div class="ph">
 	<div class="ttl">
 		<h1 title={name}>{deck.name.split('::').at(-1)}</h1>
-		<p>{deckSubtitle(data.flashcards, deck.newCap)}</p>
+		<p data-testid="deck-sub">{deckSubtitle(rowCounts(deck).flashcards, deck.limits)}</p>
 	</div>
 	<div class="ph-acts">
-		<Popover label="Opções do deck" bind:open={optsOpen} width={340}>
+		<DeckLimits {deck} />
+		<Popover label="Opções do baralho" bind:open={optsOpen} width={340}>
 			{#snippet trigger({ toggle, expanded, id })}
 				<button
 					class="icon-btn more-btn"
 					type="button"
-					aria-label="Opções do deck"
-					title="Opções do deck"
+					aria-label="Opções do baralho"
+					title="Opções do baralho"
 					aria-haspopup="dialog"
 					aria-expanded={expanded}
 					aria-controls={id}
@@ -250,22 +244,6 @@
 						</div>
 					</div>
 
-					<div class="opt">
-						<label for="deck-teto">Teto de novas por dia</label>
-						<input
-							id="deck-teto"
-							class="input"
-							type="number"
-							inputmode="numeric"
-							min="0"
-							max="1000"
-							placeholder="Sem teto (usa as {data.perDay} do idioma)"
-							bind:value={cap}
-							onchange={saveCap}
-							onkeydown={(e) => e.key === 'Enter' && saveCap()}
-						/>
-					</div>
-
 					<div class="toggles">
 						<label class="tg">
 							<span><b>Pausado</b><span>Fora do Estudar tudo</span></span>
@@ -289,7 +267,7 @@
 						</label>
 						<label class="tg">
 							<span
-								><b>Deck padrão</b><span
+								><b>Baralho padrão</b><span
 									>{deck.isDefault
 										? 'Palavras guardadas caem aqui'
 										: 'Palavras guardadas passam a cair aqui'}</span
@@ -313,7 +291,7 @@
 								close();
 								delMode = 'move';
 								delDialog?.showModal();
-							}}><Icon name="archive" size="sm" />Apagar deck…</button
+							}}><Icon name="archive" size="sm" />Apagar baralho…</button
 						>
 					{/if}
 				</div>
@@ -337,7 +315,7 @@
 		<span
 			>{deck.paused
 				? 'Pausado: fora do Estudar tudo.'
-				: `Pausado pelo deck ${data.parent?.name ?? ''}: fora do Estudar tudo.`}</span
+				: `Pausado pelo baralho ${data.parent?.name ?? ''}: fora do Estudar tudo.`}</span
 		>
 		{#if deck.paused}
 			<button class="btn btn-soft" type="button" disabled={busy} onclick={() => setPaused(false)}
@@ -350,7 +328,7 @@
 {#if empty}
 	<div class="empty">
 		<div>
-			<h2>Deck vazio</h2>
+			<h2>Baralho vazio</h2>
 			<p>Mova palavras para cá em Minhas palavras, ou crie uma ficha.</p>
 			<div class="acts">
 				<a class="btn btn-soft" href={resolve('/palavras')}>Minhas palavras</a>
@@ -444,7 +422,7 @@
 			><Icon name="undo" size="sm" />Voltar para a fila</button
 		>
 	{/if}
-	<Popover label="Mover para deck" bind:open={moveOpen} align="start" placement="above">
+	<Popover label="Mover para baralho" bind:open={moveOpen} align="start" placement="above">
 		{#snippet trigger({ toggle, expanded, id })}
 			<button
 				class="btn btn-ghost"
@@ -452,7 +430,7 @@
 				aria-haspopup="dialog"
 				aria-expanded={expanded}
 				aria-controls={id}
-				onclick={toggle}><Icon name="folder" size="sm" />Mover para deck…</button
+				onclick={toggle}><Icon name="folder" size="sm" />Mover para baralho…</button
 			>
 		{/snippet}
 		<DeckPicker decks={pickerDecks} current={deck.id} pending={busy} onpick={move} />
@@ -483,14 +461,14 @@
 				>
 			</fieldset>
 		{:else}
-			<p class="faint">O deck está vazio.</p>
+			<p class="faint">O baralho está vazio.</p>
 		{/if}
 		<div class="d-acts">
 			<button class="btn btn-ghost" type="button" onclick={() => delDialog?.close()}
 				>Cancelar</button
 			>
 			<button class="btn btn-danger" disabled={busy}
-				>{delMode === 'delete' && content > 0 ? 'Apagar tudo' : 'Apagar deck'}</button
+				>{delMode === 'delete' && content > 0 ? 'Apagar tudo' : 'Apagar baralho'}</button
 			>
 		</div>
 	</form>

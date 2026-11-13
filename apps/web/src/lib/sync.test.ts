@@ -201,7 +201,10 @@ function fixtureHeader(serverNow: Date): HeaderInput {
 		isDefault: false,
 		paused: false,
 		newOrder: 'importance' as const,
-		newCap: null,
+		newPerDay: null,
+		reviewsPerDay: null,
+		newPerDayToday: null,
+		reviewsPerDayToday: null,
 		onReader: true,
 		position: 0,
 		createdAt: '2026-10-01T00:00:00.000Z',
@@ -217,6 +220,7 @@ function fixtureHeader(serverNow: Date): HeaderInput {
 		nativeLanguage: 'pt',
 		studyLanguages: ['it', 'en'],
 		newFlashcardsPerDay: 10,
+		reviewsPerDay: 200,
 		timeZone: REVIEW_TIME_ZONE,
 		dayStartHour: DEFAULT_CLOCK.startHour,
 		desiredRetention: 0.9,
@@ -227,11 +231,12 @@ function fixtureHeader(serverNow: Date): HeaderInput {
 		leech: { lapses: 8, action: 'wait' },
 		extraNew: 0,
 		newAllowance: 9,
+		reviewAllowance: 200,
 		decks: [
 			deck('5d0c1a2b-3e4f-4a5b-8c6d-7e8f9a0b1c10', 'Minhas palavras', { isDefault: true }),
 			deck('9e8d7c6b-5a4f-4e3d-9c2b-1a0f9e8d7c20', 'Gramática', {
 				newOrder: 'deck',
-				newCap: 5,
+				newPerDay: 5,
 				position: 1
 			})
 		]
@@ -319,6 +324,7 @@ describe('cabeçalho e fim da página', () => {
 				nativeLanguage: null,
 				studyLanguages: [],
 				newFlashcardsPerDay: 10,
+				reviewsPerDay: 200,
 				timeZone: REVIEW_TIME_ZONE,
 				dayStartHour: DEFAULT_CLOCK.startHour,
 				desiredRetention: 0.9,
@@ -330,6 +336,7 @@ describe('cabeçalho e fim da página', () => {
 				leech: { lapses: 8, action: 'wait' },
 				extraNew: 0,
 				newAllowance: 10,
+				reviewAllowance: 200,
 				decks: []
 			})
 		);

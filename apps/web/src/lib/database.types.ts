@@ -58,13 +58,17 @@ export type Database = {
           import_hash: string | null
           is_default: boolean
           language: string
+          limits_day: string | null
           name: string
-          new_cap: number | null
           new_order: string
+          new_per_day: number | null
+          new_today: number | null
           on_reader: boolean
           parent_id: string | null
           paused: boolean
           position: number
+          reviews_per_day: number | null
+          reviews_today: number | null
           user_id: string
         }
         Insert: {
@@ -73,13 +77,17 @@ export type Database = {
           import_hash?: string | null
           is_default?: boolean
           language: string
+          limits_day?: string | null
           name: string
-          new_cap?: number | null
           new_order?: string
+          new_per_day?: number | null
+          new_today?: number | null
           on_reader?: boolean
           parent_id?: string | null
           paused?: boolean
           position?: number
+          reviews_per_day?: number | null
+          reviews_today?: number | null
           user_id: string
         }
         Update: {
@@ -88,13 +96,17 @@ export type Database = {
           import_hash?: string | null
           is_default?: boolean
           language?: string
+          limits_day?: string | null
           name?: string
-          new_cap?: number | null
           new_order?: string
+          new_per_day?: number | null
+          new_today?: number | null
           on_reader?: boolean
           parent_id?: string | null
           paused?: boolean
           position?: number
+          reviews_per_day?: number | null
+          reviews_today?: number | null
           user_id?: string
         }
         Relationships: [
@@ -499,7 +511,10 @@ export type Database = {
       }
       review_logs: {
         Row: {
+          algo_version: string | null
           client_id: string | null
+          desired_retention: number | null
+          difficulty_before: number | null
           duration_ms: number | null
           flashcard_id: string
           id: string
@@ -508,16 +523,16 @@ export type Database = {
           rating: number
           received_at: string
           reviewed_at: string
-          state_before: number | null
-          user_id: string
-          algo_version: string | null
-          desired_retention: number | null
-          difficulty_before: number | null
           stability_before: number | null
           stability_fast_before: number | null
+          state_before: number | null
+          user_id: string
         }
         Insert: {
+          algo_version?: string | null
           client_id?: string | null
+          desired_retention?: number | null
+          difficulty_before?: number | null
           duration_ms?: number | null
           flashcard_id: string
           id?: string
@@ -526,16 +541,16 @@ export type Database = {
           rating: number
           received_at?: string
           reviewed_at: string
-          state_before?: number | null
-          user_id: string
-          algo_version?: string | null
-          desired_retention?: number | null
-          difficulty_before?: number | null
           stability_before?: number | null
           stability_fast_before?: number | null
+          state_before?: number | null
+          user_id: string
         }
         Update: {
+          algo_version?: string | null
           client_id?: string | null
+          desired_retention?: number | null
+          difficulty_before?: number | null
           duration_ms?: number | null
           flashcard_id?: string
           id?: string
@@ -544,13 +559,10 @@ export type Database = {
           rating?: number
           received_at?: string
           reviewed_at?: string
-          state_before?: number | null
-          user_id?: string
-          algo_version?: string | null
-          desired_retention?: number | null
-          difficulty_before?: number | null
           stability_before?: number | null
           stability_fast_before?: number | null
+          state_before?: number | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -564,59 +576,61 @@ export type Database = {
       }
       review_logs_undone: {
         Row: {
-          flashcard_id: string
+          algo_version: string | null
           client_id: string | null
+          desired_retention: number | null
+          difficulty_before: number | null
           duration_ms: number | null
+          flashcard_id: string
           id: string
           interval_days: number | null
           last_interval_days: number | null
           rating: number
           received_at: string
           reviewed_at: string
+          stability_before: number | null
+          stability_fast_before: number | null
           state_before: number | null
           undone_at: string
           user_id: string
-          algo_version: string | null
-          desired_retention: number | null
-          difficulty_before: number | null
-          stability_before: number | null
-          stability_fast_before: number | null
         }
         Insert: {
-          flashcard_id: string
+          algo_version?: string | null
           client_id?: string | null
+          desired_retention?: number | null
+          difficulty_before?: number | null
           duration_ms?: number | null
+          flashcard_id: string
           id?: string
           interval_days?: number | null
           last_interval_days?: number | null
           rating: number
           received_at?: string
           reviewed_at: string
-          state_before: number | null
-          user_id: string
-          algo_version?: string | null
-          desired_retention?: number | null
-          difficulty_before?: number | null
           stability_before?: number | null
           stability_fast_before?: number | null
+          state_before?: number | null
+          undone_at?: string
+          user_id: string
         }
         Update: {
-          flashcard_id?: string
+          algo_version?: string | null
           client_id?: string | null
+          desired_retention?: number | null
+          difficulty_before?: number | null
           duration_ms?: number | null
+          flashcard_id?: string
           id?: string
           interval_days?: number | null
           last_interval_days?: number | null
           rating?: number
           received_at?: string
           reviewed_at?: string
-          state_before?: number | null
-          user_id?: string
-          algo_version?: string | null
-          desired_retention?: number | null
-          difficulty_before?: number | null
           stability_before?: number | null
           stability_fast_before?: number | null
+          state_before?: number | null
+          undone_at?: string
+          user_id?: string
         }
         Relationships: [
           {
@@ -662,6 +676,7 @@ export type Database = {
           native_language: string | null
           new_flashcards_per_day: number
           new_order: string
+          reviews_per_day: number
           study_languages: unknown[]
           time_zone: string | null
           ui_language: string
@@ -677,6 +692,7 @@ export type Database = {
           native_language?: string | null
           new_flashcards_per_day?: number
           new_order?: string
+          reviews_per_day?: number
           study_languages?: unknown[]
           time_zone?: string | null
           ui_language?: string
@@ -692,6 +708,7 @@ export type Database = {
           native_language?: string | null
           new_flashcards_per_day?: number
           new_order?: string
+          reviews_per_day?: number
           study_languages?: unknown[]
           time_zone?: string | null
           ui_language?: string
@@ -769,9 +786,9 @@ export type Database = {
           flashcards: Json
           forms: string[]
           id: string
+          leech_hold: string
           lemma: string
           lemma_key: string
-          leech_hold: string
           reading: string
           sense: string
           status: string
@@ -912,11 +929,13 @@ export type Database = {
         Returns: {
           deck_id: string
           fichas: number
+          flashcards: number
           items: number
           learning_due: number
           leeches: number
           new_available: number
           new_done_today: number
+          review_done_today: number
           review_due: number
         }[]
       }
@@ -982,6 +1001,7 @@ export type Database = {
         Args: { p_ficha_ids: string[]; p_item_ids: string[] }
         Returns: number
       }
+      review_algo_version: { Args: never; Returns: string }
       review_counts: {
         Args: {
           p_day_start: string
@@ -990,12 +1010,15 @@ export type Database = {
           p_now: string
         }
         Returns: {
+          day_key: string
           due_now: number
           extra_new: number
           new_available: number
           new_done_today: number
           new_limit: number
           next_due_at: string
+          review_done_today: number
+          reviews_limit: number
         }[]
       }
       review_day_key: {
@@ -1005,6 +1028,14 @@ export type Database = {
       review_day_start: {
         Args: { p_hour: number; p_now?: string; p_time_zone: string }
         Returns: string
+      }
+      review_done_by_deck: {
+        Args: { p_day_start: string; p_user: string }
+        Returns: {
+          deck_id: string
+          language: unknown
+          n: number
+        }[]
       }
       save_items: {
         Args: { p_items: Json }
@@ -1031,6 +1062,17 @@ export type Database = {
           lemma: string
           released: boolean
         }[]
+      }
+      set_deck_limits: {
+        Args: {
+          p_day_start: string
+          p_deck: string
+          p_new: number
+          p_new_mode: string
+          p_reviews: number
+          p_reviews_mode: string
+        }
+        Returns: undefined
       }
       set_default_deck: { Args: { p_deck: string }; Returns: undefined }
       set_lyrics_sync: {

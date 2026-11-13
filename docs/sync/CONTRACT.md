@@ -359,12 +359,12 @@ end
   "serverNow": "2026-11-11T21:30:02.417Z",
   "deckName": "Linguetta · Italiano",
   "total": 5, "fichasTotal": 1,
-  "settings": { "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"], "newFlashcardsPerDay": 10, "timeZone": "America/Sao_Paulo", "utcOffsetMinutes": -180, "dayStartHour": 4,
+  "settings": { "uiLanguage": "pt", "nativeLanguage": "pt", "studyLanguages": ["it", "en"], "newFlashcardsPerDay": 10, "reviewsPerDay": 200, "timeZone": "America/Sao_Paulo", "utcOffsetMinutes": -180, "dayStartHour": 4,
                 "newOrder": "importance", "desiredRetention": 0.9, "buryRelated": true, "leech": { "lapses": 8, "action": "wait" } },
-  "today": { "dayStart": "2026-11-11T07:00:00.000Z", "nextDayStart": "2026-11-12T07:00:00.000Z", "newDoneToday": 1, "extraNew": 0, "newAllowance": 9 },
+  "today": { "dayStart": "2026-11-11T07:00:00.000Z", "nextDayStart": "2026-11-12T07:00:00.000Z", "newDoneToday": 1, "extraNew": 0, "newAllowance": 9, "reviewAllowance": 200 },
   "decks": [
-    { "id": "5d0c1a2b-3e4f-4a5b-8c6d-7e8f9a0b1c10", "name": "Minhas palavras", "default": true, "parentId": null, "newOrder": "importance", "newCap": null },
-    { "id": "9e8d7c6b-5a4f-4e3d-9c2b-1a0f9e8d7c20", "name": "Gramática", "default": false, "parentId": null, "newOrder": "deck", "newCap": 5 }
+    { "id": "5d0c1a2b-3e4f-4a5b-8c6d-7e8f9a0b1c10", "name": "Minhas palavras", "default": true, "parentId": null, "newOrder": "importance", "newPerDay": 10, "reviewsPerDay": 200 },
+    { "id": "9e8d7c6b-5a4f-4e3d-9c2b-1a0f9e8d7c20", "name": "Gramática", "default": false, "parentId": null, "newOrder": "deck", "newPerDay": 5, "reviewsPerDay": 200 }
   ],
   "fsrs": { "tsFsrs": "6.0.0", "version": "FSRS-7", "desiredRetention": 0.9, "enableFuzz": true,
             "learningSteps": ["1m", "10m"], "relearningSteps": ["10m"], "allowModelOverride": false,
@@ -376,10 +376,10 @@ end
 - `deckName`: "Linguetta · " + nome do idioma na língua da interface (`uiLanguage`); sem `uiLanguage`, o nome do idioma nele mesmo ("Linguetta · Deutsch").
 - `settings.uiLanguage`, `settings.nativeLanguage`, `settings.studyLanguages`: como no `account` do pareamento, sem padrão (`null`, `null`, `[]` numa conta sem preferências).
 - `total`: linhas `item` + `del` somadas em todas as páginas; `fichasTotal`: linhas `ficha` (para a barra de progresso; podem diferir um pouco do recebido).
-- `settings.newFlashcardsPerDay`: limite de flashcards novos por dia (`user_settings`). `timeZone`/`utcOffsetMinutes`: o fuso do usuário (`user_settings.time_zone`, nulo = `America/Sao_Paulo`). `dayStartHour`: a hora local (0–23, padrão 4, como no Anki) em que o dia de estudo vira. O dia de estudo vai de `dayStartHour`:00 a `dayStartHour`:00 do dia seguinte, no fuso.
+- `settings.newFlashcardsPerDay` e `settings.reviewsPerDay`: limites Geral de novas e de revisões por dia (`user_settings`), os de "Estudar tudo". `timeZone`/`utcOffsetMinutes`: o fuso do usuário (`user_settings.time_zone`, nulo = `America/Sao_Paulo`). `dayStartHour`: a hora local (0–23, padrão 4, como no Anki) em que o dia de estudo vira. O dia de estudo vai de `dayStartHour`:00 a `dayStartHour`:00 do dia seguinte, no fuso.
 - `settings.newOrder`: como a fila intercala os decks (`importance`, `deck` ou `random`); só informativo, a ordem já vem em `queueRank`. `settings.desiredRetention`: a mesma de `fsrs`. `settings.buryRelated`: irmãos ocultos (§11), sempre `true` por enquanto. `settings.leech`: a partir de quantos lapsos um flashcard vira teimosa (`lapses`, 1–99, padrão 8) e o que acontece (`action`: `wait` espera um encontro novo, `tag` só marca, `suspend` suspende).
-- `today`: o dia de estudo corrente (começa às `dayStartHour`:00 no fuso), quantos flashcards novos já tiveram a primeira revisão nele (`newDoneToday`, em qualquer aparelho e deck), o extra pedido no dia (`extraNew`) e o **orçamento**: `newAllowance = max(0, newFlashcardsPerDay + extraNew − newDoneToday)`, quantas novas ainda entram hoje. Depois de `nextDayStart`, o aparelho zera `newDoneToday` e `extraNew`, usa `newAllowance = newFlashcardsPerDay` e passa a usar dias de 24 h a partir dele até o próximo sync.
-- `decks`: os decks do idioma marcados "no leitor" e não pausados (nem filhos de pausado), na ordem da árvore (pai, depois os filhos). `parentId` aponta para outro deck da lista (um nível só). `newCap`: teto de novas do deck por dia (`null` = sem teto), já aplicado em `queueRank`. Item ou ficha com `deckId` fora da lista está num deck que não vai para o leitor: o aparelho mostra no banco, mas não revisa.
+- `today`: o dia de estudo corrente (começa às `dayStartHour`:00 no fuso), quantos flashcards novos já tiveram a primeira revisão nele (`newDoneToday`, em qualquer aparelho e deck), o extra pedido no dia (`extraNew`) e o **orçamento**: `newAllowance = max(0, newFlashcardsPerDay + extraNew − newDoneToday)`, quantas novas ainda entram hoje; `reviewAllowance = max(0, reviewsPerDay − revisões feitas hoje)`, só informativo (revisão nunca é recusada). Depois de `nextDayStart`, o aparelho zera `newDoneToday` e `extraNew`, usa `newAllowance = newFlashcardsPerDay` e passa a usar dias de 24 h a partir dele até o próximo sync.
+- `decks`: os decks do idioma marcados "no leitor" e não pausados (nem filhos de pausado), na ordem da árvore (pai, depois os filhos). `parentId` aponta para outro deck da lista (um nível só). `newPerDay`/`reviewsPerDay`: limites do deck que valem hoje (Só hoje > Este baralho > Geral; o subdeck também conta no pai), já aplicados em `queueRank`. Item ou ficha com `deckId` fora da lista está num deck que não vai para o leitor: o aparelho mostra no banco, mas não revisa.
 - `fsrs`: os parâmetros do agendador do servidor. `desiredRetention` é da conta (`user_settings.desired_retention`, 0,70–0,97, padrão 0,9) e vale a partir da próxima revisão; o aparelho agenda com ela. Se diferirem dos que o firmware implementa, o aparelho continua funcionando (o servidor decide), mas mostra um aviso discreto de "agendamento aproximado".
 
 ### `item`

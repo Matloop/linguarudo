@@ -6,6 +6,7 @@ import { loadDeckSummaries, loadQueueState } from '#lib/server/decks.ts';
 import {
 	defaultAction,
 	deleteAction,
+	limitsAction,
 	moveAction,
 	optionsAction,
 	pauseAction,
@@ -33,9 +34,9 @@ export interface DeckEntry {
 
 export const load: PageServerLoad = async ({ locals, params, parent }) => {
 	const user = await locals.getUser();
-	if (!user) error(401, 'Entre para ver seus decks.');
+	if (!user) error(401, 'Entre para ver seus baralhos.');
 	const { shell } = await parent();
-	if (!shell) error(401, 'Entre para ver seus decks.');
+	if (!shell) error(401, 'Entre para ver seus baralhos.');
 	if (!shell.active) redirect(303, '/inicio');
 	const language = shell.active;
 	const now = new Date();
@@ -44,9 +45,9 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 		loadDeckSummaries(locals.supabase, language, now, shell.clock).catch(() => null),
 		loadQueueState(locals.supabase, language, now, shell.clock).catch(() => null)
 	]);
-	if (!overview || !state) error(500, 'Não deu para carregar o deck agora.');
+	if (!overview || !state) error(500, 'Não deu para carregar o baralho agora.');
 	const deck = overview.decks.find((d) => d.id === params.id);
-	if (!deck) error(404, 'Deck não encontrado.');
+	if (!deck) error(404, 'Baralho não encontrado.');
 
 	const scope = [...scopeDeckIds(state.decks, { kind: 'deck', deckId: deck.id })];
 	const plan = planNew(state, { kind: 'deck', deckId: deck.id });
@@ -76,7 +77,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 			.order('created_at', { ascending: false })
 			.limit(PAGE_SIZE)
 	]);
-	if (items.error || fichas.error) error(500, 'Não deu para carregar o deck agora.');
+	if (items.error || fichas.error) error(500, 'Não deu para carregar o baralho agora.');
 
 	const entry = (
 		kind: DeckEntry['kind'],
@@ -132,8 +133,6 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 		parent: parentDeck ? { id: parentDeck.id, name: parentDeck.name } : null,
 		defaultName: defaultDeck?.name ?? '',
 		entries,
-		flashcards: entries.reduce((n, e) => n + e.cards, 0),
-		perDay: overview.budget.perDay,
 		language
 	};
 };
@@ -145,5 +144,6 @@ export const actions: Actions = {
 	delete: deleteAction,
 	move: moveAction,
 	release: releaseAction,
-	pause: pauseAction
+	pause: pauseAction,
+	limits: limitsAction
 };

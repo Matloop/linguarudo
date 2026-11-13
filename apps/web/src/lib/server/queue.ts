@@ -3,14 +3,21 @@
 // aprendizado continuam em buildQueue (review.ts).
 
 import {
-	capRemaining,
+	deckLimit,
+	deckQuota,
 	deckTree,
 	isPausedIn,
 	newAllowance,
 	parseLeechAction,
 	parseNewOrder,
+	quotaLeft,
+	takeWithin,
 	DEFAULT_LEECH_LAPSES,
+	DEFAULT_NEW_PER_DAY,
+	DEFAULT_REVIEWS_PER_DAY,
 	type Deck,
+	type DeckQuota,
+	type GeneralLimits,
 	type LeechAction,
 	type NewOrder
 } from '#lib/decks.ts';
@@ -36,7 +43,10 @@ export interface QueueCandidate {
 }
 
 export interface QueueSettings {
+	/** Geral: novas por dia (também o teto de "Estudar tudo"). */
 	perDay: number;
+	/** Geral: revisões máximas por dia. */
+	reviewsPerDay: number;
 	newOrder: NewOrder;
 	leechLapses: number;
 	leechAction: LeechAction;
@@ -48,6 +58,8 @@ export interface QueueState {
 	dayKey: string;
 	extraNew: number;
 	newDoneByDeck: Record<string, number>;
+	/** Revisões (flashcards em revisão) respondidas hoje, por deck. */
+	reviewDoneByDeck: Record<string, number>;
 	activeWorkId: string | null;
 	decks: Deck[];
 	candidates: QueueCandidate[];
@@ -65,6 +77,11 @@ type Raw = Record<string, unknown>;
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const strOrNull = (v: unknown) => (typeof v === 'string' && v !== '' ? v : null);
+const numOrNull = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const counts = (v: unknown) =>
+	Object.fromEntries(
+		Object.entries((v ?? {}) as Record<string, unknown>).map(([k, n]) => [k, num(n)])
+	);
 
 function toDeck(r: Raw, language: string): Deck {
 	return {
@@ -75,7 +92,10 @@ function toDeck(r: Raw, language: string): Deck {
 		isDefault: r.default === true,
 		paused: r.paused === true,
 		newOrder: parseNewOrder(r.newOrder) ?? 'importance',
-		newCap: typeof r.newCap === 'number' ? r.newCap : null,
+		newPerDay: numOrNull(r.newPerDay),
+		reviewsPerDay: numOrNull(r.reviewsPerDay),
+		newPerDayToday: numOrNull(r.newPerDayToday),
+		reviewsPerDayToday: numOrNull(r.reviewsPerDayToday),
 		onReader: r.onReader !== false,
 		position: num(r.position),
 		createdAt: String(r.createdAt ?? '')
@@ -86,17 +106,18 @@ function toDeck(r: Raw, language: string): Deck {
 export function parseQueueState(raw: unknown, language: string): QueueState {
 	const r = (raw ?? {}) as Raw;
 	const s = (r.settings ?? {}) as Raw;
-	const done = (r.newDoneByDeck ?? {}) as Record<string, unknown>;
 	return {
 		settings: {
-			perDay: num(s.perDay, 10),
+			perDay: num(s.perDay, DEFAULT_NEW_PER_DAY),
+			reviewsPerDay: num(s.reviewsPerDay, DEFAULT_REVIEWS_PER_DAY),
 			newOrder: parseNewOrder(s.newOrder) ?? 'importance',
 			leechLapses: num(s.leechLapses, DEFAULT_LEECH_LAPSES),
 			leechAction: parseLeechAction(s.leechAction) ?? 'wait'
 		},
 		dayKey: String(r.dayKey ?? ''),
 		extraNew: num(r.extraNew),
-		newDoneByDeck: Object.fromEntries(Object.entries(done).map(([k, v]) => [k, num(v)])),
+		newDoneByDeck: counts(r.newDoneByDeck),
+		reviewDoneByDeck: counts(r.reviewDoneByDeck),
 		activeWorkId: strOrNull(r.activeWorkId),
 		decks: ((r.decks ?? []) as Raw[]).map((d) => toDeck(d, language)),
 		candidates: ((r.candidates ?? []) as Raw[]).map((c) => ({
@@ -123,6 +144,33 @@ export function newDoneToday(state: Pick<QueueState, 'newDoneByDeck'>): number {
 
 export function stateAllowance(state: QueueState): number {
 	return newAllowance(state.settings.perDay, state.extraNew, newDoneToday(state));
+}
+
+export function reviewDoneToday(state: Pick<QueueState, 'reviewDoneByDeck'>): number {
+	return Object.values(state.reviewDoneByDeck).reduce((a, b) => a + b, 0);
+}
+
+/** Revisões que "Estudar tudo" ainda serve hoje: o Geral menos as feitas em todos os decks. */
+export function stateReviewAllowance(state: QueueState): number {
+	return Math.max(0, state.settings.reviewsPerDay - reviewDoneToday(state));
+}
+
+const general = (state: QueueState): GeneralLimits => ({
+	newPerDay: state.settings.perDay,
+	reviewsPerDay: state.settings.reviewsPerDay
+});
+
+/** Vagas de novas por deck hoje (o "+N hoje" soma em todos os limites). */
+export function newQuota(state: QueueState, max = Infinity): DeckQuota {
+	return deckQuota(state.decks, 'new', general(state), state.newDoneByDeck, {
+		extra: state.extraNew,
+		max
+	});
+}
+
+/** Vagas de revisão por deck hoje. */
+export function reviewQuota(state: QueueState, max = Infinity): DeckQuota {
+	return deckQuota(state.decks, 'reviews', general(state), state.reviewDoneByDeck, { max });
 }
 
 // ---------- Ordem ----------
@@ -183,20 +231,23 @@ export function scopeDeckIds(decks: readonly Deck[], scope: QueueScope): Set<str
 }
 
 /**
- * Todas as novas dos decks dados, em ordem: cada deck ordenado pela própria regra e cortado
- * pelo teto restante, depois os decks intercalados pela ordem da conta (importância: a
- * cabeça de maior pontuação; deck: um deck depois do outro; random: hash do dia).
+ * Todas as novas dos decks dados que cabem nos limites de hoje, em ordem: cada deck ordenado
+ * pela própria regra, os decks intercalados pela ordem da conta (importância: a cabeça de
+ * maior pontuação; deck: um deck depois do outro; random: hash do dia), e então cortadas nas
+ * novas por dia de cada deck (o subdeck também no pai). Sem o teto do idioma: quem chama corta.
  */
 export function orderNew(state: QueueState, deckIds: ReadonlySet<string>): QueueCandidate[] {
+	return takeWithin(mergeNew(state, deckIds), (c) => c.deckId, newQuota(state));
+}
+
+function mergeNew(state: QueueState, deckIds: ReadonlySet<string>): QueueCandidate[] {
 	const decks = deckTree(state.decks).filter((d) => deckIds.has(d.id));
 	const lists = decks
-		.map((d) => {
-			const own = state.candidates
-				.filter((c) => c.deckId === d.id)
-				.sort(comparator(d.newOrder, state));
-			const cap = capRemaining(d.newCap, state.newDoneByDeck[d.id] ?? 0);
-			return oncePerItem(own).slice(0, cap === Infinity ? undefined : cap);
-		})
+		.map((d) =>
+			oncePerItem(
+				state.candidates.filter((c) => c.deckId === d.id).sort(comparator(d.newOrder, state))
+			)
+		)
 		.filter((l) => l.length > 0);
 
 	if (state.settings.newOrder === 'deck') return lists.flat();
@@ -217,16 +268,24 @@ export function orderNew(state: QueueState, deckIds: ReadonlySet<string>): Queue
 export interface NewPlan {
 	/** Flashcards novos da sessão, na ordem. */
 	ids: string[];
-	/** Orçamento restante do idioma antes da sessão. */
+	/** Novas que ainda cabiam no escopo antes da sessão. */
 	newAllowance: number;
+	/** Novas por dia do escopo (sem o extra): o Geral em "Estudar tudo", o do deck num deck. */
+	newLimit: number;
+	/** Novas começadas hoje no escopo (o idioma todo, ou o deck com os subdecks). */
 	newDoneToday: number;
+	/** Vagas de revisão do escopo: a fila serve no máximo isso de revisões hoje. */
+	reviews: DeckQuota;
 	/** Novas que existem no escopo além das que entram (para "+5 hoje"). */
 	more: number;
 	/** Decks do escopo (as vencidas também se limitam a eles). */
 	deckIds: Set<string>;
 }
 
-/** As novas da sessão no escopo. "Desta obra" ignora orçamento e tetos. */
+/**
+ * As novas da sessão no escopo. "Estudar tudo" fica no Geral do idioma; um deck, nos limites
+ * dele e do pai (como clicar no deck no Anki). "Desta obra" ignora limites de novas.
+ */
 export function planNew(state: QueueState, scope: QueueScope): NewPlan {
 	const allowance = stateAllowance(state);
 	const done = newDoneToday(state);
@@ -240,18 +299,37 @@ export function planNew(state: QueueState, scope: QueueScope): NewPlan {
 		return {
 			ids: list.slice(0, OBRA_SESSION_NEW).map((c) => c.id),
 			newAllowance: allowance,
+			newLimit: state.settings.perDay,
 			newDoneToday: done,
+			reviews: reviewQuota(state, 0),
 			more: Math.max(0, list.length - OBRA_SESSION_NEW),
 			deckIds: all
 		};
 	}
 	const deckIds = scopeDeckIds(state.decks, scope);
-	const list = orderNew(state, deckIds);
+	const all = mergeNew(state, deckIds);
+	if (scope.kind === 'deck') {
+		const quota = newQuota(state);
+		const deck = state.decks.find((d) => d.id === scope.deckId);
+		const ids = takeWithin(all, (c) => c.deckId, quota).map((c) => c.id);
+		return {
+			ids,
+			newAllowance: quotaLeft(quota, scope.deckId),
+			newLimit: deck ? deckLimit(deck, 'new', general(state)).value : state.settings.perDay,
+			newDoneToday: [...deckIds].reduce((n, id) => n + (state.newDoneByDeck[id] ?? 0), 0),
+			reviews: reviewQuota(state),
+			more: Math.max(0, all.length - ids.length),
+			deckIds
+		};
+	}
+	const ids = takeWithin(all, (c) => c.deckId, newQuota(state, allowance)).map((c) => c.id);
 	return {
-		ids: list.slice(0, allowance).map((c) => c.id),
+		ids,
 		newAllowance: allowance,
+		newLimit: state.settings.perDay,
 		newDoneToday: done,
-		more: Math.max(0, list.length - allowance),
+		reviews: reviewQuota(state, stateReviewAllowance(state)),
+		more: Math.max(0, all.length - ids.length),
 		deckIds
 	};
 }

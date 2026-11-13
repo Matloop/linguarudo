@@ -1,10 +1,10 @@
-// Ações de formulário dos decks, divididas entre o hub /flashcards, a página do deck e
-// /palavras (Mover para deck…). Cada uma devolve { op, ... } no sucesso ou fail(status,
+// Ações de formulário dos decks (baralhos na tela), divididas entre o hub /flashcards, a
+// página do deck e /palavras (Mover para baralho…). Cada uma devolve { op, ... } no sucesso ou fail(status,
 // { op, message }), para a tela saber qual formulário respondeu.
 
 import { error, fail, type RequestEvent } from '@sveltejs/kit';
 import { DECK_NAME_UI_MAX } from '#lib/decks-ui.ts';
-import { deckErrorMessage, parseNewCap, parseNewOrder } from '#lib/decks.ts';
+import { deckErrorMessage, parseLimitMode, parseNewOrder } from '#lib/decks.ts';
 import { LANGUAGE_COOKIE, resolveActiveLanguage } from '#lib/prefs.ts';
 import {
 	addExtraNew,
@@ -14,10 +14,12 @@ import {
 	moveToDeck,
 	releaseLeeches,
 	renameDeck,
+	setDeckLimits,
 	setDeckOptions,
 	setDeckPaused,
 	setDefaultDeck,
-	type DeckOptions
+	type DeckOptions,
+	type LimitChange
 } from './decks.ts';
 import { loadSettings } from './settings.ts';
 
@@ -25,7 +27,7 @@ type Event = RequestEvent;
 
 async function context(event: Event) {
 	const user = await event.locals.getUser();
-	if (!user) error(401, 'Entre para mexer nos decks.');
+	if (!user) error(401, 'Entre para mexer nos baralhos.');
 	const settings = await loadSettings(event.locals.supabase, user.id);
 	const language = resolveActiveLanguage(
 		event.cookies.get(LANGUAGE_COOKIE),
@@ -41,7 +43,7 @@ const ids = (form: FormData, key: string) => [
 
 const nameOk = (raw: string) => [...raw.trim()].length <= DECK_NAME_UI_MAX;
 
-/** Deck novo (popover do hub ou "Novo deck…" do Mover). */
+/** Deck novo (popover do hub ou "Novo baralho…" do Mover). */
 export async function createAction(event: Event) {
 	const { user, language, form } = await context(event);
 	const name = form.get('name')?.toString() ?? '';
@@ -97,7 +99,7 @@ export async function moveAction(event: Event) {
 		deckId = res.value.id;
 		created = res.value.name;
 	}
-	if (!deckId) return fail(400, { op: 'move', message: 'Escolha um deck.' });
+	if (!deckId) return fail(400, { op: 'move', message: 'Escolha um baralho.' });
 	const res = await moveToDeck(event.locals.supabase, deckId, {
 		itemIds: ids(form, 'item'),
 		fichaIds: ids(form, 'ficha')
@@ -108,7 +110,7 @@ export async function moveAction(event: Event) {
 	return { op: 'move' as const, n: res.value, target, deckId };
 }
 
-/** Opções da página do deck: ordem, teto, no leitor, pausado. */
+/** Opções da página do deck: ordem, no leitor, pausado. */
 export async function optionsAction(event: Event) {
 	const { form } = await context(event);
 	const id = form.get('id')?.toString() ?? '';
@@ -117,12 +119,6 @@ export async function optionsAction(event: Event) {
 		const order = parseNewOrder(form.get('newOrder'));
 		if (!order) return fail(400, { op: 'options', message: 'Ordem inválida.' });
 		opts.newOrder = order;
-	}
-	if (form.has('newCap')) {
-		const cap = parseNewCap(form.get('newCap')?.toString().trim());
-		if (cap === undefined)
-			return fail(400, { op: 'options', message: 'O teto vai de 0 a 1000, ou vazio.' });
-		opts.newCap = cap;
 	}
 	if (form.has('onReader')) opts.onReader = form.get('onReader') === 'true';
 	if (Object.keys(opts).length) {
@@ -134,6 +130,35 @@ export async function optionsAction(event: Event) {
 		if (!res.ok) return fail(400, { op: 'options', message: res.message });
 	}
 	return { op: 'options' as const };
+}
+
+/**
+ * Engrenagem do deck: novas por dia e revisões máximas por dia, cada uma em Geral, Este
+ * baralho ou Só hoje (campos id, newMode, new, reviewsMode, reviews; limite ausente fica).
+ */
+export async function limitsAction(event: Event) {
+	const { form, clock } = await context(event);
+	const id = form.get('id')?.toString() ?? '';
+	const read = (key: 'new' | 'reviews'): LimitChange | null | undefined => {
+		const raw = form.get(key)?.toString().trim();
+		if (raw === undefined) return undefined;
+		const mode = parseLimitMode(form.get(`${key}Mode`));
+		if (!mode || raw === '' || !/^\d+$/.test(raw)) return null;
+		return { mode, value: Number(raw) };
+	};
+	const n = read('new');
+	const r = read('reviews');
+	if (n === null || r === null)
+		return fail(400, { op: 'limits', message: 'Use um número inteiro.' });
+	const res = await setDeckLimits(
+		event.locals.supabase,
+		id,
+		{ new: n, reviews: r },
+		new Date(),
+		clock
+	);
+	if (!res.ok) return fail(400, { op: 'limits', message: res.message });
+	return { op: 'limits' as const };
 }
 
 export async function defaultAction(event: Event) {
