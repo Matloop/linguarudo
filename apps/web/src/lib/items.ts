@@ -32,7 +32,7 @@ export type FlashcardKind = 'reconhecer' | 'produzir';
 export const WORK_KINDS = ['livro', 'episodio', 'filme', 'musica', 'video'] as const;
 export type WorkKind = (typeof WORK_KINDS)[number];
 
-export const ORIGINS = ['manual', 'stremio', 'musica', 'ereader', 'anki', 'blend'] as const;
+export const ORIGINS = ['manual', 'stremio', 'musica', 'ereader', 'anki', 'blend', 'leitor'] as const;
 export type Origin = (typeof ORIGINS)[number];
 
 export const ORIGIN_LABELS: Record<Origin, string> = {
@@ -41,7 +41,8 @@ export const ORIGIN_LABELS: Record<Origin, string> = {
 	musica: 'Música',
 	ereader: 'E-reader',
 	anki: 'Anki',
-	blend: 'Blend'
+	blend: 'Blend',
+	leitor: 'Leitor'
 };
 
 // ---------- Texto ----------

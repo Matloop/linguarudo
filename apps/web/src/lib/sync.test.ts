@@ -683,3 +683,52 @@ describe('origem de livro', () => {
 		expect(formatWorkSource(work, {})).toBe('O nome da rosa · Umberto Eco');
 	});
 });
+
+describe('progress (livro com blend)', () => {
+	const fixture = json('progress.op.json');
+
+	test('a operação do fixture é válida', () => {
+		const parsed = parseOp(fixture.op);
+		expect(parsed).toEqual({
+			ok: true,
+			op: {
+				type: 'progress',
+				clientId: fixture.op.clientId,
+				at: '2026-11-11T21:10:00.000Z',
+				language: 'it',
+				koHash: fixture.op.koHash,
+				spine: 5,
+				chapterPercent: 10,
+				percent: 26.8
+			}
+		});
+	});
+
+	test('koHash, spine e porcentagens fora do formato recusam', () => {
+		const parsed = parseOp({ ...fixture.op, koHash: 'xyz', spine: -1, chapterPercent: 101, percent: 'a' });
+		expect(parsed.ok).toBe(false);
+		if (parsed.ok) return;
+		expect(parsed.store).toBe('progress');
+		expect(parsed.result).toMatchObject({
+			status: 'rejected',
+			reason: 'invalid',
+			errors: { koHash: expect.any(String), spine: expect.any(String), chapterPercent: expect.any(String), percent: expect.any(String) }
+		});
+	});
+
+	test('porcentagem com uma casa', () => {
+		const parsed = parseOp({ ...fixture.op, chapterPercent: 33.333, percent: 0 });
+		if (!parsed.ok || parsed.op.type !== 'progress') throw new Error('progress');
+		expect(parsed.op.chapterPercent).toBe(33.3);
+		expect(parsed.op.percent).toBe(0);
+	});
+
+	test('resultado do banco vira o do fixture; reenvio vira duplicate', () => {
+		const { clientId, ...result } = fixture.result;
+		expect(toOpResult(clientId, { prior: false, result })).toEqual(fixture.result);
+		expect(toOpResult(clientId, { prior: true, result }).status).toBe('duplicate');
+		expect(
+			toOpResult(clientId, { prior: false, result: { status: 'dropped', reason: 'unknown_book' } })
+		).toEqual({ clientId, status: 'dropped', reason: 'unknown_book' });
+	});
+});

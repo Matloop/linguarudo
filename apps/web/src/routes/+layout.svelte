@@ -22,7 +22,7 @@
 	let { children, data }: LayoutProps = $props();
 
 	/** Telas com cara própria: landing, entrar e o jogo de música em tela cheia. */
-	const BARE = new Set(['/', '/entrar', '/musica/[id]']);
+	const BARE = new Set(['/', '/entrar', '/musica/[id]', '/livros/[id]/ler']);
 	const bare = $derived(!data.shell || BARE.has(page.route.id ?? ''));
 
 	// Estado local que nasce do cookie e muda na hora; o cookie vai junto.
@@ -230,6 +230,12 @@
 					aria-current={current('/musica')}
 					title="Música"><Icon name="music" /><span class="lb">Música</span></a
 				>
+				<a
+					class="nav-item"
+					href={resolve('/livros')}
+					aria-current={current('/livros')}
+					title="Livros"><Icon name="bookmark" /><span class="lb">Livros</span></a
+				>
 				<div class="nav-label">Conexões</div>
 				<a
 					class="nav-item"
@@ -311,6 +317,9 @@
 			>
 			<a class="tab" href={resolve('/musica')} aria-current={current('/musica')}
 				><Icon name="music" />Música</a
+			>
+			<a class="tab" href={resolve('/livros')} aria-current={current('/livros')}
+				><Icon name="bookmark" />Livros</a
 			>
 		</nav>
 	</div>
@@ -752,7 +761,7 @@
 		}
 		.tabbar {
 			display: grid;
-			grid-template-columns: repeat(4, 1fr);
+			grid-template-columns: repeat(5, 1fr);
 			position: fixed;
 			z-index: 30;
 			left: 0;

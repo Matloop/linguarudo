@@ -25,7 +25,8 @@ const SOURCE_OF: Record<string, SourceKey> = {
 	musica: 'mu',
 	manual: 'mao',
 	anki: 'mao',
-	ereader: 'er'
+	ereader: 'er',
+	leitor: 'er'
 };
 
 const PAGE = 1000;

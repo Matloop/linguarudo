@@ -89,6 +89,8 @@ export interface JsonRequest<T> {
 	schemaName: string;
 	/** Inclui os tokens de raciocínio. */
 	maxTokens: number;
+	/** Espera por provider; padrão TIMEOUT_MS. */
+	timeoutMs?: number;
 	/** Valida e normaliza a saída; null conta como resposta malformada. */
 	parse: (data: unknown) => T | null;
 }
@@ -142,6 +144,7 @@ async function upstreamMessage(res: Response): Promise<string> {
 
 /** Uma chamada a um provider; qualquer falha vira ProviderFailure. */
 async function callProvider<T>(provider: Provider, req: JsonRequest<T>, fetch: Fetch): Promise<T> {
+	const timeoutMs = req.timeoutMs ?? TIMEOUT_MS;
 	let res: Response;
 	try {
 		res = await fetch(`${provider.baseURL}/chat/completions`, {
@@ -151,12 +154,12 @@ async function callProvider<T>(provider: Provider, req: JsonRequest<T>, fetch: F
 				authorization: `Bearer ${provider.apiKey}`
 			},
 			body: JSON.stringify(chatBody(provider, req)),
-			signal: AbortSignal.timeout(TIMEOUT_MS)
+			signal: AbortSignal.timeout(timeoutMs)
 		});
 	} catch (e) {
 		const timeout = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
 		throw new ProviderFailure(
-			timeout ? `sem resposta em ${TIMEOUT_MS / 1000}s` : `falha de conexão: ${String(e)}`
+			timeout ? `sem resposta em ${timeoutMs / 1000}s` : `falha de conexão: ${String(e)}`
 		);
 	}
 	if (!res.ok) {

@@ -1,0 +1,4 @@
+{
+  "op": { "clientId": "3d6f8a1c-2b4e-4f7a-9c1d-5e8b2a4c6f10", "type": "progress", "at": "2026-11-11T21:10:00.000Z", "language": "it", "koHash": "5e0f1a2b3c4d5e6f708192a3b4c5d6e7", "spine": 5, "chapterPercent": 10, "percent": 26.8 },
+  "result": { "clientId": "3d6f8a1c-2b4e-4f7a-9c1d-5e8b2a4c6f10", "status": "applied", "bookId": "b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d40", "current": true }
+}
