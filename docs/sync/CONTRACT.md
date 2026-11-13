@@ -17,7 +17,8 @@ As palavras **deve**, **não deve** e **pode** são normativas. Exemplos de cada
 - **Sync** = enviar o outbox (`push`) e depois baixar o snapshot (`snapshot`). Dispara pelo botão "Sincronizar" ou ao abrir Flashcards com Wi-Fi.
 - O banco inteiro do idioma vai para o aparelho: todos os itens e, em versão só texto, as fichas. O aparelho revisa o **Reconhecer** de cada item e um flashcard por ficha (a frente, ou a primeira lacuna).
 - **A fila do dia é do servidor** (ADR 0005). O snapshot traz o orçamento de novas (`today.newAllowance`), a ordem das novas (`queueRank`) e quais flashcards estão em espera de teimosa (`leechWaiting`). O aparelho só executa. Decks (`header.decks`) servem para agrupar e mostrar; a ordem já vem pronta.
-- O aparelho produz cinco tipos de operação: `save` (salvar do blend), `review` (revisão), `seen` (visto), `extraNew` ("+N novas hoje") e `deckImport` (CSV do SD vira deck).
+- O aparelho produz seis tipos de operação: `save` (salvar do blend), `review` (revisão), `seen` (visto), `extraNew` ("+N novas hoje"), `deckImport` (CSV do SD vira deck) e `progress` (posição de leitura de um livro, seção 13).
+- Livros com blend gerados no app descem para a pasta `/Linguetta/` do SD no sync (seção 13).
 - Toda operação tem um `clientId` (UUID v4 gerado no aparelho). Reenviar é seguro.
 - Exclusão vence: item apagado no servidor some do aparelho, e operações que apontam para ele são aceitas e descartadas.
 
@@ -146,9 +147,9 @@ Toda operação tem este envelope:
 ```js
 {
   clientId: "uuid v4",   // gerado na hora da ação; identifica a operação para sempre
-  type: "save" | "review" | "seen" | "extraNew" | "deckImport",
+  type: "save" | "review" | "seen" | "extraNew" | "deckImport" | "progress",
   at: "2026-11-11T08:15:30.000Z", // quando a pessoa fez a ação, relógio do aparelho
-  language: "it",        // idioma de estudo do item
+  language: "it",        // idioma de estudo do item (em `progress`, o idioma de estudo do livro)
   // ...campos do tipo
 }
 ```
@@ -305,7 +306,7 @@ Resposta `200`, com um resultado por operação, **na mesma ordem**:
 |---|---|
 | `applied` | Teve efeito agora |
 | `duplicate` | Esse `clientId` já tinha sido processado; nada mudou |
-| `dropped` | Aceita e descartada pela regra (`reason`: `item_deleted`, `not_found`, `unknown_target`) |
+| `dropped` | Aceita e descartada pela regra (`reason`: `item_deleted`, `not_found`, `unknown_target`, `unknown_book`) |
 | `rejected` | Inválida, nunca vai valer (`reason`: `invalid` com `errors` por campo, `unknown_type`, `client_id_conflict`) |
 
 Campos extras do `applied`/`duplicate`:
@@ -315,6 +316,7 @@ Campos extras do `applied`/`duplicate`:
 - `seen`: `itemId`.
 - `extraNew`: `extraNew` (extra do dia depois da soma).
 - `deckImport`: `deckId`, `created` (false = o hash já existia) e `fichas` (fichas criadas).
+- `progress`: `bookId` e `current` (`true` = esta posição virou a do livro; `false` = já havia uma mais nova).
 
 Os quatro status são definitivos: o aparelho trata a operação como resolvida (seção 8). Se o número de resultados não bate com o de operações, o aparelho trata a resposta como erro e não resolve nada.
 
@@ -553,6 +555,7 @@ O que o aparelho mostra entre um sync e outro é `bank.jsonl` + o outbox:
 1. Acerta o relógio (NTP).
 2. **Push:** envia o outbox em lotes de até 200, na ordem do arquivo, até mandar tudo. Guarda na memória o `clientId` de cada operação resolvida. Erro de pedido (sem resposta, 5xx, 429): para o sync e mantém o outbox inteiro.
 3. **Snapshot:** com `since = cursor` (ou sem, se `null`), baixa todas as páginas e atualiza `bank.jsonl`.
+3b. **Livros:** `GET /api/v1/sync/books` e espelha `/Linguetta/` (seção 13). Falha aqui não desfaz os passos anteriores: o sync conta como `ok` e o livro tenta de novo no próximo.
 4. Só então reescreve o outbox sem as operações resolvidas no passo 2 e grava o `cursor` novo em `state.json`. Operações feitas durante o sync (se a interface permitir) ficam.
 5. Se o snapshot falhar, o outbox não muda: no próximo sync as operações voltam e dão `duplicate`. Assim a visão local nunca perde uma revisão que o banco ainda não mostra.
 
@@ -601,6 +604,9 @@ hash = md5 em hex minúsculo (32 caracteres)
 | Linhas por `deckImport` | 1–500 |
 | `front`/`back` da ficha (snapshot e `deckImport`) | 2000 code points |
 | `hash` do `deckImport` | 128 caracteres |
+| EPUB original enviado no app | 50 MB |
+| Livros na lista do aparelho | 200 |
+| Validade do `downloadUrl` | 15 min |
 
 Campos de texto (code points): `lemma` 1–80, `sense` 200, `note` 2000, `ipa` 100, `reading` 100, `pos` 80, `form` 80, `sentence` 500, `title` 200, `author` 200, `chapter` 200, `deviceName` 60, nome de deck 80. São os `LIMITS` de `apps/web/src/lib/items.ts`.
 
@@ -647,10 +653,76 @@ Em `docs/sync/fixtures/`. Todas descrevem o mesmo momento: o X4 Pro sincroniza �
 | `bank.jsonl`, `outbox.jsonl`, `state.json` | Arquivos do SD (o outbox é o de antes do push; o banco e o estado, os de depois) |
 | `fsrs-vectors.json` | Vetores do FSRS gerados com o ts-fsrs real por `generate-fsrs-vectors.ts` |
 | `kosync-hash-vectors.json` | Vetores do hash parcial gerados por `generate-kosync-vectors.ts` |
+| `books.response.json`, `library.json`, `progress.op.json` | Lista de livros (seção 13), o manifesto no SD depois do espelho e uma operação `progress` |
 
 Os estados de flashcard nos fixtures também saíram do `replay()` do servidor.
 
-## 13. Notas para o servidor (não normativas)
+## 13. Livros com blend
+
+A pessoa envia um EPUB em `/livros` no app, escolhe a língua do blend, os capítulos e o "% das palavras", e o app gera o livro com links `#lb:` (formato do `blend-format.md`). Cada geração (inclusive "continuar o blend" em mais capítulos) cria uma **versão** nova do arquivo. Livros com a chave **No aparelho** ligada e pelo menos uma versão pronta descem no sync.
+
+### `GET /api/v1/sync/books?protocol=1` (Bearer)
+
+```json
+{
+  "protocol": 1,
+  "serverNow": "2026-11-11T21:30:04.000Z",
+  "books": [
+    {
+      "id": "b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d40",
+      "title": "O alienista",
+      "author": "Machado de Assis",
+      "bookLanguage": "pt",
+      "language": "it",
+      "file": "O alienista.PT-IT.epub",
+      "version": 3,
+      "size": 412233,
+      "koHash": "5e0f1a2b3c4d5e6f708192a3b4c5d6e7",
+      "downloadUrl": "https://<projeto>.supabase.co/storage/v1/object/sign/books/...?token=...",
+      "updatedAt": "2026-11-11T20:02:11.000Z",
+      "progress": { "spine": 4, "chapterPercent": 37.5, "percent": 21.3, "at": "2026-11-11T20:40:00.000Z", "source": "web" }
+    }
+  ]
+}
+```
+
+- Lista **completa** (sem delta, sem páginas), no máximo 200 livros, por `updatedAt` decrescente. Livro fora da lista (apagado, chave desligada ou sem versão pronta) deve sair do SD.
+- `language`: o idioma de estudo do blend (o que os `#lb:` ensinam). `bookLanguage`: língua do texto e das traduções.
+- `file`: nome do arquivo em `/Linguetta/`, único na lista. Forma: título limpo (sem `/\:*?"<>|` e controles, até 80 code points) + `.` + par em maiúsculas (`PT-IT`, primeiro subtag de cada) + `.epub`; colisão ganha ` (2)` antes do par. O par no nome é o que o aparelho já usa para escolher o banco do save (`pickBlendLanguage`).
+- `version`: inteiro que sobe a cada geração. `koHash`: hash da seção 9 sobre os bytes **desta** versão (o servidor calcula ao gerar). `size`: bytes.
+- `downloadUrl`: URL assinada do Supabase Storage, válida 15 minutos, **sem** `Authorization` (o aparelho não manda o token para outro host). Aceita `Range`. Vencida: pedir a lista de novo.
+- `progress`: a posição mais nova do livro em qualquer lugar (aparelho ou leitor web), ou `null`. `spine`: índice no spine; `chapterPercent`: 0–100 dentro do capítulo; `percent`: 0–100 no livro; `source`: `device` ou `web`.
+
+### Espelho em `/Linguetta/`
+
+- O aparelho guarda o que baixou em `/.linguetta/library.json` (exemplo em `fixtures/library.json`): `{ "v": 1, "books": { "<id>": { "file", "version", "koHash", "size" } } }`.
+- Para cada livro da lista: se não está no manifesto, ou a `version` difere, ou o arquivo sumiu do SD, baixa para `/Linguetta/<file>.part`, confere `size` e o `koHash` (seção 9) e renomeia por cima de `<file>`. Se o `file` mudou (título editado), apaga o antigo depois. Só então atualiza o manifesto (escrita atômica, seção 8). Um download falho apaga o `.part` e tenta no próximo sync.
+- Livro no manifesto e fora da lista: apaga o arquivo e a entrada. O aparelho **nunca** apaga em `/Linguetta/` um arquivo que não está no manifesto (é da pessoa).
+- Ao trocar a versão de um livro aberto, o aparelho fecha o livro antes de substituir.
+- Grava `/.linguetta/books.json` (a escolha de idioma por livro) com `language` do livro, pelo caminho novo.
+- Cache de seção do CrossPoint é por caminho + tamanho; arquivo novo invalida sozinho.
+
+### Obra do livro
+
+Todas as versões apontam para a **mesma obra** (`works`, `kind = "livro"`). No `save`, o servidor procura primeiro o `koHash` entre as versões dos livros da conta; achou, usa a obra do livro (título e autor do livro). Senão, cai na regra da seção 9.
+
+### `progress`: posição de leitura
+
+```js
+{
+  clientId, type: "progress", at, language: "it",
+  koHash: "5e0f1a2b3c4d5e6f708192a3b4c5d6e7", // do arquivo aberto
+  spine: 4, chapterPercent: 37.5, percent: 21.3
+}
+```
+
+- O aparelho grava uma operação ao fechar o livro ou ao sair para a tela inicial, se a posição mudou desde a última gravada (no máximo uma a cada 5 minutos de leitura contínua). O outbox pode ter várias do mesmo livro; o servidor fica com a de maior `at`.
+- O servidor acha o livro pelo `koHash` de qualquer versão. Sem livro: `dropped`, `unknown_book`. `language` não precisa bater.
+- Quem leu por último vence: a posição vale se `at` (limitado a agora) for maior que a guardada; senão `current: false`.
+- Ao abrir um livro da lista, o aparelho usa `progress` do último `books` se ele for mais novo que a posição local (cache do CrossPoint) e ainda não estiver no outbox uma posição local mais nova. Versão nova do arquivo: o aparelho volta ao `spine` + `chapterPercent` (a paginação mudou).
+- O leitor web grava a mesma posição direto no banco (`source: "web"`), com a mesma regra.
+
+## 14. Notas para o servidor (não normativas)
 
 O que o banco atual (`supabase/migrations/`) ainda não tem e o contrato pede. O desenho é livre; o comportamento é o das seções acima.
 
@@ -663,4 +735,5 @@ O que o banco atual (`supabase/migrations/`) ainda não tem e o contrato pede. O
 - **Exclusão vence no save:** procurar item apagado com o mesmo `(language, lemmaKey)` e `deleted_at > at`.
 - **Delta:** `updatedAt` precisa subir também quando o Reconhecer ou um encontro muda (hoje `items.updated_at` só sobe em update do item). Um contador monotônico (sequence) por mudança dá um cursor seguro contra transações concorrentes; enquanto não houver, responder sempre `mode: "full"` cumpre o contrato.
 - **`today.newDoneToday`:** a mesma conta de `review_counts` com `dayStart` de `review.ts`.
+- **Livros:** bucket privado `books` (`<user_id>/<book_id>/original.epub` e `<user_id>/<book_id>/v<N>.epub`); tabelas `books` (título, autor, `book_language`, `language`, `coverage`, `on_device`, `work_id`, versão atual), `book_chapters` (por `spine`: título, palavras, estado, candidatas da IA em jsonb), `book_versions` (`version`, caminho, `ko_hash`, `size`) e `book_progress` (uma linha por livro: `spine`, `chapter_percent`, `percent`, `at`, `source`). `work_for` consulta `book_versions.ko_hash` antes do ramo `kosync:`.
 - **Fila:** `api_sync_snapshot` devolve o estado da fila (`queue_state_for`) em toda página; a rota calcula `queueRank` com `readerRanks` e o cabeçalho com `readerDecks` (`apps/web/src/lib/server/queue.ts`). Decks: `supabase/migrations/20261112080000_decks.sql`.

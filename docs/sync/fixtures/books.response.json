@@ -1,0 +1,34 @@
+{
+  "protocol": 1,
+  "serverNow": "2026-11-11T21:30:04.000Z",
+  "books": [
+    {
+      "id": "b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d40",
+      "title": "O alienista",
+      "author": "Machado de Assis",
+      "bookLanguage": "pt",
+      "language": "it",
+      "file": "O alienista.PT-IT.epub",
+      "version": 3,
+      "size": 412233,
+      "koHash": "5e0f1a2b3c4d5e6f708192a3b4c5d6e7",
+      "downloadUrl": "https://example.supabase.co/storage/v1/object/sign/books/u/b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d40/v3.epub?token=eyJ0ZXN0IjoxfQ",
+      "updatedAt": "2026-11-11T20:02:11.000Z",
+      "progress": { "spine": 4, "chapterPercent": 37.5, "percent": 21.3, "at": "2026-11-11T20:40:00.000Z", "source": "web" }
+    },
+    {
+      "id": "c8f2d3e4-5a6b-4c7d-9e8f-0a1b2c3d4e50",
+      "title": "Pride and Prejudice",
+      "author": "Jane Austen",
+      "bookLanguage": "en",
+      "language": "it",
+      "file": "Pride and Prejudice.EN-IT.epub",
+      "version": 1,
+      "size": 803112,
+      "koHash": "0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+      "downloadUrl": "https://example.supabase.co/storage/v1/object/sign/books/u/c8f2d3e4-5a6b-4c7d-9e8f-0a1b2c3d4e50/v1.epub?token=eyJ0ZXN0IjoyfQ",
+      "updatedAt": "2026-11-10T18:00:00.000Z",
+      "progress": null
+    }
+  ]
+}
