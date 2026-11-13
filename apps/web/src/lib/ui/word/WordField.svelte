@@ -25,6 +25,7 @@
 		formatTags,
 		itemEditFields,
 		itemFieldValue,
+		isInlineField,
 		type EditableItem,
 		type InlineTextField,
 		type WordTextField
@@ -95,7 +96,7 @@
 	// ---------- modo inline ----------
 	// O postAction só responde depois de recarregar a página: `item` já chega salvo.
 	const shown = $derived(
-		mode === 'inline' && item && field !== 'sentence' ? itemFieldValue(item, field) : value
+		mode === 'inline' && item && isInlineField(field) ? itemFieldValue(item, field) : value
 	);
 
 	let editing = $state(false);
@@ -130,7 +131,7 @@
 	}
 
 	async function commit() {
-		if (!editing || saving || !item || field === 'sentence') return;
+		if (!editing || saving || !item || !isInlineField(field)) return;
 		const next = nextValue();
 		const same =
 			field === 'tags' ? next === formatTags(parseTags(shown)) : next.trim() === shown.trim();

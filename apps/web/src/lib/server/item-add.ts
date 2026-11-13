@@ -31,7 +31,7 @@ export async function addItem(locals: App.Locals, userId: string, form: FormData
 		return fail(400, { action: 'add' as const, errors, values });
 	}
 
-	const { language, lemma, reading, sense, sentence, note, tags, deck } = parsed.value;
+	const { language, lemma, reading, sense, sentence, translation, note, tags, deck } = parsed.value;
 	const values = { ...parsed.value, tags: tags.join(', '), deck: deck ?? '' };
 	// Deck de outro idioma ou de outra pessoa: recusa antes de criar o item.
 	if (deck) {
@@ -42,7 +42,7 @@ export async function addItem(locals: App.Locals, userId: string, form: FormData
 			.eq('language', language)
 			.maybeSingle();
 		if (!found) {
-			const errors: AddErrors = { deck: 'Escolha um deck deste idioma.' };
+			const errors: AddErrors = { deck: 'Escolha um baralho deste idioma.' };
 			return fail(400, { action: 'add' as const, errors, values });
 		}
 	}
@@ -63,6 +63,7 @@ export async function addItem(locals: App.Locals, userId: string, form: FormData
 			sentence,
 			highlight: '',
 			sense,
+			translation,
 			position: {},
 			origin: 'manual',
 			seen_at: null,
@@ -108,7 +109,7 @@ export async function addItem(locals: App.Locals, userId: string, form: FormData
 			return {
 				action: 'add' as const,
 				added: saved.lemma,
-				message: `“${saved.lemma}” guardada, mas sem tags, mídia ou deck. Complete no painel.`
+				message: `“${saved.lemma}” guardada, mas sem tags, mídia ou baralho. Complete no painel.`
 			};
 		}
 	}

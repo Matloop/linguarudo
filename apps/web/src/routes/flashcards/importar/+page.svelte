@@ -10,6 +10,7 @@
 	} from '#lib/anki/mapping.ts';
 	import { languageLabel, type Language } from '#lib/languages.ts';
 	import Icon from '#lib/ui/Icon.svelte';
+	import Select from '#lib/ui/Select.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -191,20 +192,26 @@
 			</p>
 			{#if m.target === 'item'}
 				<div class="fields">
-					<label
-						>Palavra
-						<select bind:value={m.item.lemma}>
-							{#each t.fields as f, i (i)}<option value={i}>{f}</option>{/each}
-						</select>
-					</label>
+					<div class="map">
+						<span>Palavra</span>
+						<Select
+							label="Palavra"
+							bind:value={m.item.lemma}
+							options={t.fields.map((f, i) => ({ value: i, label: f }))}
+						/>
+					</div>
 					{#each [['sense', 'Tradução'], ['sentence', 'Frase'], ['reading', 'Leitura']] as const as [key, label] (key)}
-						<label
-							>{label}
-							<select bind:value={m.item[key]}>
-								<option value={null}>—</option>
-								{#each t.fields as f, i (i)}<option value={i}>{f}</option>{/each}
-							</select>
-						</label>
+						<div class="map">
+							<span>{label}</span>
+							<Select
+								{label}
+								bind:value={m.item[key]}
+								options={[
+									{ value: null, label: '—' },
+									...t.fields.map((f, i) => ({ value: i, label: f }))
+								]}
+							/>
+						</div>
 					{/each}
 				</div>
 			{/if}
@@ -213,13 +220,15 @@
 
 	<div class="go">
 		{#if data.languages.length > 1}
-			<label class="lang"
-				>Idioma
-				<select value={language} onchange={(e) => (picked = e.currentTarget.value as Language)}>
-					{#each data.languages as l (l)}<option value={l}>{languageLabel(l, data.ui)}</option
-						>{/each}
-				</select>
-			</label>
+			<div class="lang">
+				<span>Idioma</span>
+				<Select
+					label="Idioma"
+					value={language}
+					options={data.languages.map((l) => ({ value: l, label: languageLabel(l, data.ui) }))}
+					onchange={(l) => (picked = l as Language)}
+				/>
+			</div>
 		{/if}
 		<p>
 			{plural(counts.items, 'palavra', 'palavras')} · {plural(counts.fichas, 'ficha', 'fichas')} ·
@@ -360,22 +369,22 @@
 		gap: 10px;
 		margin-top: 12px;
 	}
-	.fields label,
+	.map,
 	.lang {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 0;
 		font-size: 12px;
 		color: var(--ink-3);
 	}
-	select {
-		display: block;
-		width: 100%;
-		margin-top: 4px;
-		padding: 7px 10px;
-		border: 0;
-		border-radius: var(--r-m);
-		background: var(--sunk);
-		box-shadow: inset 0 0 0 1px var(--line);
+	.lang {
+		min-width: 180px;
+	}
+	.map :global(.trigger),
+	.lang :global(.trigger) {
+		height: 34px;
 		font-size: 14px;
-		color: var(--ink);
 	}
 	.go {
 		display: flex;

@@ -18,6 +18,7 @@ import {
 import { releaseMedia, signMedia } from '#lib/server/media.ts';
 import { addItem } from '#lib/server/item-add.ts';
 import { editItem } from '#lib/server/item-edit.ts';
+import { editEncounter } from '#lib/server/encounter-edit.ts';
 import { deckTree } from '#lib/decks.ts';
 import { listDecks } from '#lib/server/decks.ts';
 import { extraAction, moveAction } from '#lib/server/deck-actions.ts';
@@ -52,7 +53,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 		locals.supabase
 			.from('items')
 			.select(
-				'id, language, lemma, reading, sense, ipa, note, tags, image, audio, status, deck_id, seen_count, created_at, flashcards(id, kind, state, stability, due_at, lapses), encounters(id, sentence, highlight, sense, origin, position, seen_at, works(title, subtitle))'
+				'id, language, lemma, reading, sense, ipa, note, tags, image, audio, status, deck_id, seen_count, created_at, flashcards(id, kind, state, stability, due_at, lapses), encounters(id, sentence, highlight, translation, sense, origin, position, seen_at, works(title, subtitle))'
 			)
 			.eq('user_id', user.id)
 			.eq('language', language)
@@ -85,7 +86,8 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 			lapses: Math.max(0, ...flashcards.map((c) => c.lapses)),
 			hasProduce: flashcards.some((c) => c.kind === 'produzir'),
 			dueToday: status === 'ativo' && isDueToday(dueAts, now, shell.clock),
-			dueAt: dueAts.length ? Math.min(...dueAts.map(Date.parse)) : null,
+			/** Próxima revisão do que já foi estudado (a nova nasce vencida e não conta). */
+			dueAt: status === 'ativo' && studiedDue.length ? Math.min(...studiedDue) : null,
 			next: status === 'ativo' ? formatNextReview(dueAts, now, shell.clock) : '',
 			review,
 			/** Coluna da lista: "há 3 dias", "em 10 min", "amanhã"… (vazio se nova ou conhecida). */
@@ -97,6 +99,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 				id: e.id,
 				sentence: e.sentence,
 				highlight: e.highlight,
+				translation: e.translation,
 				sense: e.sense,
 				origin: e.origin as Origin,
 				originLabel: ORIGIN_LABELS[e.origin as Origin],
@@ -182,6 +185,7 @@ export const load: PageServerLoad = async ({ locals, url, parent }) => {
 		})),
 		language,
 		uiLanguage: shell.uiLanguage,
+		nativeLanguage: shell.nativeLanguage ?? shell.uiLanguage,
 		selectedId: selected?.id ?? null,
 		selectedMedia,
 		selectedCards,
@@ -203,6 +207,11 @@ export const actions: Actions = {
 	edit: async ({ locals, request }) => {
 		const user = await requireUser(locals);
 		return editItem(locals, user.id, await request.formData());
+	},
+
+	editEncounter: async ({ locals, request }) => {
+		const user = await requireUser(locals);
+		return editEncounter(locals, user.id, await request.formData());
 	},
 
 	known: async ({ locals, request }) => {

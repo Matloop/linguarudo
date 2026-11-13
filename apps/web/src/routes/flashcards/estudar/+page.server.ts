@@ -24,6 +24,7 @@ import {
 } from '#lib/server/session.ts';
 import { loadReviewSettings } from '#lib/server/settings.ts';
 import { loadTags, nextDueText } from '#lib/server/summary.ts';
+import type { WordEdit } from '#lib/word-fields.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const FICHA_MEDIA = 'front_image, front_audio, back_image, back_audio' as const;
@@ -71,7 +72,7 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 		error(
 			parsed.status,
 			parsed.status === 404
-				? 'Deck ou obra não encontrado.'
+				? 'Baralho ou obra não encontrado.'
 				: 'Não deu para carregar a revisão agora.'
 		);
 	}
@@ -125,7 +126,7 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 		budget: {
 			newAllowance: plan.newAllowance,
 			newDoneToday: plan.newDoneToday,
-			perDay: state.settings.perDay,
+			perDay: plan.newLimit,
 			extraNew: state.extraNew,
 			more: plan.more
 		},
@@ -178,7 +179,7 @@ export const actions: Actions = {
 		}
 		const { data: it } = await locals.supabase
 			.from('items')
-			.select('id, lemma, reading, sense, note, tags, image, audio')
+			.select('id, lemma, reading, sense, note, tags, image, audio, deck_id')
 			.eq('id', row.item_id)
 			.eq('user_id', user.id)
 			.is('deleted_at', null)
@@ -187,15 +188,25 @@ export const actions: Actions = {
 		const urls = await signMedia(locals.supabase, [it.image, it.audio]).catch(
 			() => new Map<string, string>()
 		);
-		return {
-			kind: 'item' as const,
+		// A frase do cartão (o encontro mais recente) edita junto, pelo ?/editEncounter.
+		const enc = row.items.encounters[0] ?? null;
+		const word: WordEdit = {
 			id: it.id,
-			item: it,
+			lemma: it.lemma,
+			reading: it.reading,
+			sense: it.sense,
+			note: it.note,
+			tags: it.tags,
+			image: it.image,
+			audio: it.audio,
+			deckId: it.deck_id,
 			mediaUrls: {
 				image: it.image ? (urls.get(it.image) ?? null) : null,
 				audio: it.audio ? (urls.get(it.audio) ?? null) : null
-			}
+			},
+			encounter: enc ? { id: enc.id, sentence: enc.sentence, translation: enc.translation } : null
 		};
+		return { kind: 'item' as const, id: it.id, word };
 	},
 
 	/** O flashcard como a revisão o mostra, depois de uma edição. */
@@ -320,7 +331,7 @@ export const actions: Actions = {
 			budget: {
 				newAllowance: plan.newAllowance,
 				newDoneToday: plan.newDoneToday,
-				perDay: state.settings.perDay,
+				perDay: plan.newLimit,
 				extraNew: state.extraNew,
 				more: plan.more
 			}

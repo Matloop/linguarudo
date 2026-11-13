@@ -5,11 +5,22 @@
 import { LIMITS } from './items.ts';
 import { TAG_LIMITS } from './tags.ts';
 
-/** Campos de texto. A frase só existe ao guardar (no painel ela é um encontro). */
-export type WordTextField = 'lemma' | 'sense' | 'sentence' | 'reading' | 'note' | 'tags';
+/**
+ * Campos de texto. A frase e a tradução dela só existem ao guardar (no painel são um
+ * encontro, editado pelo ?/editEncounter).
+ */
+export type WordTextField =
+	'lemma' | 'sense' | 'sentence' | 'translation' | 'reading' | 'note' | 'tags';
 
-/** Campos que editam no lugar pelo ?/edit (a frase não). */
-export type InlineTextField = Exclude<WordTextField, 'sentence'>;
+/** Campos do encontro: só no diálogo Guardar. */
+export type EncounterTextField = 'sentence' | 'translation';
+
+/** Campos que editam no lugar pelo ?/edit (os do encontro não). */
+export type InlineTextField = Exclude<WordTextField, EncounterTextField>;
+
+export function isInlineField(field: WordTextField): field is InlineTextField {
+	return field !== 'sentence' && field !== 'translation';
+}
 
 /** Ícones da sprite usados pelos campos (subconjunto de IconName). */
 export type FieldIcon = 'globe' | 'quote' | 'sound' | 'note' | 'tag';
@@ -50,6 +61,14 @@ export const WORD_FIELDS: Record<WordTextField, FieldMeta> = {
 		multiline: true,
 		inTargetLanguage: true
 	},
+	translation: {
+		label: 'Tradução da frase',
+		icon: 'globe',
+		placeholder: 'A frase na sua língua (opcional)',
+		max: LIMITS.translation,
+		multiline: true,
+		inTargetLanguage: false
+	},
 	reading: {
 		label: 'Leitura',
 		icon: 'sound',
@@ -87,6 +106,24 @@ export interface EditableItem {
 	image?: string | null;
 	audio?: string | null;
 	deckId?: string | null;
+}
+
+/**
+ * A palavra aberta no diálogo Guardar em modo edição (revisão): o item, a mídia assinada
+ * e a frase do cartão (o encontro mais recente; null se o item não tem frase).
+ */
+export interface WordEdit {
+	id: string;
+	lemma: string;
+	reading: string;
+	sense: string;
+	note: string;
+	tags: readonly string[];
+	image: string | null;
+	audio: string | null;
+	deckId: string | null;
+	mediaUrls: { image: string | null; audio: string | null };
+	encounter: { id: string; sentence: string; translation: string } | null;
 }
 
 /** Opção do campo Deck (e do DeckPicker). */

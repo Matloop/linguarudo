@@ -57,9 +57,6 @@ export const DEFAULT_RETENTION = 0.9;
 export const MIN_RETENTION = 0.7;
 export const MAX_RETENTION = 0.97;
 
-/** Padrão de user_settings.new_flashcards_per_day (veja a migration de revisão). */
-export const DEFAULT_NEW_PER_DAY = 10;
-
 /** Dependência do load do layout; invalidar atualiza o "N para revisar". */
 export const REVIEW_DEPENDENCY = 'app:revisao';
 
@@ -542,6 +539,10 @@ export interface ItemReview extends ReviewBase {
 	sentence: string;
 	/** Trecho da frase a destacar (a forma vista); vazio = o lema. */
 	highlight: string;
+	/** A frase na língua nativa; só no verso (na frente entregaria a resposta). */
+	translation: string;
+	/** O encontro da frase (para editar frase e tradução); null se o item não tem. */
+	encounterId: string | null;
 	origin: Origin | null;
 	/** "Kaguya · T1E2, 42:10"; vazio se o encontro não tem obra. */
 	sourceDetail: string;

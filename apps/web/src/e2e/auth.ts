@@ -103,8 +103,8 @@ export async function saveWord(page: Page, lemma: string, sense = '', sentence =
 		await expect(dialog).toBeVisible({ timeout: 1000 });
 	}).toPass();
 	await dialog.getByRole('textbox', { name: 'Palavra' }).fill(lemma);
-	if (sense) await dialog.getByLabel('Tradução').fill(sense);
-	if (sentence) await dialog.getByLabel('Frase').fill(sentence);
+	if (sense) await dialog.getByLabel('Tradução', { exact: true }).fill(sense);
+	if (sentence) await dialog.getByLabel('Frase', { exact: true }).fill(sentence);
 	await dialog.getByRole('button', { name: 'Guardar' }).click();
 	return dialog;
 }

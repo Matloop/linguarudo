@@ -10,6 +10,7 @@
 	import DeckPicker from '#lib/ui/DeckPicker.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
 	import Popover from '#lib/ui/Popover.svelte';
+	import Select from '#lib/ui/Select.svelte';
 	import { postAction } from '#lib/ui/post-action.ts';
 	import { Selection } from '#lib/ui/selection.svelte.ts';
 	import Mark from '#lib/ui/Mark.svelte';
@@ -120,8 +121,9 @@
 				i.sense.toLocaleLowerCase().includes(needle)
 			);
 		});
-		// Sem revisão marcada (já sei) vai para o fim.
-		const dueAt = (i: Row) => i.dueAt ?? Number.MAX_SAFE_INTEGER;
+		// Estudadas pela data da próxima revisão; depois as novas; "já sei" no fim.
+		const dueAt = (i: Row) =>
+			i.dueAt ?? (i.review === 'nova' ? Number.MAX_SAFE_INTEGER - 1 : Number.MAX_SAFE_INTEGER);
 		if (order === 'az') found.sort((a, b) => a.lemma.localeCompare(b.lemma, data.language));
 		if (order === 'revisao') found.sort((a, b) => dueAt(a) - dueAt(b));
 		if (order === 'forca') found.sort((a, b) => a.strength - b.strength);
@@ -151,8 +153,8 @@
 		toast(r.ok ? 'Mais 5 novas para revisar hoje' : r.message);
 	}
 
-	function pickOrder(e: Event) {
-		order = (e.currentTarget as HTMLSelectElement).value as Order;
+	function pickOrder(o: Order) {
+		order = o;
 		replaceState(
 			resolve(`/palavras${searchWith({ o: order === 'recentes' ? null : order })}`),
 			page.state
@@ -183,14 +185,12 @@
 		sel.clear();
 	}
 
-	function pickDeck(e: Event) {
-		const v = (e.currentTarget as HTMLSelectElement).value;
+	function pickDeck(v: string) {
 		sel.clear();
 		deckFilter = v || null;
 		replaceState(resolve(`/palavras${searchWith({ deck: v || null })}`), page.state);
 	}
 	const deckLabel = (name: string) => deckDisplayName(name).split(' › ').at(-1);
-	const currentDeck = $derived(data.decks.find((d) => d.id === deckFilter) ?? null);
 
 	const selected = $derived(data.items.find((i) => i.id === data.selectedId) ?? null);
 	/** Posição do painel na lista como ela está (filtro, busca, ordem). */
@@ -267,31 +267,40 @@
 {/snippet}
 
 {#snippet sortSelect(id: string)}
-	<label class="txt-sel" for={id}
-		>Ordem: <b>{ORDERS.find(([k]) => k === order)?.[1]}</b><Icon name="down" size="sm" /><select
+	<span class="txt-sel">
+		<Select
 			{id}
+			variant="inline"
+			align="end"
+			prefix="Ordem:"
+			label="Ordem"
 			value={order}
+			options={ORDERS.map(([value, label]) => ({ value, label }))}
 			onchange={pickOrder}
-		>
-			{#each ORDERS as [key, label] (key)}
-				<option value={key}>{label}</option>
-			{/each}
-		</select></label
-	>
+		/>
+	</span>
 {/snippet}
 
 {#snippet deckSelect(id: string)}
-	<label class="txt-sel" for={id}
-		>Deck: <b>{currentDeck ? deckLabel(currentDeck.name) : 'Todos'}</b><Icon
-			name="down"
-			size="sm"
-		/><select {id} value={deckFilter ?? ''} onchange={pickDeck}>
-			<option value="">Todos os decks</option>
-			{#each data.decks as d (d.id)}
-				<option value={d.id}>{d.depth ? '\u00a0\u00a0\u00a0' : ''}{deckLabel(d.name)}</option>
-			{/each}
-		</select></label
-	>
+	<span class="txt-sel">
+		<Select
+			{id}
+			variant="inline"
+			align="end"
+			prefix="Baralho:"
+			label="Baralho"
+			value={deckFilter ?? ''}
+			options={[
+				{ value: '', label: 'Todos os baralhos' },
+				...data.decks.map((d) => ({
+					value: d.id,
+					label: deckLabel(d.name) ?? d.name,
+					indent: d.depth > 0
+				}))
+			]}
+			onchange={pickDeck}
+		/>
+	</span>
 {/snippet}
 
 <div class="top" class:bare={data.items.length === 0}>
@@ -503,7 +512,7 @@
 {/if}
 
 <BulkBar count={sel.size} label="Ações das palavras" onclear={() => sel.clear()}>
-	<Popover label="Mover para deck" bind:open={moveOpen} align="start" placement="above">
+	<Popover label="Mover para baralho" bind:open={moveOpen} align="start" placement="above">
 		{#snippet trigger({ toggle, expanded, id })}
 			<button
 				class="btn btn-ghost"
@@ -511,7 +520,7 @@
 				aria-haspopup="dialog"
 				aria-expanded={expanded}
 				aria-controls={id}
-				onclick={toggle}><Icon name="folder" size="sm" />Mover para deck…</button
+				onclick={toggle}><Icon name="folder" size="sm" />Mover para baralho…</button
 			>
 		{/snippet}
 		<DeckPicker decks={pickerDecks} current={deckFilter} pending={moving} onpick={moveTo} />
@@ -529,6 +538,7 @@
 		decks={data.decks}
 		language={data.language}
 		nativeLanguage={data.uiLanguage}
+		translationLanguage={data.nativeLanguage}
 		{now}
 		clock={data.shell?.clock}
 		position={selectedIndex >= 0 ? { index: selectedIndex, total: rows.length } : null}
@@ -693,47 +703,7 @@
 
 	/* Seletor só texto ("Ordem: Mais recentes ▾"): o select de verdade fica por cima, invisível. */
 	.txt-sel {
-		position: relative;
 		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		height: 32px;
-		padding: 0 8px;
-		border-radius: var(--r-s);
-		font-size: 14px;
-		color: var(--ink-3);
-		white-space: nowrap;
-		cursor: pointer;
-		transition:
-			background-color 0.15s,
-			color 0.15s;
-	}
-	.txt-sel:hover,
-	.txt-sel:focus-within {
-		background: var(--hover);
-		color: var(--ink);
-	}
-	.txt-sel:has(select:focus-visible) {
-		box-shadow: 0 0 0 3px var(--ring);
-	}
-	.txt-sel b {
-		color: var(--ink-2);
-		font-weight: 500;
-		max-width: 150px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.txt-sel :global(.ic) {
-		width: 13px;
-		height: 13px;
-	}
-	.txt-sel select {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		opacity: 0;
-		cursor: pointer;
-		font-size: 16px;
 	}
 
 	/* Popover Exibir */
@@ -1074,6 +1044,8 @@
 		}
 		.show-m .txt-sel {
 			display: flex;
+		}
+		.show-m .txt-sel :global(.trigger) {
 			height: 38px;
 			padding: 0 10px;
 			font-size: 15px;

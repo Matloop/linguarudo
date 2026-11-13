@@ -15,6 +15,7 @@
 	import { languageLabel, type Language, type UiLanguage } from '#lib/languages.ts';
 	import Icon from './Icon.svelte';
 	import MediaField from './MediaField.svelte';
+	import Select from './Select.svelte';
 
 	// Formulário da ficha (nova e edição). Frente e verso são textareas com uma barra
 	// de B/I que embrulha a seleção em <b>/<i>; o servidor sanitiza (fichas.ts).
@@ -189,11 +190,14 @@
 	<div class="grid2">
 		<div class="fld">
 			<label for="ficha-language">Idioma</label>
-			<select id="ficha-language" name="language" value={values.language}>
-				{#each languages as language (language)}
-					<option value={language}>{languageLabel(language, ui)}</option>
-				{/each}
-			</select>
+			<div class="sel-wrap">
+				<Select
+					id="ficha-language"
+					name="language"
+					value={values.language}
+					options={languages.map((l) => ({ value: l, label: languageLabel(l, ui) }))}
+				/>
+			</div>
 			{#if errors.language}<p class="err" role="alert">{errors.language}</p>{/if}
 		</div>
 		<div class="fld">
@@ -290,8 +294,7 @@
 		background: var(--tile);
 	}
 	textarea,
-	input:not([type='checkbox']),
-	select {
+	input:not([type='checkbox']) {
 		display: block;
 		width: 100%;
 		margin-top: 6px;
@@ -304,13 +307,15 @@
 		color: var(--ink);
 		outline: none;
 	}
+	.sel-wrap {
+		margin-top: 6px;
+	}
 	textarea {
 		resize: vertical;
 		line-height: 1.45;
 	}
 	textarea:focus,
-	input:focus,
-	select:focus {
+	input:focus {
 		background: var(--raise);
 		box-shadow:
 			inset 0 0 0 1px var(--line-2),

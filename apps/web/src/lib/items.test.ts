@@ -49,11 +49,30 @@ describe('parseItemInput', () => {
 				sense: 'desistir',
 				language: 'en',
 				sentence: '',
+				translation: '',
 				note: '',
 				tags: [],
 				deck: null
 			}
 		});
+	});
+
+	test('tradução da frase: só com frase e até o limite', () => {
+		const r = parseItemInput(
+			{ lemma: 'scheda', language: 'it', sentence: 'La scheda.', translation: ' A ficha. ' },
+			study
+		);
+		expect(r.ok && r.value).toMatchObject({ sentence: 'La scheda.', translation: 'A ficha.' });
+		const orphan = parseItemInput(
+			{ lemma: 'scheda', language: 'it', translation: 'A ficha.' },
+			study
+		);
+		expect(!orphan.ok && orphan.errors.translation).toBeString();
+		const long = parseItemInput(
+			{ lemma: 'a', language: 'it', sentence: 'b', translation: 'c'.repeat(1001) },
+			study
+		);
+		expect(!long.ok && long.errors.translation).toBeString();
 	});
 
 	test('"Mais campos": nota, tags e deck são lidos e validados como na edição', () => {
@@ -139,6 +158,7 @@ describe('parseItemInput', () => {
 				sense: 'oi',
 				language: 'en',
 				sentence: 'x',
+				translation: '',
 				note: '',
 				tags: '',
 				deck: ''

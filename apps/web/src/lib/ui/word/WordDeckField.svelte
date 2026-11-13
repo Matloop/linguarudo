@@ -78,13 +78,13 @@
 
 <div class="deck-field">
 	{#if mode === 'form'}<input type="hidden" name="deck" value={picked ?? ''} />{/if}
-	<FieldRow icon="cards" label="Deck" error={open ? '' : shownError}>
-		<Popover bind:open label="Escolher deck" align="start" width={300}>
+	<FieldRow icon="cards" label="Baralho" error={open ? '' : shownError}>
+		<Popover bind:open label="Escolher baralho" align="start" width={300}>
 			{#snippet trigger({ toggle, expanded, id })}
 				<button
 					type="button"
 					class="pick"
-					aria-label="Deck: {name}. Trocar deck"
+					aria-label="Baralho: {name}. Trocar baralho"
 					aria-expanded={expanded}
 					aria-controls={id}
 					disabled={loading && decks.length === 0}

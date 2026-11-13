@@ -7,7 +7,7 @@
 <script lang="ts">
 	import type { MediaKind } from '#lib/media.ts';
 	import { itemEditFields, type EditableItem } from '#lib/word-fields.ts';
-	import MediaField from '../MediaField.svelte';
+	import MediaField, { type ImageSuggestContext } from '../MediaField.svelte';
 	import { EDIT_ACTION, saveField } from './inline-save.ts';
 
 	let {
@@ -19,6 +19,7 @@
 		error = '',
 		action = EDIT_ACTION,
 		addLabel,
+		suggest,
 		onsaved
 	}: {
 		kind: MediaKind;
@@ -33,6 +34,8 @@
 		action?: string;
 		/** Texto do botão quando não há mídia (ex.: "Adicionar imagem"). */
 		addLabel?: string;
+		/** Só imagem: liga o "✦ Sugerir com IA" (fotos do Commons) com o contexto da palavra. */
+		suggest?: () => ImageSuggestContext | null;
 		onsaved?: (kind: MediaKind, path: string | null) => void;
 	} = $props();
 
@@ -64,6 +67,7 @@
 		{addLabel}
 		path={current}
 		{url}
+		{suggest}
 		onchange={mode === 'inline' ? save : undefined}
 	/>
 	{#if shownError}<p class="err" role="alert">{shownError}</p>{/if}

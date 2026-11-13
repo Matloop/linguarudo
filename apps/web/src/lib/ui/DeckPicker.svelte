@@ -1,5 +1,5 @@
 <!--
-	"Mover para deck…": combobox filtrável com os decks do idioma e "Novo deck…" no fim
+	"Mover para baralho…": combobox filtrável com os decks do idioma e "Novo baralho…" no fim
 	(cria com o texto digitado). Setas escolhem, Enter confirma, Esc fecha (o Popover).
 -->
 <script lang="ts">
@@ -70,7 +70,7 @@
 
 <div class="dp">
 	<label class="visually-hidden" for="{id}-q"
-		>{creating ? 'Nome do deck novo' : 'Buscar deck'}</label
+		>{creating ? 'Nome do baralho novo' : 'Buscar baralho'}</label
 	>
 	<input
 		id="{id}-q"
@@ -80,7 +80,7 @@
 		aria-controls="{id}-list"
 		aria-activedescendant={creating ? undefined : `${id}-${active}`}
 		aria-autocomplete="list"
-		placeholder={creating ? 'Nome do deck novo' : 'Buscar deck'}
+		placeholder={creating ? 'Nome do baralho novo' : 'Buscar baralho'}
 		maxlength={DECK_NAME_UI_MAX}
 		autocomplete="off"
 		bind:value={q}
@@ -98,7 +98,7 @@
 			>
 		</div>
 	{:else}
-		<ul id="{id}-list" role="listbox" aria-label="Decks">
+		<ul id="{id}-list" role="listbox" aria-label="Baralhos">
 			{#each shown as d, i (d.id)}
 				<li
 					id="{id}-{i}"
@@ -117,7 +117,7 @@
 				</li>
 			{/each}
 			{#if shown.length === 0}
-				<li class="none" role="presentation">Nenhum deck com “{q.trim()}”</li>
+				<li class="none" role="presentation">Nenhum baralho com “{q.trim()}”</li>
 			{/if}
 			{#if allowNew}
 				<li
@@ -131,7 +131,7 @@
 					onkeydown={() => {}}
 				>
 					<Icon name="plus" size="sm" />
-					{q.trim() && !exact ? `Novo deck “${q.trim()}”` : 'Novo deck…'}
+					{q.trim() && !exact ? `Novo baralho “${q.trim()}”` : 'Novo baralho…'}
 				</li>
 			{/if}
 		</ul>

@@ -191,14 +191,14 @@
 					class="nav-item"
 					href={resolve('/flashcards')}
 					aria-current={current('/flashcards')}
-					title="Flashcards"
-					><Icon name="repeat" /><span class="lb">Flashcards</span>
+					title="Baralhos"
+					><Icon name="repeat" /><span class="lb">Baralhos</span>
 					{#if toReview > 0}<span class="count"
 							>{toReview}<span class="visually-hidden">&nbsp;para hoje</span></span
 						>{/if}</a
 				>
 				{#if !collapsed && shellDecks.length}
-					<ul class="sub" aria-label="Decks com algo para hoje">
+					<ul class="sub" aria-label="Baralhos com algo para hoje">
 						{#each shellDecks as d (d.id)}
 							<li>
 								<a
@@ -303,7 +303,7 @@
 				><Icon name="book" />Palavras</a
 			>
 			<a class="tab" href={resolve('/flashcards')} aria-current={current('/flashcards')}
-				><Icon name="repeat" />Flashcards{#if toReview > 0}<span class="count"
+				><Icon name="repeat" />Baralhos{#if toReview > 0}<span class="count"
 						>{toReview}<span class="visually-hidden">&nbsp;para hoje</span></span
 					>{/if}</a
 			>

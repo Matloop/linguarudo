@@ -16,6 +16,8 @@
 		id: string;
 		sentence: string;
 		highlight: string;
+		/** A frase na língua nativa; vazia se não há. */
+		translation: string;
 		sense: string;
 		origin: Origin;
 		originLabel: string;
@@ -66,7 +68,7 @@
 	import { goto } from '$app/navigation';
 	import { playWord } from '#lib/audio.ts';
 	import { deckDisplayName, plural } from '#lib/decks-ui.ts';
-	import { langAttrs, type Language, type UiLanguage } from '#lib/languages.ts';
+	import type { Language, UiLanguage } from '#lib/languages.ts';
 	import {
 		DEFAULT_CLOCK,
 		GRADES,
@@ -74,7 +76,6 @@
 		STRENGTH_LABELS,
 		formatAgo,
 		formatNextReview,
-		highlightParts,
 		type DayClock,
 		type Grade
 	} from '#lib/review.ts';
@@ -84,8 +85,8 @@
 	import Icon from './Icon.svelte';
 	import Popover from './Popover.svelte';
 	import { toast } from './app-state.svelte.ts';
-	import { ORIGIN_ICONS } from './origins.ts';
 	import { postAction } from './post-action.ts';
+	import EncounterQuote from './word/EncounterQuote.svelte';
 	import WordField from './word/WordField.svelte';
 	import WordMediaField from './word/WordMediaField.svelte';
 
@@ -99,6 +100,7 @@
 		decks,
 		language,
 		nativeLanguage = 'pt',
+		translationLanguage,
 		now,
 		clock = DEFAULT_CLOCK,
 		position = null,
@@ -123,6 +125,8 @@
 		language: Language;
 		/** Língua da tradução (rótulo IT→PT dos flashcards). */
 		nativeLanguage?: UiLanguage;
+		/** Língua nativa de verdade (qualquer idioma): a da tradução das frases. */
+		translationLanguage?: Language;
 		now: Date;
 		clock?: DayClock;
 		/** Posição da palavra na lista filtrada (0-based), ou null se ela não está na lista. */
@@ -137,7 +141,6 @@
 		ondeleted: () => Promise<void> | void;
 	} = $props();
 
-	const study = $derived(langAttrs(language));
 	const timeZone = $derived(clock.timeZone);
 	const code = (tag: string) => tag.split('-')[0].toUpperCase();
 	const deck = $derived(
@@ -153,9 +156,11 @@
 	let moving = $state(false);
 	let histOpen = $state(false);
 
-	// Trocar de palavra: foco no painel, histórico fechado, rolagem no topo.
+	// Trocar de palavra: foco no painel, histórico fechado, rolagem no topo. O id derivado
+	// não muda quando o item recarrega depois de salvar um campo.
+	const selectedId = $derived(selected.id);
 	$effect(() => {
-		void selected.id;
+		void selectedId;
 		histOpen = false;
 		menuOpen = false;
 		bodyEl?.scrollTo({ top: 0 });
@@ -317,11 +322,6 @@
 	</span>
 {/snippet}
 
-{#snippet sentence(text: string, term: string)}
-	{#each highlightParts(text, term, language) as part, i (i)}{#if part.hit}<mark>{part.text}</mark
-			>{:else}{part.text}{/if}{/each}
-{/snippet}
-
 <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- closeHref já vem resolvido -->
 <a class="drawer-scrim" href={closeHref} aria-hidden="true" tabindex="-1" data-sveltekit-noscroll
 	><span class="visually-hidden">Fechar</span></a
@@ -342,7 +342,7 @@
 		onpointerdown={grabStart}
 		onpointermove={grabMove}
 		onpointerup={grabEnd}
-		onpointercancel={grabEnd}
+		onpointercancel={() => (dragH = null)}
 	>
 		<span class="grab" aria-hidden="true"></span>
 		{#if position}
@@ -394,7 +394,7 @@
 					</button>
 					<button type="button" class="mi" onclick={() => (menuView = 'decks')}>
 						<Icon name="cards" size="sm" /><span
-							>Mover para deck…{#if deck}<small>Agora em {deckDisplayName(deck.name)}</small
+							>Mover para baralho…{#if deck}<small>Agora em {deckDisplayName(deck.name)}</small
 								>{/if}</span
 						>
 					</button>
@@ -475,6 +475,12 @@
 					item={selected}
 					url={media.image}
 					addLabel="Adicionar imagem"
+					suggest={() => ({
+						language,
+						lemma: selected.lemma,
+						sense: selected.sense,
+						sentence: selected.encounters[0]?.sentence
+					})}
 				/>
 			</div>
 			<div class="media">
@@ -495,19 +501,15 @@
 					>{/if}
 			</h3>
 			{#each selected.encounters as e (e.id)}
-				<div class="quote">
-					<div class="qs">
-						<Icon name={ORIGIN_ICONS[e.origin]} size="sm" /><span class="src"
-							>{e.source || e.originLabel}</span
-						><span class="sp"></span><time datetime={e.seenAt}
-							>{formatAgo(new Date(e.seenAt), now, timeZone)}</time
-						>
-					</div>
-					{#if e.sentence}<p {...study}>
-							{@render sentence(e.sentence, e.highlight || selected.lemma)}
-						</p>{/if}
-					{#if e.sense && e.sense !== selected.sense}<div class="pt">{e.sense}</div>{/if}
-				</div>
+				<EncounterQuote
+					encounter={e}
+					lemma={selected.lemma}
+					sense={selected.sense}
+					{language}
+					native={translationLanguage ?? nativeLanguage}
+					{now}
+					{timeZone}
+				/>
 			{:else}
 				<p class="faint small">
 					Guardada sem frase. A próxima vez que ela aparecer, a frase entra aqui.
@@ -517,7 +519,7 @@
 
 		<section class="sec">
 			<h3>
-				Flashcards gerados{#if deck}<span class="aside">Deck {deckDisplayName(deck.name)}</span
+				Flashcards gerados{#if deck}<span class="aside">Baralho {deckDisplayName(deck.name)}</span
 					>{/if}
 			</h3>
 			{#if cards.length === 0}
@@ -960,43 +962,6 @@
 	.small {
 		margin: 0;
 		font-size: 14px;
-	}
-
-	.quote {
-		padding: 12px 14px;
-		border-radius: var(--r-m);
-		background: var(--tile);
-		box-shadow: inset 0 0 0 1px var(--line);
-	}
-	.quote + .quote {
-		margin-top: 6px;
-	}
-	.qs {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		font-size: 12.5px;
-		color: var(--ink-3);
-		margin-bottom: 6px;
-	}
-	.qs .src {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.qs time {
-		flex: none;
-	}
-	.quote p {
-		margin: 0;
-		font-size: 14.5px;
-		line-height: 1.5;
-	}
-	.quote .pt {
-		color: var(--ink-3);
-		font-size: 13px;
-		margin-top: 4px;
 	}
 
 	.cards {

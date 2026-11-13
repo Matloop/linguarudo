@@ -48,7 +48,7 @@ test('fluxo de palavras: guardar, encontro, duplicata, editar, já sei, buscar, 
 	await expect(dialog.getByRole('alert')).toHaveText('“give up” já está no seu banco.');
 	await expect(dialog.getByRole('textbox', { name: 'Palavra' })).toHaveValue('Give Up');
 	// Com frase, vira um novo encontro do mesmo item.
-	await dialog.getByLabel('Frase').fill('They never give up at night.');
+	await dialog.getByLabel('Frase', { exact: true }).fill('They never give up at night.');
 	await dialog.getByRole('button', { name: 'Guardar' }).click();
 	await expect(toast(page)).toHaveText(
 		'“give up” já estava no banco. A frase entrou como novo encontro.'
@@ -65,20 +65,49 @@ test('fluxo de palavras: guardar, encontro, duplicata, editar, já sei, buscar, 
 	await expect(drawer).toContainText('Never give up on the small boat.');
 	await expect(drawer).toContainText('They never give up at night.');
 
-	// Editar a tradução e a nota.
-	await drawer.getByRole('button', { name: 'Editar' }).click();
-	await drawer.getByLabel('Tradução').fill('parar de tentar');
-	await drawer.getByLabel('Nota').fill('phrasal verb');
-	await drawer.getByRole('button', { name: 'Salvar' }).click();
-	await expect(toast(page)).toHaveText('Alterações salvas');
+	// Edição no lugar: clicar no texto abre o campo, sair dele salva, Esc desfaz.
+	await drawer.getByRole('button', { name: 'Editar tradução: desistir' }).click();
+	const sense = drawer.getByRole('textbox', { name: 'Tradução' });
+	await sense.fill('parar de tentar');
+	await sense.press('Enter');
+	await expect(
+		drawer.getByRole('button', { name: 'Editar tradução: parar de tentar' })
+	).toBeVisible();
+	await drawer.getByRole('button', { name: 'Editar nota' }).click();
+	const note = drawer.getByRole('textbox', { name: 'Nota' });
+	await note.fill('phrasal verb');
+	await note.blur();
+	await expect(drawer.getByRole('button', { name: 'Editar nota: phrasal verb' })).toBeVisible();
+	// Esc dentro do campo só desfaz; o painel continua aberto.
+	await drawer.getByRole('button', { name: 'Editar nota: phrasal verb' }).click();
+	await drawer.getByRole('textbox', { name: 'Nota' }).fill('outra coisa');
+	await page.keyboard.press('Escape');
+	await expect(drawer).toBeVisible();
+	await expect(drawer.getByRole('button', { name: 'Editar nota: phrasal verb' })).toBeVisible();
+	await page.reload();
 	await expect(drawer).toContainText('parar de tentar');
 	await expect(drawer).toContainText('phrasal verb');
 
-	// Marcar como conhecida e voltar.
-	await drawer.getByRole('button', { name: 'Marcar “give up” como conhecida' }).click();
+	// Flashcards gerados e histórico (ainda sem revisões).
+	await expect(drawer.getByRole('heading', { name: 'Flashcards gerados' })).toBeVisible();
+	await expect(drawer).toContainText('Reconhecer');
+	await expect(drawer).toContainText('Ainda não revisada');
+
+	// Navegar na lista: J vai para a próxima, K volta.
+	await expect(drawer.getByText('2 de 2')).toBeVisible();
+	await page.keyboard.press('k');
+	await expect(page.getByRole('region', { name: 'Detalhes de “allora”' })).toBeVisible();
+	await page.keyboard.press('j');
+	await expect(drawer).toBeVisible();
+
+	// Já sei pelo menu ⋯ (ou D) e voltar.
+	await drawer.getByRole('button', { name: 'Mais ações' }).click();
+	await page.getByRole('button', { name: /^Já sei/ }).click();
+	await expect(toast(page)).toHaveText('“give up” saiu da revisão');
 	await expect(drawer).toContainText('Fora da revisão');
 	await expect(rows(page).filter({ hasText: 'give up' })).toContainText('Já sei');
-	await drawer.getByRole('button', { name: 'Voltar “give up” para a revisão' }).click();
+	await page.keyboard.press('d');
+	await expect(toast(page)).toHaveText('“give up” voltou para a revisão');
 	await expect(drawer).not.toContainText('Fora da revisão');
 
 	// Esc fecha o painel.
@@ -95,10 +124,12 @@ test('fluxo de palavras: guardar, encontro, duplicata, editar, já sei, buscar, 
 	await page.getByRole('searchbox', { name: 'Buscar' }).fill('');
 	await expect(rows(page)).toHaveCount(2);
 
-	// Apagar pede confirmação.
+	// Apagar (menu ⋯) pede confirmação.
 	await rows(page).filter({ hasText: 'allora' }).click();
+	const allora = page.getByRole('region', { name: 'Detalhes de “allora”' });
+	await allora.getByRole('button', { name: 'Mais ações' }).click();
 	page.once('dialog', (d) => d.accept());
-	await page.getByRole('button', { name: 'Apagar “allora”' }).click();
+	await page.getByRole('button', { name: 'Apagar' }).click();
 	await expect(toast(page)).toHaveText('“allora” apagada');
 	await expect(rows(page)).toHaveCount(1);
 	await expect(rows(page).first()).toContainText('give up');
@@ -153,7 +184,7 @@ test.describe('sem JavaScript', () => {
 		const dialog = page.getByRole('dialog', { name: /Guardar palavra/ });
 		await expect(dialog).toBeVisible();
 		await dialog.getByRole('textbox', { name: 'Palavra' }).fill('magari');
-		await dialog.getByLabel('Tradução').fill('quem dera');
+		await dialog.getByLabel('Tradução', { exact: true }).fill('quem dera');
 		await dialog.getByRole('button', { name: 'Guardar' }).click();
 		await expect(rows(page)).toHaveCount(1);
 		await expect(rows(page).first()).toContainText('magari');

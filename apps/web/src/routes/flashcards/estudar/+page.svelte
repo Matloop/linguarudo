@@ -25,8 +25,9 @@
 	import { toast } from '#lib/ui/app-state.svelte.ts';
 	import FichaForm from '#lib/ui/FichaForm.svelte';
 	import Icon from '#lib/ui/Icon.svelte';
-	import MediaField from '#lib/ui/MediaField.svelte';
-	import { LIMITS } from '#lib/items.ts';
+	import SaveDialog from '#lib/ui/SaveDialog.svelte';
+	import type { WordEdit } from '#lib/word-fields.ts';
+	import { senseParts } from '#lib/sentence.ts';
 	import Mark from '#lib/ui/Mark.svelte';
 	import { ORIGIN_ICONS, WORK_ICONS } from '#lib/ui/origins.ts';
 	import { deckDisplayName, quotaDoneText, tomorrowText } from '#lib/decks-ui.ts';
@@ -310,22 +311,10 @@
 		};
 	};
 
-	// Edição no lugar: a palavra ou a ficha do flashcard atual, sem sair da sessão.
+	// Edição no lugar: a palavra ou a ficha do flashcard atual, sem sair da sessão. A palavra
+	// abre no mesmo diálogo do Guardar (SaveDialog em modo edit); a ficha, no FichaForm.
 	type EditData =
-		| {
-				kind: 'item';
-				id: string;
-				item: {
-					lemma: string;
-					reading: string;
-					sense: string;
-					note: string;
-					tags: string[];
-					image: string | null;
-					audio: string | null;
-				};
-				mediaUrls: { image: string | null; audio: string | null };
-		  }
+		| { kind: 'item'; id: string; word: WordEdit }
 		| {
 				kind: 'ficha';
 				id: string;
@@ -334,9 +323,13 @@
 				mediaUrls: ComponentProps<typeof FichaForm>['mediaUrls'];
 		  };
 	let editDialog: HTMLDialogElement | undefined = $state();
+	/** Ficha em edição (o diálogo do FichaForm). */
 	let editFor = $state<{ flashcardId: string; data: EditData | null } | null>(null);
 	let editErrors = $state<Record<string, string>>({});
-	let editBusy = $state(false);
+	/** Palavra em edição (o diálogo Guardar em modo edit). */
+	let word = $state<{ flashcardId: string; data: WordEdit } | null>(null);
+	let wordOpen = $state(false);
+	let wordLoading = $state(false);
 
 	async function post(url: string, body: FormData) {
 		const res = await fetch(url, {
@@ -348,26 +341,38 @@
 	}
 
 	async function openEdit() {
-		if (!current) return;
+		if (!current || wordLoading) return;
 		const flashcardId = current.flashcardId;
-		editFor = { flashcardId, data: null };
-		editErrors = {};
-		editDialog?.showModal();
+		// A ficha mostra "Carregando…" no próprio diálogo; a palavra abre já com os dados.
+		if (current.source === 'item') wordLoading = true;
+		else {
+			editFor = { flashcardId, data: null };
+			editErrors = {};
+			editDialog?.showModal();
+		}
 		const body = new FormData();
 		body.set('flashcardId', flashcardId);
 		const r = await post('?/editLoad', body);
+		wordLoading = false;
 		if (r?.type !== 'success' || !r.data) {
 			editDialog?.close();
 			toast('Não deu para abrir a edição agora.');
 			return;
 		}
-		if (editFor?.flashcardId === flashcardId) editFor.data = r.data as unknown as EditData;
+		const loaded = r.data as unknown as EditData;
+		if (loaded.kind === 'item') {
+			editDialog?.close();
+			if (current?.flashcardId !== flashcardId) return;
+			word = { flashcardId, data: loaded.word };
+			wordOpen = true;
+			return;
+		}
+		if (editFor?.flashcardId !== flashcardId) return;
+		editFor.data = loaded;
 	}
 
 	/** Depois de salvar, o flashcard da fila volta do servidor já com o texto novo. */
-	async function editSaved() {
-		const flashcardId = editFor?.flashcardId;
-		if (!flashcardId) return;
+	async function refreshCard(flashcardId: string) {
 		const body = new FormData();
 		body.set('flashcardId', flashcardId);
 		const r = await post('?/refresh', body);
@@ -375,26 +380,19 @@
 			const fresh = r.data.item as ReviewItem;
 			session.queue = session.queue.map((i) => (i.flashcardId === flashcardId ? fresh : i));
 		}
+	}
+
+	async function fichaSaved() {
+		const flashcardId = editFor?.flashcardId;
+		if (!flashcardId) return;
+		await refreshCard(flashcardId);
 		editDialog?.close();
 		toast('Salvo');
 	}
 
-	async function submitItemEdit(e: SubmitEvent) {
-		e.preventDefault();
-		if (editBusy) return;
-		editBusy = true;
-		editErrors = {};
-		const r = await post('/palavras?/edit', new FormData(e.currentTarget as HTMLFormElement));
-		editBusy = false;
-		if (r?.type === 'success') return editSaved();
-		const errors = (r?.type === 'failure' ? (r.data as { errors?: Record<string, string> }) : null)
-			?.errors;
-		editErrors = errors ?? { form: 'Não deu para salvar agora. Tente de novo.' };
-	}
-
 	function onFichaResult(result: { type: string; data?: unknown }) {
 		// A action da ficha termina em redirect: é o sinal de que salvou.
-		if (result.type === 'redirect' || result.type === 'success') return void editSaved();
+		if (result.type === 'redirect' || result.type === 'success') return void fichaSaved();
 		const data = (result.type === 'failure' ? result.data : null) as {
 			errors?: Record<string, string>;
 		} | null;
@@ -411,7 +409,7 @@
 <svelte:window {onkeydown} />
 
 <svelte:head>
-	<title>Flashcards · Linguetta</title>
+	<title>Revisão · Linguetta</title>
 </svelte:head>
 
 {#snippet source(item: ItemReview, audio: string | null, withOrigin: boolean)}
@@ -445,6 +443,15 @@
 			{#each highlightParts(item.sentence, item.highlight || item.lemma, item.language) as part, i (i)}
 				{#if part.hit}<u class:plain={!underline}>{part.text}</u>{:else}{part.text}{/if}
 			{/each}
+		</p>
+	{/if}
+{/snippet}
+
+{#snippet translated(item: ItemReview)}
+	{#if item.sentence && item.translation}
+		<p class="ctx-tr" {...native}>
+			{#each senseParts(item.translation, item.sense) as part, i (i)}{#if part.hit}<b>{part.text}</b
+					>{:else}{part.text}{/if}{/each}
 		</p>
 	{/if}
 {/snippet}
@@ -497,8 +504,8 @@
 
 {#if session.answered === 0 && !current}
 	<div class="ph">
-		<div><h1>{sessionTitle === 'Revisão de hoje' ? 'Flashcards' : sessionTitle}</h1></div>
-		<a class="btn btn-soft" href={resolve('/flashcards')}><Icon name="cards" />Decks</a>
+		<div><h1>{sessionTitle === 'Revisão de hoje' ? 'Baralhos' : sessionTitle}</h1></div>
+		<a class="btn btn-soft" href={resolve('/flashcards')}><Icon name="cards" />Baralhos</a>
 	</div>
 	{@render tagBar()}
 	<div class="empty">
@@ -549,6 +556,7 @@
 						class="icon-btn"
 						type="button"
 						onclick={openEdit}
+						aria-busy={wordLoading}
 						aria-label="Editar este flashcard"
 						title="Editar"><Icon name="pencil" size="sm" /></button
 					>
@@ -663,6 +671,7 @@
 										{/if}
 									</div>
 									{@render sentence(current, false)}
+									{@render translated(current)}
 								</section>
 							{/if}
 						</div>
@@ -799,75 +808,12 @@
 >
 	<div class="ed-in">
 		<div class="ed-h">
-			<h2>{editFor?.data?.kind === 'ficha' ? 'Editar ficha' : 'Editar palavra'}</h2>
+			<h2>Editar ficha</h2>
 			<button class="icon-btn" type="button" aria-label="Fechar" onclick={() => editDialog?.close()}
 				><Icon name="x" /></button
 			>
 		</div>
-		{#if editFor?.data?.kind === 'item'}
-			{@const d = editFor.data}
-			<form class="edit" onsubmit={submitItemEdit}>
-				<input type="hidden" name="id" value={d.id} />
-				<label
-					>Palavra<input
-						name="lemma"
-						{...study}
-						value={d.item.lemma}
-						maxlength={LIMITS.lemma}
-						required
-					/></label
-				>
-				{#if editErrors.lemma}<p class="err" role="alert">{editErrors.lemma}</p>{/if}
-				<label
-					>Leitura <i class="opt">· opcional, como furigana ou pinyin</i><input
-						name="reading"
-						{...study}
-						value={d.item.reading}
-						maxlength={LIMITS.reading}
-					/></label
-				>
-				{#if editErrors.reading}<p class="err" role="alert">{editErrors.reading}</p>{/if}
-				<label>Tradução<input name="sense" value={d.item.sense} maxlength={LIMITS.sense} /></label>
-				<label
-					>Nota<textarea name="note" rows="3" maxlength={LIMITS.note} value={d.item.note}
-					></textarea></label
-				>
-				<label
-					>Tags <i class="opt">· separadas por vírgula</i><input
-						name="tags"
-						value={d.item.tags.join(', ')}
-						placeholder="viagem, A2"
-						autocomplete="off"
-					/></label
-				>
-				{#if editErrors.tags}<p class="err" role="alert">{editErrors.tags}</p>{/if}
-				<div class="media-row">
-					<MediaField
-						name="image"
-						kind="image"
-						label="Imagem"
-						path={d.item.image}
-						url={d.mediaUrls.image}
-					/>
-					<MediaField
-						name="audio"
-						kind="audio"
-						label="Áudio"
-						path={d.item.audio}
-						url={d.mediaUrls.audio}
-					/>
-				</div>
-				{#if editErrors.image}<p class="err" role="alert">{editErrors.image}</p>{/if}
-				{#if editErrors.audio}<p class="err" role="alert">{editErrors.audio}</p>{/if}
-				{#if editErrors.form}<p class="err" role="alert">{editErrors.form}</p>{/if}
-				<div class="edit-acts">
-					<button class="btn btn-primary" disabled={editBusy}>Salvar</button>
-					<button type="button" class="btn btn-ghost" onclick={() => editDialog?.close()}
-						>Cancelar</button
-					>
-				</div>
-			</form>
-		{:else if editFor?.data?.kind === 'ficha'}
+		{#if editFor?.data?.kind === 'ficha'}
 			{@const d = editFor.data}
 			<FichaForm
 				values={d.values}
@@ -884,6 +830,16 @@
 		{/if}
 	</div>
 </dialog>
+
+<SaveDialog
+	mode="edit"
+	bind:open={wordOpen}
+	edit={word?.data ?? null}
+	language={data.language}
+	study={[data.language]}
+	uiLanguage={data.uiLanguage}
+	onsaved={() => (word ? refreshCard(word.flashcardId) : undefined)}
+/>
 
 {#if message}<p class="aviso" role="alert">{message}</p>{/if}
 
@@ -950,34 +906,6 @@
 		margin: 0;
 	}
 	.ed-wait {
-		color: var(--ink-3);
-	}
-	.edit {
-		display: grid;
-		gap: 12px;
-	}
-	.edit label {
-		display: grid;
-		gap: 6px;
-		font-size: 14.5px;
-		color: var(--ink-2);
-	}
-	.edit .err {
-		margin: 0;
-		color: var(--danger, #c0392b);
-		font-size: 14px;
-	}
-	.edit .media-row {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 12px;
-	}
-	.edit-acts {
-		display: flex;
-		gap: 8px;
-	}
-	.opt {
-		font-style: normal;
 		color: var(--ink-3);
 	}
 	.quota {
@@ -1196,6 +1124,20 @@
 	.ctx u.plain {
 		box-shadow: none;
 	}
+	/* Tradução da frase (só no verso): apagada, com o sentido em negrito. */
+	.ctx-tr {
+		text-align: center;
+		font-size: 15px;
+		line-height: 1.5;
+		color: var(--ink-3);
+		max-width: 460px;
+		margin: 4px auto 0;
+		text-wrap: balance;
+	}
+	.ctx-tr b {
+		color: var(--ink);
+		font-weight: 600;
+	}
 	.small-w {
 		font: 400 15.5px var(--f-body);
 		color: var(--ink-3);
@@ -1234,6 +1176,9 @@
 		margin: 0 auto 14px;
 		border-radius: var(--r-m);
 		object-fit: contain;
+		/* O cartão tem altura fixa: com frase e tradução no verso, a imagem cede espaço. */
+		min-height: 48px;
+		flex-shrink: 1;
 	}
 	.icon-btn.rec {
 		color: var(--accent, var(--ink));

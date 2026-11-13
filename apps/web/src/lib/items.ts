@@ -87,6 +87,8 @@ export interface ItemInput {
 	sense: string;
 	/** Frase onde a pessoa viu; vira um encontro manual. Vazia = item sem encontro. */
 	sentence: string;
+	/** A frase na língua nativa; só com frase. */
+	translation: string;
 	note: string;
 	tags: string[];
 	/** Deck escolhido em "Mais campos"; null = o padrão do idioma. */
@@ -129,6 +131,7 @@ export function parseItemInput(
 		reading: asString(raw.reading),
 		sense: asString(raw.sense),
 		sentence: asString(raw.sentence),
+		translation: asString(raw.translation),
 		note: asString(raw.note),
 		tags: asString(raw.tags),
 		deck: asString(raw.deck)
@@ -138,6 +141,7 @@ export function parseItemInput(
 	const reading = normalizeLemma(values.reading);
 	const sense = normalizeText(values.sense);
 	const sentence = normalizeText(values.sentence);
+	const translation = normalizeText(values.translation);
 	const note = normalizeText(values.note);
 	const tags = parseTags(values.tags);
 	const deck = values.deck.trim();
@@ -148,9 +152,13 @@ export function parseItemInput(
 		reading: tooLong(reading, LIMITS.reading),
 		sense: tooLong(sense, LIMITS.sense),
 		sentence: tooLong(sentence, LIMITS.sentence),
+		translation:
+			translation && !sentence
+				? 'Escreva a frase para guardar a tradução dela.'
+				: tooLong(translation, LIMITS.translation),
 		note: tooLong(note, LIMITS.note),
 		tags: tagsError(tags),
-		deck: deck === '' || UUID.test(deck) ? undefined : 'Escolha um deck da lista.'
+		deck: deck === '' || UUID.test(deck) ? undefined : 'Escolha um baralho da lista.'
 	});
 	if (Object.keys(errors).length > 0 || !language) return { ok: false, errors, values };
 	return {
@@ -161,6 +169,7 @@ export function parseItemInput(
 			reading,
 			sense,
 			sentence,
+			translation,
 			note,
 			tags,
 			deck: deck ? deck.toLowerCase() : null

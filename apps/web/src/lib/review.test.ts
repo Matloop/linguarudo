@@ -69,6 +69,8 @@ function item(id: string, over: Partial<ItemReview> = {}): ReviewItem {
 		language: 'en',
 		sentence: '',
 		highlight: '',
+		translation: '',
+		encounterId: null,
 		origin: null,
 		sourceDetail: '',
 		tags: [],

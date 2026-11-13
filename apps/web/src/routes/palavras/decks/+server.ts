@@ -7,11 +7,11 @@ import type { RequestHandler } from './$types';
 
 /** ?idioma=: decks do idioma, em árvore, para o campo Deck do diálogo Guardar. */
 export const GET: RequestHandler = async ({ locals, url }) => {
-	if (!(await locals.getUser())) error(401, 'Entre para ver seus decks.');
+	if (!(await locals.getUser())) error(401, 'Entre para ver seus baralhos.');
 	const language = parseLanguage(url.searchParams.get('idioma'));
 	if (!language) error(400, 'Idioma inválido.');
 	const decks = await listDecks(locals.supabase, language).catch(() => null);
-	if (!decks) error(500, 'Não deu para carregar os decks agora.');
+	if (!decks) error(500, 'Não deu para carregar os baralhos agora.');
 	const options: DeckOption[] = deckTree(decks).map((d) => ({
 		id: d.id,
 		name: d.name,
