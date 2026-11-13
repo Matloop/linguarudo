@@ -80,6 +80,6 @@ export const variables = defineEnvVars({
 	},
 	GEMINI_MODEL: {
 		schema: optional,
-		description: 'Modelo do Gemini. Vazio: gemini-3.8-flash'
+		description: 'Modelo do Gemini. Vazio: gemini-3.5-flash-lite'
 	}
 });

@@ -84,7 +84,7 @@ describe('createAiChain', () => {
 			'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
 		);
 		expect((gemini.init.headers as Record<string, string>).authorization).toBe('Bearer gm');
-		expect(gemini.body.model).toBe('gemini-3.8-flash');
+		expect(gemini.body.model).toBe('gemini-3.5-flash-lite');
 		expect(gemini.body.max_tokens).toBe(500);
 		expect(gemini.body.reasoning_effort).toBe('low');
 		expect(gemini.body).not.toHaveProperty('temperature');
